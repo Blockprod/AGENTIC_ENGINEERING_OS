@@ -19,6 +19,11 @@ from agentic_engineering_os.domain import (
     to_dict,
 )
 
+from ._identity import (
+    has_attributable_codex_role,
+    is_attributable_non_codex_identity,
+    is_codex_identity,
+)
 from .contract_validator import ContractValidator, ValidationIssue
 
 
@@ -184,8 +189,9 @@ class CertificationService:
             raise CertificationError(
                 "CERTIFIER_REQUIRED", "an explicit certifier is required"
             )
-        prefix, separator, role = certifier.partition("/")
-        if prefix == "Codex" and (not separator or not role.strip()):
+        if is_codex_identity(certifier) and not has_attributable_codex_role(
+            certifier
+        ):
             raise CertificationError(
                 "CERTIFIER_ROLE_REQUIRED",
                 "Codex certification requires an explicit Codex/<role> identity",
@@ -411,7 +417,7 @@ class CertificationService:
             and evidence.evidence_id not in context.stale_evidence_ids
             and (evidence.commit is None or evidence.commit == commit)
             and evidence.source.casefold() == "human"
-            and not evidence.producer.startswith("Codex")
+            and is_attributable_non_codex_identity(evidence.producer)
             and approval.approved_by is not None
             and approval.approved_by == evidence.producer
             and approval.approved_at is not None

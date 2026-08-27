@@ -13,6 +13,10 @@ from uuid import uuid4
 from agentic_engineering_os.domain import Evidence, EvidenceType
 from agentic_engineering_os.domain.models import JsonValue
 
+from ._identity import (
+    has_attributable_codex_role,
+    is_attributable_non_codex_identity,
+)
 from .contract_validator import ContractValidator, ValidationIssue
 
 
@@ -187,8 +191,7 @@ def _provenance(value: EvidenceProvenance) -> EvidenceProvenance:
             "PROVENANCE_REQUIRED", "source and producer must be attributable"
         )
     if kind is ProvenanceKind.CODEX:
-        prefix, separator, role = value.producer.partition("/")
-        if prefix != "Codex" or not separator or not role.strip():
+        if not has_attributable_codex_role(value.producer):
             raise EvidenceRecordingError(
                 "CODEX_ROLE_REQUIRED",
                 "Codex provenance must identify an explicit role as Codex/<role>",
@@ -234,8 +237,9 @@ def _validate_traceability(
                 "HUMAN_PROVENANCE_REQUIRED",
                 "HUMAN_APPROVAL Evidence must be explicitly produced by Human",
             )
-        if provenance.source.casefold() != "human" or provenance.producer.startswith(
-            "Codex"
+        if (
+            provenance.source.casefold() != "human"
+            or not is_attributable_non_codex_identity(provenance.producer)
         ):
             raise EvidenceRecordingError(
                 "HUMAN_ACTOR_REQUIRED",

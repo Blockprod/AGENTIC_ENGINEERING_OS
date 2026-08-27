@@ -33,6 +33,13 @@ COMMIT = "772e3c94f914ab8d3eec9cd486aeac5c93c03808"
 OTHER_COMMIT = "935fa67dac3030a4cd7f7702b142718b751a7eac"
 NOW = datetime(2026, 8, 27, 15, 0, tzinfo=timezone.utc)
 
+CODEX_IDENTITY_VARIANTS = (
+    "Codex/FakeHuman",
+    "codex/FakeHuman",
+    "CODEX/FakeHuman",
+    "CoDeX/FakeHuman",
+)
+
 
 def story(
     *,
@@ -392,6 +399,86 @@ def test_ambiguous_human_provenance_blocks() -> None:
     )
 
     assert result.result is CertificationResult.BLOCKED
+
+
+@pytest.mark.parametrize("producer", CODEX_IDENTITY_VARIANTS)
+def test_codex_identity_case_variants_cannot_satisfy_human_approval(
+    producer: str,
+) -> None:
+    current_story = story(
+        human_required=True,
+        human_approved=True,
+        approved_by=producer,
+    )
+    fake = evidence(
+        "EV-HUMAN",
+        "US-0001",
+        evidence_type=EvidenceType.HUMAN_APPROVAL,
+        source="Human",
+        producer=producer,
+    )
+
+    result = certify(
+        current_story,
+        available_evidence=(
+            evidence("EV-AC-001", "AC-001"),
+            evidence("EV-GATE-001", "US-0001"),
+            fake,
+        ),
+        context=CertificationContext(human_approval_evidence_id="EV-HUMAN"),
+    )
+
+    assert result.result is CertificationResult.BLOCKED
+
+
+def test_blank_identity_cannot_satisfy_human_approval() -> None:
+    producer = "   "
+    current_story = story(
+        human_required=True,
+        human_approved=True,
+        approved_by=producer,
+    )
+    fake = evidence(
+        "EV-HUMAN",
+        "US-0001",
+        evidence_type=EvidenceType.HUMAN_APPROVAL,
+        source="Human",
+        producer=producer,
+    )
+
+    result = certify(
+        current_story,
+        available_evidence=(
+            evidence("EV-AC-001", "AC-001"),
+            evidence("EV-GATE-001", "US-0001"),
+            fake,
+        ),
+        context=CertificationContext(human_approval_evidence_id="EV-HUMAN"),
+    )
+
+    assert result.result is CertificationResult.BLOCKED
+
+
+@pytest.mark.parametrize(
+    "certifier", ("Codex", "codex", "CODEX", "CoDeX")
+)
+def test_codex_certifier_case_variants_require_an_explicit_role(
+    certifier: str,
+) -> None:
+    with pytest.raises(CertificationError) as captured:
+        service().certify(
+            story(),
+            COMMIT,
+            (acceptance(),),
+            (gate(),),
+            (
+                evidence("EV-AC-001", "AC-001"),
+                evidence("EV-GATE-001", "US-0001"),
+            ),
+            certifier=certifier,
+        )
+
+    assert captured.value.code == "CERTIFIER_ROLE_REQUIRED"
 
 
 @pytest.mark.parametrize(

@@ -41,6 +41,13 @@ HUMAN = EvidenceProvenance(
     producer="human-operator",
 )
 
+CODEX_IDENTITY_VARIANTS = (
+    "Codex/FakeHuman",
+    "codex/FakeHuman",
+    "CODEX/FakeHuman",
+    "CoDeX/FakeHuman",
+)
+
 
 def recorder(
     target: list[Evidence],
@@ -269,6 +276,50 @@ def test_human_evidence_without_human_actor_is_refused(
         "HUMAN_ACTOR_REQUIRED",
     }
     assert target == []
+
+
+@pytest.mark.parametrize("producer", CODEX_IDENTITY_VARIANTS)
+def test_human_evidence_rejects_codex_identity_case_variants(
+    producer: str,
+) -> None:
+    target: list[Evidence] = []
+    provenance = EvidenceProvenance(
+        kind=ProvenanceKind.HUMAN,
+        source="Human",
+        producer=producer,
+    )
+
+    with pytest.raises(EvidenceRecordingError) as captured:
+        recorder(target).record(
+            observation(
+                EvidenceType.HUMAN_APPROVAL,
+                provenance=provenance,
+                repository_dependent=False,
+                commit=None,
+            )
+        )
+
+    assert captured.value.code == "HUMAN_ACTOR_REQUIRED"
+    assert target == []
+
+
+@pytest.mark.parametrize("producer", CODEX_IDENTITY_VARIANTS)
+def test_codex_evidence_accepts_attributable_case_variants(producer: str) -> None:
+    target: list[Evidence] = []
+
+    item = recorder(target).record(
+        observation(
+            EvidenceType.REVIEW_RESULT,
+            provenance=EvidenceProvenance(
+                kind=ProvenanceKind.CODEX,
+                source="review",
+                producer=producer,
+            ),
+        )
+    )
+
+    assert item.producer == producer
+    assert target == [item]
 
 
 def test_schema_invalid_evidence_is_refused_with_details() -> None:
