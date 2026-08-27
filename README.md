@@ -14,3 +14,5 @@ Documentation :
 
 - [Vision et contrat d'Agentic Engineering](docs/00-vision.md)
 - [Périmètre du projet](docs/01-scope.md)
+- [Invariants](docs/02-invariants.md)
+- [Politique fail-closed](docs/03-fail-closed-policy.md)
