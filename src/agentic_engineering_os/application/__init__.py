@@ -35,6 +35,14 @@ from .gate_evaluator import (
     GateEvaluator,
     GateReason,
 )
+from .orchestrator import (
+    MissionStateStorePort,
+    OrchestrationResult,
+    Orchestrator,
+    OrchestratorConfigurationError,
+    ProjectStateReaderPort,
+    RoleHandoff,
+)
 from .state_transition_service import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATES,
@@ -66,9 +74,15 @@ __all__ = [
     "GateEvaluationError",
     "GateEvaluator",
     "GateReason",
+    "MissionStateStorePort",
+    "OrchestrationResult",
+    "Orchestrator",
+    "OrchestratorConfigurationError",
     "ParseError",
     "ProvenanceKind",
     "ProjectStateStorePort",
+    "ProjectStateReaderPort",
+    "RoleHandoff",
     "StateTransitionService",
     "TERMINAL_STATES",
     "TransitionContext",
