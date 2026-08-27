@@ -1,0 +1,53 @@
+{
+  "mission_id": "P2.4",
+  "role": "ARCHITECT",
+  "subject": "Architect role contract",
+  "observed_commit": "d32e5148e895185668c97626106a4537cb739952",
+  "summary": "Define a minimal validated Architect output contract.",
+  "assumptions": ["The existing Phase 0 User Story contract remains authoritative."],
+  "decisions": [
+    {
+      "kind": "ARCHITECTURAL",
+      "description": "Reuse ContractValidator for every User Story candidate."
+    }
+  ],
+  "risks": ["A free-form output could bypass deterministic validation."],
+  "blockers": [],
+  "user_stories": [
+    {
+      "schema_version": "1.0",
+      "id": "US-0001",
+      "title": "Validate Architect output",
+      "description": "Validate the structured role output and its User Stories.",
+      "status": "PROPOSED",
+      "priority": 1,
+      "risk": "MEDIUM",
+      "depends_on": [],
+      "scope": {
+        "allowed_paths": ["src/agentic_engineering_os/application/architect.py"],
+        "forbidden_paths": [".agentic-engineering-os/state.json"]
+      },
+      "acceptance_criteria": [
+        {
+          "id": "AC-001",
+          "description": "The deterministic validator accepts this candidate.",
+          "mandatory": true
+        }
+      ],
+      "required_gates": ["GATE-TESTS"],
+      "human_approval": {
+        "required": false,
+        "approved": false,
+        "approved_by": null,
+        "approved_at": null
+      },
+      "metadata": {
+        "created_at": "2026-08-28T15:00:00+02:00",
+        "created_by": "Codex/Architect",
+        "updated_at": "2026-08-28T15:00:00+02:00"
+      }
+    }
+  ],
+  "recommended_next_role": "IMPLEMENTER",
+  "verdict": "READY"
+}

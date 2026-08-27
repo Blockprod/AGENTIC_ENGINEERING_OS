@@ -10,9 +10,10 @@ Les six contrats machine-validables de Phase 1 utilisent JSON Schema Draft
 - `certification.schema.json`
 - `project-state.schema.json`
 
-Le contrat opérationnel de Phase 2 utilise le même draft :
+Les contrats opérationnels de Phase 2 utilisent le même draft :
 
 - `mission-state.schema.json`
+- `architect-result.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
