@@ -17,3 +17,4 @@ Documentation :
 - [Invariants](docs/02-invariants.md)
 - [Politique fail-closed](docs/03-fail-closed-policy.md)
 - [Modèle d'autorité et frontières des rôles](docs/04-authority-model.md)
+- [Machine d'état et cycle de vie](docs/05-state-machine.md)
