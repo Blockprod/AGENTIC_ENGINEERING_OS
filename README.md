@@ -19,3 +19,5 @@ Documentation :
 - [Modèle d'autorité et frontières des rôles](docs/04-authority-model.md)
 - [Machine d'état et cycle de vie](docs/05-state-machine.md)
 - [Contrat canonique d'une User Story](docs/06-user-story-contract.md)
+- [Contrat des preuves](docs/07-evidence-contract.md)
+- [Contrat des gates](docs/08-gate-contract.md)
