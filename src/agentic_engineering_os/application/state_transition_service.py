@@ -54,6 +54,7 @@ class TransitionContext:
 
     preconditions_proven: bool | None = None
     dependency_statuses: Mapping[str, UserStoryStatus | str] | None = None
+    target_commit: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

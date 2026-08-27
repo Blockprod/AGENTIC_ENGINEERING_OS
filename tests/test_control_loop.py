@@ -1,5 +1,6 @@
 import ast
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from agentic_engineering_os.application import (
 )
 from agentic_engineering_os.domain import (
     AcceptanceCriterion,
+    Certification,
     CertificationResult,
     Evidence,
     EvidenceType,
@@ -42,6 +44,7 @@ from agentic_engineering_os.infrastructure import PersistenceError, ProjectState
 
 
 COMMIT = "2c65f6b79c75a8986171abb94d386f022ea23988"
+OTHER_COMMIT = "29c518ea0130bccddb0c0ee5f2d9daf55ea79b80"
 NOW = datetime(2026, 8, 27, 18, 0, tzinfo=timezone.utc)
 
 
@@ -164,18 +167,18 @@ def record_certification_inputs(loop: ControlLoop, *, result: bool = True) -> No
     )
 
 
-def test_golden_path_persists_and_reloads_the_same_authoritative_state(
-    tmp_path: Path,
-) -> None:
-    store, loop = initialized_loop(tmp_path)
+def produce_certified_record(
+    loop: ControlLoop,
+    *,
+    certification_id: str = "CERT-001",
+) -> Certification:
     record_certification_inputs(loop)
-
-    evaluation = loop.evaluate_gate(
+    loop.evaluate_gate(
         pass_contract(),
         context=GateEvaluationContext(expected_commit=COMMIT),
         evaluated_at=NOW,
     )
-    certification = loop.certify_user_story(
+    return loop.certify_user_story(
         "US-0001",
         COMMIT,
         (
@@ -186,18 +189,73 @@ def test_golden_path_persists_and_reloads_the_same_authoritative_state(
             ),
         ),
         certifier="Codex/Certifier",
-        certification_id="CERT-001",
+        certification_id=certification_id,
         certified_at=NOW,
     )
+
+
+def certification_record(
+    *,
+    certification_id: str,
+    subject: str,
+    result: CertificationResult,
+    commit: str = COMMIT,
+) -> Certification:
+    return Certification(
+        certification_id=certification_id,
+        subject=subject,
+        result=result,
+        commit=commit,
+        acceptance_results={"AC-001": "PASS"},
+        gate_results={},
+        human_approval={
+            "required": False,
+            "approved": False,
+            "evidence_ref": None,
+        },
+        evidence_refs=(),
+        certified_at=NOW,
+        certifier="Codex/Certifier",
+    )
+
+
+def assert_certified_promotion_refused(
+    store: ProjectStateStore,
+    loop: ControlLoop,
+    *,
+    context: TransitionContext,
+    code: str,
+) -> None:
+    before = store.state_path.read_bytes()
+
+    with pytest.raises(ControlLoopError) as captured:
+        loop.transition_user_story(
+            "US-0001",
+            UserStoryStatus.CERTIFIED,
+            context=context,
+        )
+
+    assert captured.value.code == code
+    assert store.state_path.read_bytes() == before
+    assert store.load().user_stories[0].status is UserStoryStatus.CERTIFICATION
+
+
+def test_golden_path_persists_and_reloads_the_same_authoritative_state(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    certification = produce_certified_record(loop)
     before_transition = store.load()
     transition = loop.transition_user_story(
         "US-0001",
         UserStoryStatus.CERTIFIED,
-        context=TransitionContext(preconditions_proven=True),
+        context=TransitionContext(
+            preconditions_proven=False,
+            target_commit=COMMIT,
+        ),
     )
     reloaded = loop.load_state()
 
-    assert evaluation.result is GateResult.PASS
     assert certification.result is CertificationResult.CERTIFIED
     assert before_transition.user_stories[0].status is UserStoryStatus.CERTIFICATION
     assert transition.allowed
@@ -439,10 +497,162 @@ def test_forbidden_transition_preserves_authoritative_state(tmp_path: Path) -> N
     assert store.load().user_stories[0].status is UserStoryStatus.CERTIFICATION
 
 
+def test_caller_boolean_cannot_promote_without_authoritative_certification(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    before = store.state_path.read_bytes()
+    state = store.load()
+    assert state.evidence == []
+    assert state.gates == []
+    assert state.certifications == []
+
+    with pytest.raises(ControlLoopError, match="CERTIFICATION_COMMIT_REQUIRED"):
+        loop.transition_user_story(
+            "US-0001",
+            UserStoryStatus.CERTIFIED,
+            context=TransitionContext(preconditions_proven=True),
+        )
+
+    assert store.state_path.read_bytes() == before
+    assert store.load().user_stories[0].status is UserStoryStatus.CERTIFICATION
+
+
+def test_explicit_commit_cannot_promote_without_authoritative_certification(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+
+    assert_certified_promotion_refused(
+        store,
+        loop,
+        context=TransitionContext(
+            preconditions_proven=True,
+            target_commit=COMMIT,
+        ),
+        code="CERTIFICATION_NOT_FOUND",
+    )
+
+
+@pytest.mark.parametrize(
+    "result", (CertificationResult.BLOCKED, CertificationResult.REJECTED)
+)
+def test_non_certified_verdict_cannot_authorize_promotion(
+    tmp_path: Path,
+    result: CertificationResult,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    state = store.load()
+    state.certifications.append(
+        certification_record(
+            certification_id=f"CERT-{result.value}",
+            subject="US-0001",
+            result=result,
+        )
+    )
+    store.save(state)
+
+    assert_certified_promotion_refused(
+        store,
+        loop,
+        context=TransitionContext(
+            preconditions_proven=True,
+            target_commit=COMMIT,
+        ),
+        code="CERTIFICATION_NOT_CERTIFIED",
+    )
+
+
+def test_certification_for_another_story_cannot_authorize_promotion(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    state = store.load()
+    state.user_stories.append(
+        replace(story(), id="US-0002", required_gates=())
+    )
+    state.certifications.append(
+        certification_record(
+            certification_id="CERT-OTHER-STORY",
+            subject="US-0002",
+            result=CertificationResult.CERTIFIED,
+        )
+    )
+    store.save(state)
+
+    assert_certified_promotion_refused(
+        store,
+        loop,
+        context=TransitionContext(
+            preconditions_proven=True,
+            target_commit=COMMIT,
+        ),
+        code="CERTIFICATION_NOT_FOUND",
+    )
+
+
+def test_certification_for_another_commit_cannot_authorize_promotion(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    state = store.load()
+    state.certifications.append(
+        certification_record(
+            certification_id="CERT-WRONG-COMMIT",
+            subject="US-0001",
+            result=CertificationResult.CERTIFIED,
+        )
+    )
+    store.save(state)
+
+    assert_certified_promotion_refused(
+        store,
+        loop,
+        context=TransitionContext(
+            preconditions_proven=True,
+            target_commit=OTHER_COMMIT,
+        ),
+        code="CERTIFICATION_NOT_FOUND",
+    )
+
+
+def test_multiple_applicable_certifications_are_ambiguous(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    state = store.load()
+    state.certifications.extend(
+        (
+            certification_record(
+                certification_id="CERT-ONE",
+                subject="US-0001",
+                result=CertificationResult.CERTIFIED,
+            ),
+            certification_record(
+                certification_id="CERT-TWO",
+                subject="US-0001",
+                result=CertificationResult.CERTIFIED,
+            ),
+        )
+    )
+    store.save(state)
+
+    assert_certified_promotion_refused(
+        store,
+        loop,
+        context=TransitionContext(
+            preconditions_proven=True,
+            target_commit=COMMIT,
+        ),
+        code="AMBIGUOUS_CERTIFICATION",
+    )
+
+
 def test_persistence_failure_returns_no_success_and_preserves_prior_state(
     tmp_path: Path,
 ) -> None:
-    store, _ = initialized_loop(tmp_path)
+    store, setup_loop = initialized_loop(tmp_path)
+    produce_certified_record(setup_loop)
     before = store.state_path.read_bytes()
 
     class FailingSaveStore:
@@ -457,7 +667,10 @@ def test_persistence_failure_returns_no_success_and_preserves_prior_state(
         loop.transition_user_story(
             "US-0001",
             UserStoryStatus.CERTIFIED,
-            context=TransitionContext(preconditions_proven=True),
+            context=TransitionContext(
+                preconditions_proven=True,
+                target_commit=COMMIT,
+            ),
         )
 
     assert store.state_path.read_bytes() == before
@@ -465,7 +678,17 @@ def test_persistence_failure_returns_no_success_and_preserves_prior_state(
 
 
 def test_candidate_copy_prevents_partial_mutation_of_shared_loaded_state() -> None:
-    authoritative = ProjectState(schema_version="1.0", user_stories=[story()])
+    authoritative = ProjectState(
+        schema_version="1.0",
+        user_stories=[story()],
+        certifications=[
+            certification_record(
+                certification_id="CERT-001",
+                subject="US-0001",
+                result=CertificationResult.CERTIFIED,
+            )
+        ],
+    )
 
     class InMemoryFailingStore:
         def load(self) -> ProjectState:
@@ -478,7 +701,10 @@ def test_candidate_copy_prevents_partial_mutation_of_shared_loaded_state() -> No
         make_loop(InMemoryFailingStore()).transition_user_story(
             "US-0001",
             UserStoryStatus.CERTIFIED,
-            context=TransitionContext(preconditions_proven=True),
+            context=TransitionContext(
+                preconditions_proven=True,
+                target_commit=COMMIT,
+            ),
         )
 
     assert authoritative.user_stories[0].status is UserStoryStatus.CERTIFICATION
@@ -543,7 +769,7 @@ def test_control_loop_contains_no_specialized_rule_catalog_or_direct_io() -> Non
 
     assert "ALLOWED_TRANSITIONS" not in source
     assert "GateResult" not in source
-    assert "CertificationResult" not in source
+    assert source.count("CertificationResult.CERTIFIED") == 1
     assert "state.json" not in source
     assert "jsonschema" not in source
     assert ".write_text(" not in source

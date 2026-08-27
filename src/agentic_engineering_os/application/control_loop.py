@@ -10,6 +10,7 @@ from typing import Protocol
 
 from agentic_engineering_os.domain import (
     Certification,
+    CertificationResult,
     Evidence,
     Gate,
     ProjectState,
@@ -202,10 +203,16 @@ class ControlLoop:
         story_index, current_story = _require_unique_story(candidate, user_story_id)
         candidate_story = _candidate_story(current_story)
         candidate.user_stories[story_index] = candidate_story
+        resolved_context = _resolve_transition_context(
+            candidate,
+            candidate_story,
+            target,
+            context,
+        )
         result = self._transition_service.apply(
             candidate_story,
             target,
-            context=context,
+            context=resolved_context,
         )
         if not isinstance(result, TransitionResult):
             raise ControlLoopError(
@@ -247,6 +254,57 @@ def _candidate_story(story: UserStory) -> UserStory:
         human_approval=replace(story.human_approval),
         metadata=replace(story.metadata),
     )
+
+
+def _resolve_transition_context(
+    state: ProjectState,
+    story: UserStory,
+    target: UserStoryStatus | str,
+    context: TransitionContext | None,
+) -> TransitionContext | None:
+    try:
+        target_state = UserStoryStatus(target)
+    except (TypeError, ValueError):
+        return context
+    if not (
+        story.status is UserStoryStatus.CERTIFICATION
+        and target_state is UserStoryStatus.CERTIFIED
+    ):
+        return context
+
+    if (
+        context is None
+        or not isinstance(context.target_commit, str)
+        or not context.target_commit.strip()
+    ):
+        raise ControlLoopError(
+            "CERTIFICATION_COMMIT_REQUIRED",
+            "promotion to CERTIFIED requires an explicit target commit",
+        )
+
+    matches = [
+        certification
+        for certification in state.certifications
+        if isinstance(certification, Certification)
+        and certification.subject == story.id
+        and certification.commit == context.target_commit
+    ]
+    if not matches:
+        raise ControlLoopError(
+            "CERTIFICATION_NOT_FOUND",
+            "no applicable Certification exists for the User Story and commit",
+        )
+    if len(matches) != 1:
+        raise ControlLoopError(
+            "AMBIGUOUS_CERTIFICATION",
+            "multiple Certifications apply to the User Story and commit",
+        )
+    if matches[0].result is not CertificationResult.CERTIFIED:
+        raise ControlLoopError(
+            "CERTIFICATION_NOT_CERTIFIED",
+            "the applicable Certification does not authorize promotion",
+        )
+    return replace(context, preconditions_proven=True)
 
 
 def _require_unique_story(
