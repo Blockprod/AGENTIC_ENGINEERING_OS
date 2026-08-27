@@ -1,9 +1,11 @@
+import inspect
 import re
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+import agentic_engineering_os.application as application_module
 from agentic_engineering_os.application import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATES,
@@ -88,7 +90,17 @@ def test_all_28_normative_transitions_are_recognized() -> None:
 
     for source, target in ALLOWED_TRANSITIONS:
         result = service.evaluate(source, target, context=PROVEN)
-        assert result.allowed, (source, target, result.refusals)
+        if (
+            source is UserStoryStatus.CERTIFICATION
+            and target is UserStoryStatus.CERTIFIED
+        ):
+            assert not result.allowed
+            assert (
+                result.refusals[0].code
+                == "AUTHORITATIVE_PRECONDITION_REQUIRED"
+            )
+        else:
+            assert result.allowed, (source, target, result.refusals)
 
 
 @pytest.mark.parametrize(
@@ -98,7 +110,6 @@ def test_all_28_normative_transitions_are_recognized() -> None:
         (UserStoryStatus.READY, UserStoryStatus.IN_PROGRESS),
         (UserStoryStatus.IMPLEMENTED, UserStoryStatus.TESTING),
         (UserStoryStatus.REVIEW, UserStoryStatus.CERTIFICATION),
-        (UserStoryStatus.CERTIFICATION, UserStoryStatus.CERTIFIED),
     ],
 )
 def test_representative_normal_transitions_pass(
@@ -110,6 +121,86 @@ def test_representative_normal_transitions_pass(
     assert result.source == source.value
     assert result.target == target.value
     assert result.refusals == ()
+
+
+def test_direct_caller_boolean_cannot_authorize_certified_promotion() -> None:
+    story = make_user_story(UserStoryStatus.CERTIFICATION)
+    before = to_dict(story)
+
+    result = StateTransitionService().apply(
+        story,
+        UserStoryStatus.CERTIFIED,
+        context=TransitionContext(preconditions_proven=True),
+    )
+
+    assert not result.allowed
+    assert result.refusals[0].code == "AUTHORITATIVE_PRECONDITION_REQUIRED"
+    assert to_dict(story) == before
+
+
+@pytest.mark.parametrize(
+    ("context", "expected_code"),
+    [
+        (None, "CONTEXT_REQUIRED"),
+        (
+            TransitionContext(preconditions_proven=False),
+            "PRECONDITIONS_NOT_PROVEN",
+        ),
+        (
+            TransitionContext(
+                preconditions_proven=True,
+                dependency_statuses={"fabricated": UserStoryStatus.CERTIFIED},
+                target_commit="a" * 40,
+            ),
+            "AUTHORITATIVE_PRECONDITION_REQUIRED",
+        ),
+    ],
+)
+def test_direct_context_without_authoritative_proof_cannot_promote(
+    context: TransitionContext | None,
+    expected_code: str,
+) -> None:
+    story = make_user_story(UserStoryStatus.CERTIFICATION)
+    before = to_dict(story)
+
+    result = StateTransitionService().apply(
+        story,
+        UserStoryStatus.CERTIFIED,
+        context=context,
+    )
+
+    assert not result.allowed
+    assert result.refusals[0].code == expected_code
+    assert to_dict(story) == before
+
+
+def test_public_transition_api_exposes_no_authorization_constructor() -> None:
+    assert "authorization" not in inspect.signature(
+        StateTransitionService.apply
+    ).parameters
+    assert "authorization" not in inspect.signature(
+        StateTransitionService.evaluate
+    ).parameters
+    assert not any("Authorization" in name for name in application_module.__all__)
+
+
+def test_arbitrary_object_cannot_fabricate_trusted_authorization() -> None:
+    story = make_user_story(UserStoryStatus.CERTIFICATION)
+    before = to_dict(story)
+
+    result = StateTransitionService()._apply_authorized(
+        story,
+        UserStoryStatus.CERTIFIED,
+        context=TransitionContext(
+            preconditions_proven=True,
+            target_commit="a" * 40,
+        ),
+        authorization=object(),
+    )
+
+    assert not result.allowed
+    assert result.refusals[0].code == "AUTHORITATIVE_PRECONDITION_REQUIRED"
+    assert to_dict(story) == before
 
 
 def test_transition_to_ready_accepts_only_certified_dependencies() -> None:

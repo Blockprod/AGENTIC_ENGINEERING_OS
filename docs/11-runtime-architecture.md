@@ -113,6 +113,15 @@ aucune transition implicite. Toute validation du `ProjectState` candidat et
 toute écriture de `state.json` restent sous la responsabilité exclusive de
 `ProjectStateStore`.
 
+La promotion `CERTIFICATION → CERTIFIED` possède une frontière de confiance
+supplémentaire : le contexte public reste une déclaration de faits sans pouvoir
+certifiant. Après résolution d'une unique Certification `CERTIFIED` applicable
+dans le `ProjectState`, `ControlLoop` transmet au service de transition une
+capacité interne liée au sujet et au commit. Cette capacité n'est pas exportée
+par l'API publique. Comme toute convention d'encapsulation Python, cette
+frontière protège l'usage normal du package, pas un processus hostile qui
+introspecte volontairement ses internals.
+
 P1.9 ne produit pas automatiquement d'`AuditEvent`. Le contrat existant exige
 notamment une identité, un rôle, un commit, un horodatage et un payload
 attribuables ; aucune politique complète ne spécifie encore ces valeurs pour

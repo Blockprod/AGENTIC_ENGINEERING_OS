@@ -34,6 +34,7 @@ from .state_transition_service import (
     StateTransitionService,
     TransitionContext,
     TransitionResult,
+    _issue_certified_transition_authorization,
 )
 
 
@@ -203,17 +204,30 @@ class ControlLoop:
         story_index, current_story = _require_unique_story(candidate, user_story_id)
         candidate_story = _candidate_story(current_story)
         candidate.user_stories[story_index] = candidate_story
-        resolved_context = _resolve_transition_context(
+        resolved_context, authorization = _resolve_transition_context(
             candidate,
             candidate_story,
             target,
             context,
         )
-        result = self._transition_service.apply(
-            candidate_story,
-            target,
-            context=resolved_context,
-        )
+        if authorization is None:
+            result = self._transition_service.apply(
+                candidate_story,
+                target,
+                context=resolved_context,
+            )
+        else:
+            if resolved_context is None:
+                raise ControlLoopError(
+                    "INVALID_AUTHORIZATION",
+                    "trusted transition authorization requires resolved context",
+                )
+            result = self._transition_service._apply_authorized(
+                candidate_story,
+                target,
+                context=resolved_context,
+                authorization=authorization,
+            )
         if not isinstance(result, TransitionResult):
             raise ControlLoopError(
                 "INVALID_SERVICE_RESULT",
@@ -261,16 +275,16 @@ def _resolve_transition_context(
     story: UserStory,
     target: UserStoryStatus | str,
     context: TransitionContext | None,
-) -> TransitionContext | None:
+) -> tuple[TransitionContext | None, object | None]:
     try:
         target_state = UserStoryStatus(target)
     except (TypeError, ValueError):
-        return context
+        return context, None
     if not (
         story.status is UserStoryStatus.CERTIFICATION
         and target_state is UserStoryStatus.CERTIFIED
     ):
-        return context
+        return context, None
 
     if (
         context is None
@@ -304,7 +318,15 @@ def _resolve_transition_context(
             "CERTIFICATION_NOT_CERTIFIED",
             "the applicable Certification does not authorize promotion",
         )
-    return replace(context, preconditions_proven=True)
+    certification = matches[0]
+    return (
+        replace(context, preconditions_proven=True),
+        _issue_certified_transition_authorization(
+            subject=story.id,
+            target_commit=context.target_commit,
+            certification_id=certification.certification_id,
+        ),
+    )
 
 
 def _require_unique_story(

@@ -47,6 +47,42 @@ TERMINAL_STATES: frozenset[UserStoryStatus] = frozenset(
     {UserStoryStatus.CERTIFIED, UserStoryStatus.CANCELLED}
 )
 
+_CERTIFIED_PROMOTION = (
+    UserStoryStatus.CERTIFICATION,
+    UserStoryStatus.CERTIFIED,
+)
+
+
+def _certified_authorization_boundary():
+    @dataclass(frozen=True, slots=True)
+    class CertifiedTransitionAuthorization:
+        subject: str
+        target_commit: str
+        certification_id: str
+
+    def issue(*, subject: str, target_commit: str, certification_id: str) -> object:
+        return CertifiedTransitionAuthorization(
+            subject=subject,
+            target_commit=target_commit,
+            certification_id=certification_id,
+        )
+
+    def matches(candidate: object, *, subject: str, target_commit: str) -> bool:
+        return (
+            isinstance(candidate, CertifiedTransitionAuthorization)
+            and candidate.subject == subject
+            and candidate.target_commit == target_commit
+            and bool(candidate.certification_id)
+        )
+
+    return issue, matches
+
+
+(
+    _issue_certified_transition_authorization,
+    _matches_certified_transition_authorization,
+) = _certified_authorization_boundary()
+
 
 @dataclass(frozen=True, slots=True)
 class TransitionContext:
@@ -90,7 +126,14 @@ class StateTransitionService:
         context: TransitionContext | None = None,
     ) -> TransitionResult:
         try:
-            return self._evaluate(source, target, required_dependencies, context)
+            return self._evaluate(
+                source,
+                target,
+                required_dependencies,
+                context,
+                subject=None,
+                authorization=None,
+            )
         except Exception as error:
             raise TransitionError(
                 f"transition evaluation could not be completed: "
@@ -106,13 +149,55 @@ class StateTransitionService:
     ) -> TransitionResult:
         """Apply an allowed transition by changing only ``status``."""
 
+        return self._apply(
+            user_story,
+            target,
+            context=context,
+            authorization=None,
+        )
+
+    def _apply_authorized(
+        self,
+        user_story: UserStory,
+        target: UserStoryStatus | str,
+        *,
+        context: TransitionContext,
+        authorization: object,
+    ) -> TransitionResult:
+        """Apply using an internal capability resolved from authoritative state."""
+
+        return self._apply(
+            user_story,
+            target,
+            context=context,
+            authorization=authorization,
+        )
+
+    def _apply(
+        self,
+        user_story: UserStory,
+        target: UserStoryStatus | str,
+        *,
+        context: TransitionContext | None,
+        authorization: object | None,
+    ) -> TransitionResult:
         try:
-            result = self.evaluate(
-                user_story.status,
-                target,
-                required_dependencies=user_story.depends_on,
-                context=context,
-            )
+            if authorization is None:
+                result = self.evaluate(
+                    user_story.status,
+                    target,
+                    required_dependencies=user_story.depends_on,
+                    context=context,
+                )
+            else:
+                result = self._evaluate(
+                    user_story.status,
+                    target,
+                    user_story.depends_on,
+                    context,
+                    subject=user_story.id,
+                    authorization=authorization,
+                )
             if result.allowed:
                 user_story.status = UserStoryStatus(result.target)
             return result
@@ -130,6 +215,9 @@ class StateTransitionService:
         target: UserStoryStatus | str,
         required_dependencies: tuple[str, ...],
         context: TransitionContext | None,
+        *,
+        subject: str | None,
+        authorization: object | None,
     ) -> TransitionResult:
         source_state = _known_state(source)
         target_state = _known_state(target)
@@ -177,6 +265,21 @@ class StateTransitionService:
                 target_label,
                 "PRECONDITIONS_NOT_PROVEN",
                 "mandatory transition preconditions are not proven",
+            )
+        if (source_state, target_state) == _CERTIFIED_PROMOTION and not (
+            subject is not None
+            and isinstance(context.target_commit, str)
+            and _matches_certified_transition_authorization(
+                authorization,
+                subject=subject,
+                target_commit=context.target_commit,
+            )
+        ):
+            return _refused(
+                source_label,
+                target_label,
+                "AUTHORITATIVE_PRECONDITION_REQUIRED",
+                "promotion to CERTIFIED requires trusted authorization",
             )
 
         dependency_refusals = _dependency_refusals(
