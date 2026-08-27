@@ -1,5 +1,11 @@
 """Application services for deterministic contract enforcement."""
 
+from .certification_service import (
+    AcceptanceResult,
+    CertificationContext,
+    CertificationError,
+    CertificationService,
+)
 from .contract_validator import (
     ContractValidator,
     ParseError,
@@ -34,6 +40,10 @@ from .state_transition_service import (
 )
 
 __all__ = [
+    "AcceptanceResult",
+    "CertificationContext",
+    "CertificationError",
+    "CertificationService",
     "ContractValidator",
     "ALLOWED_TRANSITIONS",
     "EvidenceObservation",
