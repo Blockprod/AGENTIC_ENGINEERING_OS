@@ -41,11 +41,39 @@ HUMAN = EvidenceProvenance(
     producer="human-operator",
 )
 
+FORMAT_CHARACTERS = ("\u200b", "\u200c", "\u200d", "\u2060", "\ufeff")
+
 CODEX_IDENTITY_VARIANTS = (
     "Codex/FakeHuman",
     "codex/FakeHuman",
     "CODEX/FakeHuman",
     "CoDeX/FakeHuman",
+    *(f"Co{character}dex/FakeHuman" for character in FORMAT_CHARACTERS),
+    *(f"{character}Codex{character}/FakeHuman" for character in FORMAT_CHARACTERS),
+    "Codex\u200b/FakeHuman",
+    "  Codex / FakeHuman  ",
+)
+
+REMAINING_HUMAN_BYPASS_IDENTITIES = (
+    "Co\u200bdex/FakeHuman",
+    "Codex\u200b/FakeHuman",
+    "/",
+)
+
+AMBIGUOUS_HUMAN_IDENTITIES = (
+    "",
+    "   ",
+    "/",
+    "///",
+    "\u200b\u200c\u200d\u2060\ufeff",
+)
+
+LEGITIMATE_HUMAN_IDENTITIES = (
+    "human-operator",
+    "Alice",
+    "Ali\u200cReza/Approver",
+    "équipe-qualité/Approver",
+    "李雷/Reviewer",
 )
 
 
@@ -301,6 +329,74 @@ def test_human_evidence_rejects_codex_identity_case_variants(
 
     assert captured.value.code == "HUMAN_ACTOR_REQUIRED"
     assert target == []
+
+
+@pytest.mark.parametrize("producer", REMAINING_HUMAN_BYPASS_IDENTITIES)
+def test_human_evidence_rejects_invisible_codex_and_ambiguous_identity(
+    producer: str,
+) -> None:
+    target: list[Evidence] = []
+
+    with pytest.raises(EvidenceRecordingError) as captured:
+        recorder(target).record(
+            observation(
+                EvidenceType.HUMAN_APPROVAL,
+                provenance=EvidenceProvenance(
+                    kind=ProvenanceKind.HUMAN,
+                    source="Human",
+                    producer=producer,
+                ),
+                repository_dependent=False,
+                commit=None,
+            )
+        )
+
+    assert captured.value.code == "HUMAN_ACTOR_REQUIRED"
+    assert target == []
+
+
+@pytest.mark.parametrize("producer", AMBIGUOUS_HUMAN_IDENTITIES)
+def test_human_evidence_rejects_non_attributable_identity(producer: str) -> None:
+    target: list[Evidence] = []
+
+    with pytest.raises(EvidenceRecordingError) as captured:
+        recorder(target).record(
+            observation(
+                EvidenceType.HUMAN_APPROVAL,
+                provenance=EvidenceProvenance(
+                    kind=ProvenanceKind.HUMAN,
+                    source="Human",
+                    producer=producer,
+                ),
+                repository_dependent=False,
+                commit=None,
+            )
+        )
+
+    assert captured.value.code in {"PROVENANCE_REQUIRED", "HUMAN_ACTOR_REQUIRED"}
+    assert target == []
+
+
+@pytest.mark.parametrize("producer", LEGITIMATE_HUMAN_IDENTITIES)
+def test_human_evidence_accepts_attributable_identity(producer: str) -> None:
+    target: list[Evidence] = []
+
+    item = recorder(target).record(
+        observation(
+            EvidenceType.HUMAN_APPROVAL,
+            provenance=EvidenceProvenance(
+                kind=ProvenanceKind.HUMAN,
+                source="Human",
+                producer=producer,
+            ),
+            repository_dependent=False,
+            commit=None,
+            result=True,
+        )
+    )
+
+    assert item.producer == producer
+    assert target == [item]
 
 
 @pytest.mark.parametrize("producer", CODEX_IDENTITY_VARIANTS)

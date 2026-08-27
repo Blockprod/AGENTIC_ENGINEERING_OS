@@ -1,36 +1,71 @@
-"""Minimal normalization for the reserved Codex identity."""
+"""Minimal canonicalization for attributable Human and reserved Codex identities."""
 
-from unicodedata import normalize
+from dataclasses import dataclass
+from unicodedata import category, normalize
 
 
 _CODEX_IDENTITY = "codex"
 
 
+@dataclass(frozen=True, slots=True)
+class _CanonicalIdentity:
+    actor: str
+    comparison_actor: str
+    separator: bool
+    role: str
+
+
 def is_codex_identity(identity: object) -> bool:
     """Return whether an identity uses the reserved Codex prefix."""
 
-    prefix, _, _ = _identity_parts(identity)
-    return prefix == _CODEX_IDENTITY
+    canonical = _canonical_identity(identity)
+    return (
+        canonical is not None
+        and canonical.comparison_actor == _CODEX_IDENTITY
+    )
 
 
 def has_attributable_codex_role(identity: object) -> bool:
     """Return whether Codex has a non-empty explicit role."""
 
-    prefix, separator, role = _identity_parts(identity)
-    return prefix == _CODEX_IDENTITY and separator and bool(role)
+    canonical = _canonical_identity(identity)
+    return (
+        canonical is not None
+        and canonical.comparison_actor == _CODEX_IDENTITY
+        and canonical.separator
+        and _has_attributable_text(canonical.role)
+    )
 
 
-def is_attributable_non_codex_identity(identity: object) -> bool:
-    """Return whether a non-Codex actor identity is present and attributable."""
+def is_attributable_human_identity(identity: object) -> bool:
+    """Return whether an explicit, meaningful, non-reserved actor is present."""
 
-    if not isinstance(identity, str) or not normalize("NFKC", identity).strip():
-        return False
-    return not is_codex_identity(identity)
+    canonical = _canonical_identity(identity)
+    return (
+        canonical is not None
+        and canonical.comparison_actor != _CODEX_IDENTITY
+        and _has_attributable_text(canonical.actor)
+    )
 
 
-def _identity_parts(identity: object) -> tuple[str, bool, str]:
+def _canonical_identity(identity: object) -> _CanonicalIdentity | None:
     if not isinstance(identity, str):
-        return "", False, ""
+        return None
     normalized = normalize("NFKC", identity).strip()
-    prefix, separator, role = normalized.partition("/")
-    return prefix.strip().casefold(), bool(separator), role.strip()
+    actor, separator, role = normalized.partition("/")
+    actor = actor.strip()
+    return _CanonicalIdentity(
+        actor=actor,
+        comparison_actor=_without_format_characters(actor).casefold(),
+        separator=bool(separator),
+        role=role.strip(),
+    )
+
+
+def _has_attributable_text(value: str) -> bool:
+    visible = _without_format_characters(value).strip()
+    return bool(visible) and any(character.isalnum() for character in visible)
+
+
+def _without_format_characters(value: str) -> str:
+    return "".join(character for character in value if category(character) != "Cf")

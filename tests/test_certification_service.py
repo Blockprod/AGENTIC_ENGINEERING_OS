@@ -33,11 +33,39 @@ COMMIT = "772e3c94f914ab8d3eec9cd486aeac5c93c03808"
 OTHER_COMMIT = "935fa67dac3030a4cd7f7702b142718b751a7eac"
 NOW = datetime(2026, 8, 27, 15, 0, tzinfo=timezone.utc)
 
+FORMAT_CHARACTERS = ("\u200b", "\u200c", "\u200d", "\u2060", "\ufeff")
+
 CODEX_IDENTITY_VARIANTS = (
     "Codex/FakeHuman",
     "codex/FakeHuman",
     "CODEX/FakeHuman",
     "CoDeX/FakeHuman",
+    *(f"Co{character}dex/FakeHuman" for character in FORMAT_CHARACTERS),
+    *(f"{character}Codex{character}/FakeHuman" for character in FORMAT_CHARACTERS),
+    "Codex\u200b/FakeHuman",
+    "  Codex / FakeHuman  ",
+)
+
+REMAINING_HUMAN_BYPASS_IDENTITIES = (
+    "Co\u200bdex/FakeHuman",
+    "Codex\u200b/FakeHuman",
+    "/",
+)
+
+AMBIGUOUS_HUMAN_IDENTITIES = (
+    "",
+    "   ",
+    "/",
+    "///",
+    "\u200b\u200c\u200d\u2060\ufeff",
+)
+
+LEGITIMATE_HUMAN_IDENTITIES = (
+    "human-operator",
+    "Alice",
+    "Ali\u200cReza/Approver",
+    "équipe-qualité/Approver",
+    "李雷/Reviewer",
 )
 
 
@@ -429,6 +457,106 @@ def test_codex_identity_case_variants_cannot_satisfy_human_approval(
     )
 
     assert result.result is CertificationResult.BLOCKED
+
+
+@pytest.mark.parametrize("producer", REMAINING_HUMAN_BYPASS_IDENTITIES)
+def test_invisible_codex_and_ambiguous_identity_cannot_certify(
+    producer: str,
+) -> None:
+    current_story = story(
+        human_required=True,
+        human_approved=True,
+        approved_by=producer,
+    )
+    fake = evidence(
+        "EV-HUMAN",
+        "US-0001",
+        evidence_type=EvidenceType.HUMAN_APPROVAL,
+        source="Human",
+        producer=producer,
+    )
+
+    result = certify(
+        current_story,
+        available_evidence=(
+            evidence("EV-AC-001", "AC-001"),
+            evidence("EV-GATE-001", "US-0001"),
+            fake,
+        ),
+        context=CertificationContext(human_approval_evidence_id="EV-HUMAN"),
+    )
+
+    assert result.result is CertificationResult.BLOCKED
+
+
+@pytest.mark.parametrize("producer", AMBIGUOUS_HUMAN_IDENTITIES)
+def test_non_attributable_human_identity_cannot_certify(producer: str) -> None:
+    current_story = story(
+        human_required=True,
+        human_approved=True,
+        approved_by=producer,
+    )
+    ambiguous = evidence(
+        "EV-HUMAN",
+        "US-0001",
+        evidence_type=EvidenceType.HUMAN_APPROVAL,
+        source="Human",
+        producer=producer,
+    )
+
+    if not producer:
+        with pytest.raises(CertificationError) as captured:
+            certify(
+                current_story,
+                available_evidence=(
+                    evidence("EV-AC-001", "AC-001"),
+                    evidence("EV-GATE-001", "US-0001"),
+                    ambiguous,
+                ),
+                context=CertificationContext(
+                    human_approval_evidence_id="EV-HUMAN"
+                ),
+            )
+        assert captured.value.code == "INVALID_USER_STORY"
+    else:
+        result = certify(
+            current_story,
+            available_evidence=(
+                evidence("EV-AC-001", "AC-001"),
+                evidence("EV-GATE-001", "US-0001"),
+                ambiguous,
+            ),
+            context=CertificationContext(human_approval_evidence_id="EV-HUMAN"),
+        )
+        assert result.result is CertificationResult.BLOCKED
+
+
+@pytest.mark.parametrize("producer", LEGITIMATE_HUMAN_IDENTITIES)
+def test_attributable_human_identity_can_certify(producer: str) -> None:
+    current_story = story(
+        human_required=True,
+        human_approved=True,
+        approved_by=producer,
+    )
+    human = evidence(
+        "EV-HUMAN",
+        "US-0001",
+        evidence_type=EvidenceType.HUMAN_APPROVAL,
+        source="Human",
+        producer=producer,
+    )
+
+    result = certify(
+        current_story,
+        available_evidence=(
+            evidence("EV-AC-001", "AC-001"),
+            evidence("EV-GATE-001", "US-0001"),
+            human,
+        ),
+        context=CertificationContext(human_approval_evidence_id="EV-HUMAN"),
+    )
+
+    assert result.result is CertificationResult.CERTIFIED
 
 
 def test_blank_identity_cannot_satisfy_human_approval() -> None:

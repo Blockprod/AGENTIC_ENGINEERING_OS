@@ -15,7 +15,7 @@ from agentic_engineering_os.domain.models import JsonValue
 
 from ._identity import (
     has_attributable_codex_role,
-    is_attributable_non_codex_identity,
+    is_attributable_human_identity,
 )
 from .contract_validator import ContractValidator, ValidationIssue
 
@@ -239,7 +239,7 @@ def _validate_traceability(
             )
         if (
             provenance.source.casefold() != "human"
-            or not is_attributable_non_codex_identity(provenance.producer)
+            or not is_attributable_human_identity(provenance.producer)
         ):
             raise EvidenceRecordingError(
                 "HUMAN_ACTOR_REQUIRED",

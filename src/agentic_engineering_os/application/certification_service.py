@@ -21,7 +21,7 @@ from agentic_engineering_os.domain import (
 
 from ._identity import (
     has_attributable_codex_role,
-    is_attributable_non_codex_identity,
+    is_attributable_human_identity,
     is_codex_identity,
 )
 from .contract_validator import ContractValidator, ValidationIssue
@@ -417,7 +417,7 @@ class CertificationService:
             and evidence.evidence_id not in context.stale_evidence_ids
             and (evidence.commit is None or evidence.commit == commit)
             and evidence.source.casefold() == "human"
-            and is_attributable_non_codex_identity(evidence.producer)
+            and is_attributable_human_identity(evidence.producer)
             and approval.approved_by is not None
             and approval.approved_by == evidence.producer
             and approval.approved_at is not None
