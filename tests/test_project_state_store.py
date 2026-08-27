@@ -30,6 +30,7 @@ from agentic_engineering_os.infrastructure import PersistenceError, ProjectState
 
 
 COMMIT = "a4145afe755d62064b1ba0924399a2ba073e70e8"
+OTHER_COMMIT = "2c65f6b79c75a8986171abb94d386f022ea23988"
 NOW = datetime(2026, 8, 27, 16, 0, tzinfo=timezone.utc)
 
 
@@ -90,6 +91,22 @@ def evidence(evidence_id: str = "EV-001") -> Evidence:
     )
 
 
+def acceptance_evidence(evidence_id: str = "EV-AC-001") -> Evidence:
+    return Evidence(
+        evidence_id=evidence_id,
+        evidence_type=EvidenceType.ACCEPTANCE_CRITERION_CHECK,
+        subject="AC-001",
+        result=True,
+        source="pytest",
+        command=None,
+        exit_code=None,
+        artifact="captured acceptance result",
+        commit=COMMIT,
+        timestamp=NOW,
+        producer="Codex/Tester",
+    )
+
+
 def gate(gate_id: str = "GATE-001", evidence_id: str = "EV-001") -> Gate:
     return Gate(
         gate_id=gate_id,
@@ -104,7 +121,7 @@ def gate(gate_id: str = "GATE-001", evidence_id: str = "EV-001") -> Gate:
 
 def certification(
     certification_id: str = "CERT-001",
-    evidence_id: str = "EV-001",
+    evidence_id: str = "EV-AC-001",
     gate_id: str = "GATE-001",
 ) -> Certification:
     return Certification(
@@ -119,7 +136,7 @@ def certification(
             "approved": False,
             "evidence_ref": None,
         },
-        evidence_refs=(evidence_id,),
+        evidence_refs=(evidence_id, "EV-001"),
         certified_at=NOW,
         certifier="Codex/Certifier",
     )
@@ -142,7 +159,7 @@ def full_state() -> ProjectState:
     return ProjectState(
         schema_version="1.0",
         user_stories=[user_story()],
-        evidence=[evidence()],
+        evidence=[evidence(), acceptance_evidence()],
         gates=[gate()],
         certifications=[certification()],
         audit_events=[audit_event()],
@@ -580,12 +597,14 @@ def test_certification_for_another_story_cannot_back_certified_status(
     tmp_path: Path,
 ) -> None:
     state = full_state()
-    state.user_stories.append(
-        user_story("US-0002", status=UserStoryStatus.CERTIFICATION)
-    )
+    second_story = user_story("US-0002", status=UserStoryStatus.CERTIFICATION)
+    second_story.required_gates = ()
+    state.user_stories.append(second_story)
     state.certifications[0] = replace(
         state.certifications[0],
         subject="US-0002",
+        gate_results={},
+        evidence_refs=("EV-AC-001",),
     )
     store = ProjectStateStore(tmp_path)
 
@@ -663,6 +682,167 @@ def test_contradictory_certifications_make_certified_status_ambiguous(
     assert captured.value.code == "INVALID_STATE_INTEGRITY"
     assert "US-0001" in captured.value.message
     assert "contradictory" in captured.value.message
+
+
+def test_fabricated_complete_looking_certification_references_are_refused(
+    tmp_path: Path,
+) -> None:
+    state = ProjectState(
+        schema_version="1.0",
+        user_stories=[user_story(status=UserStoryStatus.CERTIFICATION)],
+        certifications=[
+            replace(
+                certification(),
+                evidence_refs=("EV-INVENTED",),
+                gate_results={"GATE-INVENTED": "PASS"},
+            )
+        ],
+    )
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_REFERENCE"
+
+
+def test_forged_fake_human_certified_dossier_is_refused(tmp_path: Path) -> None:
+    producer = "Co\u200bdex/FakeHuman"
+    state = full_state()
+    story = state.user_stories[0]
+    story.human_approval.required = True
+    story.human_approval.approved = True
+    story.human_approval.approved_by = producer
+    story.human_approval.approved_at = NOW
+    state.evidence.append(
+        Evidence(
+            evidence_id="EV-FAKE-HUMAN",
+            evidence_type=EvidenceType.HUMAN_APPROVAL,
+            subject=story.id,
+            result=True,
+            source="Human",
+            command=None,
+            exit_code=None,
+            artifact="forged",
+            commit=COMMIT,
+            timestamp=NOW,
+            producer=producer,
+        )
+    )
+    state.certifications[0] = replace(
+        state.certifications[0],
+        human_approval={
+            "required": True,
+            "approved": True,
+            "result": "PASS",
+            "evidence_ref": "EV-FAKE-HUMAN",
+        },
+        evidence_refs=(*state.certifications[0].evidence_refs, "EV-FAKE-HUMAN"),
+    )
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "HUMAN_EVIDENCE_INVALID" in captured.value.message
+
+
+def test_certified_dossier_missing_required_gate_is_refused(tmp_path: Path) -> None:
+    state = full_state()
+    state.gates.clear()
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_REFERENCE"
+
+
+def test_certified_dossier_missing_persisted_evidence_is_refused(
+    tmp_path: Path,
+) -> None:
+    state = full_state()
+    state.evidence = [
+        item for item in state.evidence if item.evidence_id != "EV-AC-001"
+    ]
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_REFERENCE"
+
+
+def test_certified_dossier_wrong_gate_subject_is_refused(tmp_path: Path) -> None:
+    state = full_state()
+    state.gates[0] = replace(state.gates[0], subject="US-OTHER")
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "REQUIRED_GATE_MISMATCH" in captured.value.message
+
+
+def test_certified_dossier_wrong_evidence_commit_is_refused(tmp_path: Path) -> None:
+    state = full_state()
+    state.evidence[0] = replace(state.evidence[0], commit=OTHER_COMMIT)
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "EVIDENCE_COMMIT_MISMATCH" in captured.value.message
+
+
+def test_certified_dossier_requires_attributable_certifier(tmp_path: Path) -> None:
+    state = full_state()
+    state.certifications[0] = replace(state.certifications[0], certifier="/")
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "CERTIFIER_NOT_ATTRIBUTABLE" in captured.value.message
+
+
+def test_fake_gate_and_evidence_cannot_complete_certified_dossier(
+    tmp_path: Path,
+) -> None:
+    state = full_state()
+    state.evidence[1] = replace(
+        state.evidence[1],
+        evidence_type=EvidenceType.TEST_RESULT,
+        subject="US-0001",
+    )
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "ACCEPTANCE_EVIDENCE_INVALID" in captured.value.message
+
+
+def test_manual_json_tampering_cannot_remove_certification_dossier(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    store.save(full_state())
+    candidate = json.loads(store.state_path.read_text(encoding="utf-8"))
+    candidate["certifications"][0]["evidence_refs"] = []
+    write_json(store.state_path, candidate)
+    tampered = store.state_path.read_bytes()
+
+    with pytest.raises(PersistenceError) as captured:
+        store.load()
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert store.state_path.read_bytes() == tampered
 
 
 def test_write_failure_before_replace_preserves_previous_state(

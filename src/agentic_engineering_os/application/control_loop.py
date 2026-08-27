@@ -23,6 +23,7 @@ from .certification_service import (
     CertificationContext,
     CertificationService,
 )
+from .certification_integrity import certified_dossier_issues
 from .evidence_recorder import EvidenceObservation, EvidenceRecorder
 from .gate_evaluator import (
     GateContract,
@@ -319,6 +320,18 @@ def _resolve_transition_context(
             "the applicable Certification does not authorize promotion",
         )
     certification = matches[0]
+    integrity_issues = certified_dossier_issues(
+        story,
+        certification,
+        state.gates,
+        state.evidence,
+    )
+    if integrity_issues:
+        details = "; ".join(issue.code for issue in integrity_issues)
+        raise ControlLoopError(
+            "CERTIFICATION_INTEGRITY_INVALID",
+            f"applicable Certification dossier is invalid: {details}",
+        )
     return (
         replace(context, preconditions_proven=True),
         _issue_certified_transition_authorization(

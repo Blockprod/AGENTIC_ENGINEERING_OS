@@ -534,6 +534,78 @@ def test_explicit_commit_cannot_promote_without_authoritative_certification(
     )
 
 
+def test_forged_isolated_certification_never_becomes_authoritative(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    state = store.load()
+    state.certifications.append(
+        certification_record(
+            certification_id="CERT-FORGED",
+            subject="US-0001",
+            result=CertificationResult.CERTIFIED,
+        )
+    )
+
+    try:
+        store.save(state)
+    except PersistenceError:
+        assert store.load().user_stories[0].status is UserStoryStatus.CERTIFICATION
+        return
+
+    reloaded = store.load()
+    assert reloaded.evidence == []
+    assert reloaded.gates == []
+    assert len(reloaded.certifications) == 1
+    try:
+        loop.transition_user_story(
+            "US-0001",
+            UserStoryStatus.CERTIFIED,
+            context=TransitionContext(
+                preconditions_proven=False,
+                target_commit=COMMIT,
+            ),
+        )
+    except ControlLoopError:
+        return
+
+    pytest.fail("forged isolated Certification became authoritative")
+
+
+def test_control_loop_rejects_unvalidated_certification_from_store() -> None:
+    forged = ProjectState(
+        schema_version="1.0",
+        user_stories=[story()],
+        certifications=[
+            certification_record(
+                certification_id="CERT-FORGED",
+                subject="US-0001",
+                result=CertificationResult.CERTIFIED,
+            )
+        ],
+    )
+
+    class UnvalidatedStore:
+        def load(self) -> ProjectState:
+            return forged
+
+        def save(self, state: ProjectState) -> Path:
+            raise AssertionError("invalid dossier must not be persisted")
+
+    with pytest.raises(ControlLoopError) as captured:
+        make_loop(UnvalidatedStore()).transition_user_story(
+            "US-0001",
+            UserStoryStatus.CERTIFIED,
+            context=TransitionContext(
+                preconditions_proven=True,
+                target_commit=COMMIT,
+            ),
+        )
+
+    assert captured.value.code == "CERTIFICATION_INTEGRITY_INVALID"
+    assert forged.user_stories[0].status is UserStoryStatus.CERTIFICATION
+
+
 @pytest.mark.parametrize(
     "result", (CertificationResult.BLOCKED, CertificationResult.REJECTED)
 )
@@ -567,15 +639,30 @@ def test_certification_for_another_story_cannot_authorize_promotion(
     tmp_path: Path,
 ) -> None:
     store, loop = initialized_loop(tmp_path)
+    loop.record_evidence(
+        observation(
+            "AC-001",
+            evidence_type=EvidenceType.ACCEPTANCE_CRITERION_CHECK,
+        ),
+        evidence_id="EV-OTHER-AC",
+        timestamp=NOW,
+    )
     state = store.load()
     state.user_stories.append(
-        replace(story(), id="US-0002", required_gates=())
+        replace(
+            story(),
+            id="US-0002",
+            required_gates=(),
+        )
     )
     state.certifications.append(
-        certification_record(
-            certification_id="CERT-OTHER-STORY",
-            subject="US-0002",
-            result=CertificationResult.CERTIFIED,
+        replace(
+            certification_record(
+                certification_id="CERT-OTHER-STORY",
+                subject="US-0002",
+                result=CertificationResult.CERTIFIED,
+            ),
+            evidence_refs=("EV-OTHER-AC",),
         )
     )
     store.save(state)
@@ -595,15 +682,7 @@ def test_certification_for_another_commit_cannot_authorize_promotion(
     tmp_path: Path,
 ) -> None:
     store, loop = initialized_loop(tmp_path)
-    state = store.load()
-    state.certifications.append(
-        certification_record(
-            certification_id="CERT-WRONG-COMMIT",
-            subject="US-0001",
-            result=CertificationResult.CERTIFIED,
-        )
-    )
-    store.save(state)
+    produce_certified_record(loop, certification_id="CERT-WRONG-COMMIT")
 
     assert_certified_promotion_refused(
         store,
@@ -620,20 +699,10 @@ def test_multiple_applicable_certifications_are_ambiguous(
     tmp_path: Path,
 ) -> None:
     store, loop = initialized_loop(tmp_path)
+    first = produce_certified_record(loop, certification_id="CERT-ONE")
     state = store.load()
-    state.certifications.extend(
-        (
-            certification_record(
-                certification_id="CERT-ONE",
-                subject="US-0001",
-                result=CertificationResult.CERTIFIED,
-            ),
-            certification_record(
-                certification_id="CERT-TWO",
-                subject="US-0001",
-                result=CertificationResult.CERTIFIED,
-            ),
-        )
+    state.certifications.append(
+        replace(first, certification_id="CERT-TWO")
     )
     store.save(state)
 
@@ -677,18 +746,12 @@ def test_persistence_failure_returns_no_success_and_preserves_prior_state(
     assert store.load().user_stories[0].status is UserStoryStatus.CERTIFICATION
 
 
-def test_candidate_copy_prevents_partial_mutation_of_shared_loaded_state() -> None:
-    authoritative = ProjectState(
-        schema_version="1.0",
-        user_stories=[story()],
-        certifications=[
-            certification_record(
-                certification_id="CERT-001",
-                subject="US-0001",
-                result=CertificationResult.CERTIFIED,
-            )
-        ],
-    )
+def test_candidate_copy_prevents_partial_mutation_of_shared_loaded_state(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    produce_certified_record(loop)
+    authoritative = store.load()
 
     class InMemoryFailingStore:
         def load(self) -> ProjectState:

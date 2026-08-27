@@ -12,6 +12,9 @@ from types import MappingProxyType
 from typing import Any, NoReturn, cast
 
 from agentic_engineering_os.application import ContractValidator
+from agentic_engineering_os.application.certification_integrity import (
+    certified_dossier_issues,
+)
 from agentic_engineering_os.domain import (
     AcceptanceCriterion,
     AuditEvent,
@@ -346,6 +349,21 @@ def _validate_integrity(state: ProjectState) -> None:
             _integrity_error(
                 f"Certification {certification.certification_id} references missing "
                 f"Human Evidence: {human_ref}"
+            )
+        integrity_issues = certified_dossier_issues(
+            story,
+            certification,
+            state.gates,
+            state.evidence,
+        )
+        if integrity_issues:
+            details = "; ".join(
+                f"{issue.code}: {issue.message}" for issue in integrity_issues
+            )
+            raise PersistenceError(
+                "INVALID_CERTIFICATION_INTEGRITY",
+                f"Certification {certification.certification_id} has no "
+                f"authoritative dossier for User Story {story.id}: {details}",
             )
 
     for story in state.user_stories:

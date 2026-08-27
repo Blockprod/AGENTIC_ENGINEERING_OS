@@ -283,12 +283,27 @@ la mémoire persistante et la source autoritative.
 La persistance impose aussi un invariant d'intégrité agrégée : toute User Story
 au statut `CERTIFIED` doit avoir au moins une Certification du même sujet dont
 le résultat est `CERTIFIED`. Ce contrôle est appliqué avant l'écriture atomique
-et après l'hydratation. Il vérifie uniquement l'artefact persisté et ses
-références locales ; il ne recalcule ni critères, ni Gates, ni Evidence, ni
-autorité humaine. Le modèle User Story ne portant pas de commit, la persistance
-ne peut pas établir de correspondance de commit supplémentaire. Plusieurs
-Certifications `CERTIFIED` du même sujet sont compatibles ; la coexistence avec
-un résultat `BLOCKED` ou `REJECTED` est contradictoire et rend l'état invalide,
+et après l'hydratation.
+
+La validité structurelle d'une Certification ne lui confère pas d'autorité.
+Pour un résultat `CERTIFIED`, un validateur partagé vérifie que le dossier
+persisté couvre exactement les critères et Gates requis, contient les Evidence
+positives correspondantes, relie sujets et commits disponibles, représente
+l'approbation Human requise avec une identité attribuable et nomme un
+certifier attribuable. `CertificationService`, `ProjectStateStore` et
+`ControlLoop` utilisent cette même règle ; le Store ne réexécute pas les
+conditions métier et ne répare aucun dossier.
+
+Le modèle de menace V1 couvre les appels API qui injectent une Certification
+isolée, les mutations accidentelles ou opportunistes et les fichiers JSON
+incomplets ou incohérents. Il ne fournit pas d'authenticité cryptographique
+contre un processus hostile contrôlant simultanément le code et tous les
+fichiers. Aucun hash n'est ajouté : sans secret, il ne prouverait que la
+cohérence déjà vérifiée, pas l'origine. Le modèle User Story ne portant pas de
+commit, la persistance vérifie les commits des artefacts disponibles sans
+inventer un commit courant supplémentaire. Plusieurs Certifications
+`CERTIFIED` cohérentes du même sujet sont compatibles ; la coexistence avec un
+résultat `BLOCKED` ou `REJECTED` est contradictoire et rend l'état invalide,
 faute de pointeur persistant vers un dossier autoritatif précis.
 
 La limite de concurrence V1 est explicite : `single-writer expected`. Aucun

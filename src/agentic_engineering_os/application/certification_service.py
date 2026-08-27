@@ -24,6 +24,7 @@ from ._identity import (
     is_attributable_human_identity,
     is_codex_identity,
 )
+from .certification_integrity import certified_dossier_issues
 from .contract_validator import ContractValidator, ValidationIssue
 
 
@@ -172,6 +173,20 @@ class CertificationService:
             certifier=certifier,
         )
         self._validate_certification(certification)
+        integrity_issues = certified_dossier_issues(
+            user_story,
+            certification,
+            supplied_gates,
+            supplied_evidence,
+        )
+        if integrity_issues:
+            details = "; ".join(
+                f"{issue.code}: {issue.message}" for issue in integrity_issues
+            )
+            raise CertificationError(
+                "INVALID_CERTIFICATION_DOSSIER",
+                f"CERTIFIED dossier is not persistently coherent: {details}",
+            )
         return certification
 
     def _validate_request(
