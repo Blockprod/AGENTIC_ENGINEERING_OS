@@ -16,3 +16,4 @@ Documentation :
 - [Périmètre du projet](docs/01-scope.md)
 - [Invariants](docs/02-invariants.md)
 - [Politique fail-closed](docs/03-fail-closed-policy.md)
+- [Modèle d'autorité et frontières des rôles](docs/04-authority-model.md)
