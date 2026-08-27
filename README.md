@@ -1,7 +1,16 @@
 # AGENTIC_ENGINEERING_OS
 
-Fondation d'une méthode Agentic Engineering réutilisable pour de futurs projets.
+Couche réutilisable pour structurer le développement logiciel en un processus
+d'ingénierie agentique observable, vérifiable et réutilisable.
 
-Le projet cible actuellement VS Code + Codex.
+Environnement cible : VS Code + Codex, au sein d'un repository Git.
 
-Statut : `Phase 0 — Foundation`
+Principes fondamentaux : état réel comme source de vérité, responsabilités
+séparées, preuves reproductibles et blocage fail-closed.
+
+Statut : `Phase 0 — Foundation / P0.2`
+
+Documentation :
+
+- [Vision et contrat d'Agentic Engineering](docs/00-vision.md)
+- [Périmètre du projet](docs/01-scope.md)
