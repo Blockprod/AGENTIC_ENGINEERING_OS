@@ -11,6 +11,9 @@ from .enums import (
     CertificationResult,
     EvidenceType,
     GateResult,
+    MissionRole,
+    MissionStatus,
+    OperatingStep,
     RiskLevel,
     UserStoryStatus,
 )
@@ -130,6 +133,23 @@ class ProjectState:
     gates: list[Gate] = field(default_factory=list)
     certifications: list[Certification] = field(default_factory=list)
     audit_events: list[AuditEvent] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class MissionState:
+    """Operational mission memory without project-control authority."""
+
+    schema_version: str
+    mission_id: str
+    status: MissionStatus
+    role: MissionRole
+    objective: str
+    subject: str
+    operating_step: OperatingStep
+    next_action: str
+    observed_commit: str
+    updated_at: datetime
+    blockers: list[str] = field(default_factory=list)
 
 
 def to_dict(model: object) -> dict[str, JsonValue]:

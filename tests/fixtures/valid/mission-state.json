@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "mission_id": "P2.2",
+  "status": "ACTIVE",
+  "role": "IMPLEMENTER",
+  "objective": "Persist operational mission memory.",
+  "subject": "Mission P2.2",
+  "operating_step": "ACT",
+  "next_action": "Implement the mission state store.",
+  "observed_commit": "fa231554666b7f5dd8fd15a609a4d6f96e59fe41",
+  "updated_at": "2026-08-28T10:00:00+02:00",
+  "blockers": []
+}

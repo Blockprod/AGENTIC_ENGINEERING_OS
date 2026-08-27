@@ -6,6 +6,7 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TypeAlias, cast
 
@@ -23,6 +24,7 @@ _SCHEMA_FILES = {
     "audit-event": "audit-event.schema.json",
     "certification": "certification.schema.json",
     "project-state": "project-state.schema.json",
+    "mission-state": "mission-state.schema.json",
 }
 
 
@@ -148,6 +150,23 @@ class ContractValidator:
     def _local_semantic_issues(
         contract: str, candidate: object
     ) -> tuple[ValidationIssue, ...]:
+        if contract == "mission-state":
+            mission_state = cast(Mapping[str, object], candidate)
+            timestamp = cast(str, mission_state["updated_at"])
+            try:
+                parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            except ValueError:
+                parsed = None
+            if parsed is None or parsed.tzinfo is None or parsed.utcoffset() is None:
+                return (
+                    ValidationIssue(
+                        code="INVALID_TIMESTAMP",
+                        path=("updated_at",),
+                        message="updated_at must be an ISO 8601 datetime with timezone",
+                    ),
+                )
+            return ()
+
         if contract != "user-story":
             return ()
 

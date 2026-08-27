@@ -42,7 +42,7 @@ SCHEMA_VERSION = "1.0"
 
 
 class PersistenceError(RuntimeError):
-    """Project state could not be read, validated, or written safely."""
+    """Persistent state could not be read, validated, or written safely."""
 
     def __init__(self, code: str, message: str) -> None:
         self.code = code

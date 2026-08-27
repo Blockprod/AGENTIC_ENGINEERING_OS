@@ -1,6 +1,7 @@
-# JSON Schemas V1
+# JSON Schemas
 
-Les six contrats machine-validables utilisent JSON Schema Draft 2020-12 :
+Les six contrats machine-validables de Phase 1 utilisent JSON Schema Draft
+2020-12 :
 
 - `user-story.schema.json`
 - `evidence.schema.json`
@@ -8,6 +9,10 @@ Les six contrats machine-validables utilisent JSON Schema Draft 2020-12 :
 - `audit-event.schema.json`
 - `certification.schema.json`
 - `project-state.schema.json`
+
+Le contrat opérationnel de Phase 2 utilise le même draft :
+
+- `mission-state.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
@@ -25,6 +30,8 @@ python -m pytest
 
 `ProjectStateStore` complète ce schéma par les contrôles locaux déterministes
 d'unicité des IDs et de résolution des références persistées évidentes.
+`MissionStateStore` valide séparément `mission.json` ; ce document n'ajoute
+aucune autorité au `ProjectState`.
 
 ## Limites sémantiques
 

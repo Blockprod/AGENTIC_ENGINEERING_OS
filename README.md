@@ -9,7 +9,7 @@ Principes fondamentaux : état réel comme source de vérité, responsabilités
 séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
-Phase 2 — `IN PROGRESS — P2.1`
+Phase 2 — `IN PROGRESS — P2.2`
 
 Documentation :
 
@@ -27,4 +27,5 @@ Documentation :
 - [Architecture runtime Phase 1](docs/11-runtime-architecture.md)
 - [Contrat opérationnel Codex](docs/12-codex-operating-contract.md)
 - [Roadmap Phase 2](docs/13-phase-2-roadmap.md)
+- [État persistant de mission](docs/14-mission-state.md)
 - [JSON Schemas V1](schemas/README.md)

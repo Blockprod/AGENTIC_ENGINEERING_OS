@@ -17,6 +17,7 @@ SCHEMA_FILES = {
     "audit-event": "audit-event.schema.json",
     "certification": "certification.schema.json",
     "project-state": "project-state.schema.json",
+    "mission-state": "mission-state.schema.json",
 }
 
 VALID_FIXTURES = [(name, f"{name}.json") for name in SCHEMA_FILES]

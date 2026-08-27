@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:mission-state",
+  "title": "Persistent Mission State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mission_id",
+    "status",
+    "role",
+    "objective",
+    "subject",
+    "operating_step",
+    "next_action",
+    "observed_commit",
+    "updated_at",
+    "blockers"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ACTIVE", "BLOCKED", "COMPLETED", "CANCELLED"]
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "ORCHESTRATOR",
+        "ARCHITECT",
+        "IMPLEMENTER",
+        "TESTER",
+        "REVIEWER",
+        "CERTIFIER"
+      ]
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operating_step": {
+      "type": "string",
+      "enum": [
+        "RECONSTRUCT",
+        "PREFLIGHT",
+        "UNDERSTAND_CONTRACT",
+        "PROVE_READINESS",
+        "ACT",
+        "VERIFY",
+        "RECORD_EVIDENCE",
+        "CONTROLLED_TRANSITION",
+        "REPORT"
+      ]
+    },
+    "next_action": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}$"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "BLOCKED"}
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "blockers": {"minItems": 1}
+        }
+      }
+    }
+  ]
+}
