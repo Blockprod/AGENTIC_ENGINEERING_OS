@@ -8,7 +8,7 @@ Environnement cible : VS Code + Codex, au sein d'un repository Git.
 Principes fondamentaux : état réel comme source de vérité, responsabilités
 séparées, preuves reproductibles et blocage fail-closed.
 
-Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `IN PROGRESS — P1.1`
+Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED`
 
 Documentation :
 
