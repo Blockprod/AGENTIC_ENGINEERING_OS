@@ -1,12 +1,19 @@
 # Repository Instructions
 
-1. Inspecter l'état réel du repository avant toute modification ; il prévaut sur toute déclaration ou supposition.
-2. Ne jamais inventer de résultat, test, fichier, preuve, certification ou état Git.
-3. Respecter strictement le scope explicite de la mission courante.
-4. Ne jamais passer à une mission ou phase suivante sans instruction explicite.
-5. Prouver les critères requis avant de déclarer une mission réussie.
-6. Bloquer la progression lorsqu'une vérification obligatoire échoue ou n'est pas prouvée.
-7. Ne jamais interpréter `UNKNOWN` comme `PASS`.
-8. En cas de blocage, identifier la cause, appliquer la remédiation minimale, puis revérifier.
+Le contrat opérationnel détaillé est
+[`docs/12-codex-operating-contract.md`](docs/12-codex-operating-contract.md).
 
-Les règles détaillées figurent dans la documentation du projet.
+1. Appliquer l'Operating Loop : `RECONSTRUCT → PREFLIGHT → UNDERSTAND CONTRACT
+   → PROVE READINESS → ACT → VERIFY → RECORD EVIDENCE → CONTROLLED TRANSITION
+   → REPORT`.
+2. Faire prévaloir le repository, Git, l'état persistant et les Evidence sur la
+   conversation, la mémoire et les déclarations.
+3. Respecter strictement le scope courant et ne jamais avancer sans instruction
+   explicite.
+4. Utiliser le Control Plane déterministe pour valider et autoriser ; une
+   affirmation Codex ne remplace jamais sa décision.
+5. Ne jamais muter directement `state.json`, injecter une Certification,
+   fabriquer une Evidence Human ou forcer un statut autoritatif.
+6. Ne jamais inventer un résultat, une preuve, un fichier ou un état Git.
+7. Vérifier avant de déclarer une réussite ; `FAIL`, `UNKNOWN`, contradiction ou
+   preuve obligatoire absente imposent un blocage fail-closed.
