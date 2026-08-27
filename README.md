@@ -18,3 +18,4 @@ Documentation :
 - [Politique fail-closed](docs/03-fail-closed-policy.md)
 - [Modèle d'autorité et frontières des rôles](docs/04-authority-model.md)
 - [Machine d'état et cycle de vie](docs/05-state-machine.md)
+- [Contrat canonique d'une User Story](docs/06-user-story-contract.md)
