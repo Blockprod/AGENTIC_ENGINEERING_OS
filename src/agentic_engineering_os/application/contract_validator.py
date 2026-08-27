@@ -11,6 +11,7 @@ from typing import TypeAlias, cast
 
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError
+from referencing import Registry, Resource
 
 
 ErrorPathPart: TypeAlias = str | int
@@ -21,6 +22,7 @@ _SCHEMA_FILES = {
     "gate": "gate.schema.json",
     "audit-event": "audit-event.schema.json",
     "certification": "certification.schema.json",
+    "project-state": "project-state.schema.json",
 }
 
 
@@ -119,7 +121,28 @@ class ContractValidator:
         except SchemaError as error:
             raise ValidationError(contract, "schema is not valid Draft 2020-12") from error
 
-        return Draft202012Validator(schema, format_checker=FormatChecker())
+        registry = self._schema_registry()
+        return Draft202012Validator(
+            schema,
+            format_checker=FormatChecker(),
+            registry=registry,
+        )
+
+    def _schema_registry(self) -> Registry:
+        resources: list[tuple[str, Resource[object]]] = []
+        for schema_file in _SCHEMA_FILES.values():
+            schema_path = self._schema_directory / schema_file
+            try:
+                candidate = json.loads(schema_path.read_text(encoding="utf-8"))
+                resource = Resource.from_contents(candidate)
+                identifier = candidate["$id"]
+            except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+                raise ValidationError(
+                    "schema-registry",
+                    f"schema cannot be registered: {schema_path}",
+                ) from error
+            resources.append((identifier, resource))
+        return Registry().with_resources(resources)
 
     @staticmethod
     def _local_semantic_issues(

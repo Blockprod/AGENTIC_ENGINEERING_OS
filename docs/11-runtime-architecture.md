@@ -218,7 +218,8 @@ et une panne de stockage empêche de déclarer l'opération réussie.
 
 ## Persistance V1
 
-Le format recommandé est un document JSON versionné situé dans le repository :
+Le format implémenté est un document JSON UTF-8 versionné situé dans le
+repository :
 
 ```text
 .agentic-engineering-os/
@@ -226,15 +227,18 @@ Le format recommandé est un document JSON versionné situé dans le repository 
 ```
 
 `state.json` porte un `schema_version` et sérialise le `ProjectState`. JSON est
-retenu parce que les contrats Phase 0 disposent déjà de JSON Schemas, que son
-parsing est non ambigu et que sa sérialisation canonique est testable. YAML et
-SQLite n'apportent pas de valeur démontrée à ce stade.
+retenu parce que les contrats disposent de JSON Schemas, que son parsing est
+non ambigu et que sa sérialisation canonique est testable. YAML et SQLite
+n'apportent pas de valeur démontrée à ce stade.
 
-L'écriture devra être atomique, la lecture strictement validée et l'ordre des
-événements d'audit préservé sans suppression ou réécriture silencieuse. Le
-fichier est versionné par Git : le repository reste la mémoire persistante et
-la source autoritative. Le chemin et le format ne sont pas créés pendant P1.1 ;
-leur contrat précis relève de P1.8.
+La lecture valide strictement le sixième schéma puis hydrate les modèles du
+domaine. L'écriture sérialise et valide avant de créer un fichier temporaire
+dans le même répertoire, le vide avec `flush` et `fsync`, puis effectue un
+remplacement atomique. Le fichier est versionné par Git : le repository reste
+la mémoire persistante et la source autoritative.
+
+La limite de concurrence V1 est explicite : `single-writer expected`. Aucun
+locking distribué ou gestionnaire de verrous n'est fourni.
 
 ## Déterminisme
 

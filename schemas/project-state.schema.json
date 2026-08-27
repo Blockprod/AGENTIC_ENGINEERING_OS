@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:project-state",
+  "title": "Canonical V1 Project State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "user_stories",
+    "evidence",
+    "gates",
+    "certifications",
+    "audit_events"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "user_stories": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:agentic-engineering-os:schema:v1:user-story"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:agentic-engineering-os:schema:v1:evidence"
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:agentic-engineering-os:schema:v1:gate"
+      }
+    },
+    "certifications": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:agentic-engineering-os:schema:v1:certification"
+      }
+    },
+    "audit_events": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:agentic-engineering-os:schema:v1:audit-event"
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
+from referencing import Registry, Resource
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ SCHEMA_FILES = {
     "gate": "gate.schema.json",
     "audit-event": "audit-event.schema.json",
     "certification": "certification.schema.json",
+    "project-state": "project-state.schema.json",
 }
 
 VALID_FIXTURES = [(name, f"{name}.json") for name in SCHEMA_FILES]
@@ -25,6 +27,7 @@ INVALID_FIXTURES = [
     ("user-story", "user-story-duplicate-dependencies.json", ["depends_on"]),
     ("gate", "gate-unknown-result.json", ["result"]),
     ("certification", "certification-unknown-verdict.json", ["result"]),
+    ("project-state", "project-state-unknown-version.json", ["schema_version"]),
 ]
 
 
@@ -38,7 +41,15 @@ def load_schema(name: str) -> dict[str, object]:
 
 
 def validator(name: str) -> Draft202012Validator:
-    return Draft202012Validator(load_schema(name), format_checker=FormatChecker())
+    resources = [
+        (schema["$id"], Resource.from_contents(schema))
+        for schema in (load_schema(item) for item in SCHEMA_FILES)
+    ]
+    return Draft202012Validator(
+        load_schema(name),
+        format_checker=FormatChecker(),
+        registry=Registry().with_resources(resources),
+    )
 
 
 @pytest.mark.parametrize("schema_file", SCHEMA_FILES.values())

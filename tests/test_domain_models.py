@@ -248,6 +248,7 @@ def test_model_fields_match_canonical_root_fields() -> None:
         (Gate, "gate.schema.json"),
         (AuditEvent, "audit-event.schema.json"),
         (Certification, "certification.schema.json"),
+        (ProjectState, "project-state.schema.json"),
     )
 
     for model_type, schema_name in pairs:
