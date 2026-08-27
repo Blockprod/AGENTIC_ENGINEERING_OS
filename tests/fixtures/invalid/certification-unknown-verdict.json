@@ -1,0 +1,16 @@
+{
+  "certification_id": "CERT-0001",
+  "subject": "US-0001",
+  "result": "APPROVED",
+  "commit": "ed6407590d09f591a37384fb939b9e9a5d55394a",
+  "acceptance_results": {},
+  "gate_results": {},
+  "human_approval": {
+    "required": false,
+    "approved": false,
+    "evidence_ref": null
+  },
+  "evidence_refs": [],
+  "certified_at": "2026-08-27T10:07:00+02:00",
+  "certifier": "Codex/Certifier"
+}

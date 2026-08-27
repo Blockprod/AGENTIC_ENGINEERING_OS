@@ -1,0 +1,13 @@
+{
+  "event_id": "EVENT-0001",
+  "timestamp": "2026-08-27T10:06:00+02:00",
+  "event_type": "GATE_EVALUATED",
+  "subject": "US-0001/GATE-0001",
+  "actor": "Codex",
+  "role": "Tester",
+  "repository_commit": "ed6407590d09f591a37384fb939b9e9a5d55394a",
+  "payload": {
+    "gate_id": "GATE-0001",
+    "result": "PASS"
+  }
+}

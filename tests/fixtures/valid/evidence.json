@@ -1,0 +1,13 @@
+{
+  "evidence_id": "EV-0001",
+  "evidence_type": "TEST_RESULT",
+  "subject": "US-0001",
+  "result": "1 passed in 0.01s",
+  "source": "pytest",
+  "command": "python -m pytest -q",
+  "exit_code": 0,
+  "artifact": "captured pytest output",
+  "commit": "ed6407590d09f591a37384fb939b9e9a5d55394a",
+  "timestamp": "2026-08-27T10:05:00+02:00",
+  "producer": "Codex/Tester"
+}

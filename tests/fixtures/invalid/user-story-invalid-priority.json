@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "US-0001",
+  "title": "Invalid priority",
+  "description": "This fixture uses a priority below one.",
+  "status": "PROPOSED",
+  "priority": 0,
+  "risk": "LOW",
+  "depends_on": [],
+  "scope": {
+    "allowed_paths": ["schemas/"],
+    "forbidden_paths": ["src/"]
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC-001",
+      "description": "The fixture is rejected.",
+      "mandatory": true
+    }
+  ],
+  "required_gates": ["GATE-0001"],
+  "human_approval": {
+    "required": false,
+    "approved": false,
+    "approved_by": null,
+    "approved_at": null
+  },
+  "metadata": {
+    "created_at": "2026-08-27T10:00:00+02:00",
+    "created_by": "human-operator",
+    "updated_at": "2026-08-27T10:00:00+02:00"
+  }
+}

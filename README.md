@@ -23,3 +23,4 @@ Documentation :
 - [Contrat des gates](docs/08-gate-contract.md)
 - [Modèle d'audit](docs/09-audit-model.md)
 - [Modèle de certification](docs/10-certification-model.md)
+- [JSON Schemas V1](schemas/README.md)

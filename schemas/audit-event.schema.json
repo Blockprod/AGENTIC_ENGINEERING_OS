@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:audit-event",
+  "title": "Canonical V1 Audit Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "timestamp",
+    "event_type",
+    "subject",
+    "actor",
+    "role",
+    "repository_commit",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "USER_STORY_CREATED",
+        "STATE_CHANGED",
+        "EXECUTION_STARTED",
+        "EXECUTION_FINISHED",
+        "EVIDENCE_PRODUCED",
+        "GATE_EVALUATED",
+        "REJECTION_RECORDED",
+        "REMEDIATION_RECORDED",
+        "HUMAN_APPROVAL_RECORDED",
+        "CERTIFICATION_GRANTED",
+        "CERTIFICATION_REFUSED",
+        "CERTIFICATION_BLOCKED"
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repository_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}
