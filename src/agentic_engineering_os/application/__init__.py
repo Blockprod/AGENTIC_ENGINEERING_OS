@@ -7,6 +7,13 @@ from .contract_validator import (
     ValidationIssue,
     ValidationResult,
 )
+from .evidence_recorder import (
+    EvidenceObservation,
+    EvidenceProvenance,
+    EvidenceRecorder,
+    EvidenceRecordingError,
+    ProvenanceKind,
+)
 from .state_transition_service import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATES,
@@ -20,7 +27,12 @@ from .state_transition_service import (
 __all__ = [
     "ContractValidator",
     "ALLOWED_TRANSITIONS",
+    "EvidenceObservation",
+    "EvidenceProvenance",
+    "EvidenceRecorder",
+    "EvidenceRecordingError",
     "ParseError",
+    "ProvenanceKind",
     "StateTransitionService",
     "TERMINAL_STATES",
     "TransitionContext",
