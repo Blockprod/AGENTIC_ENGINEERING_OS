@@ -117,6 +117,7 @@ class Certification:
     evidence_refs: tuple[str, ...]
     certified_at: datetime
     certifier: str
+    authorized_not_applicable_gates: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)

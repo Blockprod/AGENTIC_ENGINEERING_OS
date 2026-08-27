@@ -1,5 +1,7 @@
 import ast
 import json
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +11,7 @@ import pytest
 import agentic_engineering_os.application.control_loop as control_loop_module
 from agentic_engineering_os.application import (
     AcceptanceResult,
+    CertificationContext,
     CertificationService,
     ControlLoop,
     ControlLoopError,
@@ -30,6 +33,7 @@ from agentic_engineering_os.domain import (
     CertificationResult,
     Evidence,
     EvidenceType,
+    Gate,
     GateResult,
     HumanApproval,
     ProjectState,
@@ -269,10 +273,120 @@ def test_golden_path_persists_and_reloads_the_same_authoritative_state(
         "EV-AC-001",
         "EV-GATE-001",
     )
+    assert reloaded.certifications[0].authorized_not_applicable_gates == ()
     assert reloaded.evidence[0].timestamp == NOW
     assert reloaded.gates[0].evaluated_at == NOW
     assert reloaded.certifications[0].certified_at == NOW
     assert to_dict(reloaded) == json.loads(store.state_path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("not_applicable", (False, True), ids=("pass", "not-applicable"))
+def test_certification_paths_authorize_transition_in_second_process(
+    tmp_path: Path,
+    not_applicable: bool,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    loop.record_evidence(
+        observation(
+            "AC-001",
+            evidence_type=EvidenceType.ACCEPTANCE_CRITERION_CHECK,
+        ),
+        evidence_id="EV-AC-001",
+        timestamp=NOW,
+    )
+    if not not_applicable:
+        loop.record_evidence(
+            observation("US-0001"),
+            evidence_id="EV-GATE-001",
+            timestamp=NOW,
+        )
+    gate_evaluation = loop.evaluate_gate(
+        pass_contract(),
+        context=GateEvaluationContext(
+            expected_commit=COMMIT,
+            not_applicable_reason=(
+                "Gate is explicitly outside this decision."
+                if not_applicable
+                else None
+            ),
+        ),
+        evaluated_at=NOW,
+    )
+    certification = loop.certify_user_story(
+        "US-0001",
+        COMMIT,
+        (
+            AcceptanceResult(
+                criterion_id="AC-001",
+                result=GateResult.PASS,
+                evidence_refs=("EV-AC-001",),
+            ),
+        ),
+        certifier="Codex/Certifier",
+        context=(
+            CertificationContext(
+                allowed_not_applicable_gate_ids=frozenset({"GATE-001"})
+            )
+            if not_applicable
+            else CertificationContext()
+        ),
+        certification_id="CERT-NA-001",
+        certified_at=NOW,
+    )
+
+    expected_gate_result = (
+        GateResult.NOT_APPLICABLE if not_applicable else GateResult.PASS
+    )
+    expected_authorities = ("GATE-001",) if not_applicable else ()
+    assert gate_evaluation.gate.result is expected_gate_result
+    assert certification.result is CertificationResult.CERTIFIED
+    assert certification.authorized_not_applicable_gates == expected_authorities
+
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import sys
+from pathlib import Path
+from agentic_engineering_os.application import (
+    CertificationService, ControlLoop, EvidenceRecorder, GateEvaluator,
+    StateTransitionService, TransitionContext,
+)
+from agentic_engineering_os.domain import UserStoryStatus
+from agentic_engineering_os.infrastructure import ProjectStateStore
+
+store = ProjectStateStore(Path(sys.argv[1]))
+loop = ControlLoop(
+    state_store=store,
+    evidence_recorder_factory=lambda target: EvidenceRecorder(target),
+    gate_evaluator=GateEvaluator(),
+    certification_service=CertificationService(),
+    transition_service=StateTransitionService(),
+)
+result = loop.transition_user_story(
+    "US-0001",
+    UserStoryStatus.CERTIFIED,
+    context=TransitionContext(
+        preconditions_proven=False,
+        target_commit=sys.argv[2],
+    ),
+)
+assert result.allowed
+assert store.load().user_stories[0].status is UserStoryStatus.CERTIFIED
+print("SECOND_PROCESS_CERTIFIED")
+""",
+            str(tmp_path),
+            COMMIT,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert process.returncode == 0, process.stderr
+    assert process.stdout.strip() == "SECOND_PROCESS_CERTIFIED"
+    assert store.load().user_stories[0].status is UserStoryStatus.CERTIFIED
 
 
 @pytest.mark.parametrize("corrupt", [False, True], ids=["absent", "corrupt"])
@@ -570,6 +684,70 @@ def test_forged_isolated_certification_never_becomes_authoritative(
         return
 
     pytest.fail("forged isolated Certification became authoritative")
+
+
+def test_not_applicable_gate_without_persisted_authority_cannot_promote(
+    tmp_path: Path,
+) -> None:
+    store, loop = initialized_loop(tmp_path)
+    loop.record_evidence(
+        observation(
+            "AC-001",
+            evidence_type=EvidenceType.ACCEPTANCE_CRITERION_CHECK,
+        ),
+        evidence_id="EV-AC-001",
+        timestamp=NOW,
+    )
+    state = store.load()
+    state.gates.append(
+        Gate(
+            gate_id="GATE-001",
+            subject="US-0001",
+            required=True,
+            result=GateResult.NOT_APPLICABLE,
+            evidence_refs=(),
+            evaluated_at=NOW,
+            evaluator="Codex/Reviewer",
+        )
+    )
+    state.certifications.append(
+        replace(
+            certification_record(
+                certification_id="CERT-FORGED-NA",
+                subject="US-0001",
+                result=CertificationResult.CERTIFIED,
+            ),
+            gate_results={"GATE-001": "NOT_APPLICABLE"},
+            evidence_refs=("EV-AC-001",),
+        )
+    )
+
+    with pytest.raises(PersistenceError) as persistence_error:
+        store.save(state)
+
+    assert persistence_error.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "NOT_APPLICABLE_AUTHORITY_MISSING" in persistence_error.value.message
+    assert store.load().user_stories[0].status is UserStoryStatus.CERTIFICATION
+
+    class UnvalidatedStore:
+        def load(self) -> ProjectState:
+            return state
+
+        def save(self, candidate: ProjectState) -> Path:
+            raise AssertionError("unauthorized dossier must not be persisted")
+
+    with pytest.raises(ControlLoopError) as transition_error:
+        make_loop(UnvalidatedStore()).transition_user_story(
+            "US-0001",
+            UserStoryStatus.CERTIFIED,
+            context=TransitionContext(
+                preconditions_proven=False,
+                target_commit=COMMIT,
+            ),
+        )
+
+    assert transition_error.value.code == "CERTIFICATION_INTEGRITY_INVALID"
+    assert state.user_stories[0].status is UserStoryStatus.CERTIFICATION
 
 
 def test_control_loop_rejects_unvalidated_certification_from_store() -> None:

@@ -12,5 +12,6 @@
   },
   "evidence_refs": [],
   "certified_at": "2026-08-27T10:07:00+02:00",
-  "certifier": "Codex/Certifier"
+  "certifier": "Codex/Certifier",
+  "authorized_not_applicable_gates": []
 }

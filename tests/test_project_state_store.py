@@ -166,6 +166,24 @@ def full_state() -> ProjectState:
     )
 
 
+def not_applicable_state(
+    authorities: tuple[str, ...] = ("GATE-001",),
+) -> ProjectState:
+    state = full_state()
+    state.gates[0] = replace(
+        state.gates[0],
+        result=GateResult.NOT_APPLICABLE,
+        evidence_refs=(),
+    )
+    state.certifications[0] = replace(
+        state.certifications[0],
+        gate_results={"GATE-001": "NOT_APPLICABLE"},
+        evidence_refs=("EV-AC-001",),
+        authorized_not_applicable_gates=authorities,
+    )
+    return state
+
+
 def write_json(path: Path, candidate: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(candidate), encoding="utf-8")
@@ -647,6 +665,100 @@ def test_certified_status_with_applicable_certification_round_trips(
     store.save(state)
 
     assert store.load().user_stories[0].status is UserStoryStatus.CERTIFIED
+
+
+def test_authorized_not_applicable_gate_round_trips_exactly(tmp_path: Path) -> None:
+    store = ProjectStateStore(tmp_path)
+    state = not_applicable_state()
+
+    store.save(state)
+    reloaded = store.load()
+
+    assert reloaded.gates[0].result is GateResult.NOT_APPLICABLE
+    assert reloaded.certifications[0].authorized_not_applicable_gates == (
+        "GATE-001",
+    )
+
+
+def test_legacy_not_applicable_dossier_without_authority_field_is_refused(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    store.save(not_applicable_state())
+    candidate = json.loads(store.state_path.read_text(encoding="utf-8"))
+    del candidate["certifications"][0]["authorized_not_applicable_gates"]
+    write_json(store.state_path, candidate)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.load()
+
+    assert captured.value.code == "INVALID_SCHEMA"
+
+
+def test_unknown_not_applicable_authority_is_refused(tmp_path: Path) -> None:
+    state = full_state()
+    state.certifications[0] = replace(
+        state.certifications[0],
+        authorized_not_applicable_gates=("GATE-UNKNOWN",),
+    )
+
+    with pytest.raises(PersistenceError) as captured:
+        ProjectStateStore(tmp_path).save(state)
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "NOT_APPLICABLE_AUTHORITY_UNKNOWN" in captured.value.message
+
+
+def test_authority_for_the_wrong_required_gate_is_refused(tmp_path: Path) -> None:
+    state = not_applicable_state(authorities=("GATE-002",))
+    state.user_stories[0].required_gates = ("GATE-001", "GATE-002")
+    state.gates.append(gate(gate_id="GATE-002"))
+    state.certifications[0] = replace(
+        state.certifications[0],
+        gate_results={
+            "GATE-001": "NOT_APPLICABLE",
+            "GATE-002": "PASS",
+        },
+        evidence_refs=("EV-AC-001", "EV-001"),
+    )
+
+    with pytest.raises(PersistenceError) as captured:
+        ProjectStateStore(tmp_path).save(state)
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "NOT_APPLICABLE_AUTHORITY_MISSING" in captured.value.message
+    assert "NOT_APPLICABLE_AUTHORITY_UNUSED" in captured.value.message
+
+
+def test_duplicate_not_applicable_authority_is_refused(tmp_path: Path) -> None:
+    state = not_applicable_state(authorities=("GATE-001", "GATE-001"))
+
+    with pytest.raises(PersistenceError) as captured:
+        ProjectStateStore(tmp_path).save(state)
+
+    assert captured.value.code == "INVALID_SCHEMA"
+
+
+@pytest.mark.parametrize("result", (GateResult.UNKNOWN, GateResult.FAIL))
+def test_not_applicable_authority_cannot_override_non_satisfying_gate(
+    tmp_path: Path,
+    result: GateResult,
+) -> None:
+    state = full_state()
+    state.gates[0] = replace(state.gates[0], result=result, evidence_refs=())
+    state.certifications[0] = replace(
+        state.certifications[0],
+        gate_results={"GATE-001": result.value},
+        evidence_refs=("EV-AC-001",),
+        authorized_not_applicable_gates=("GATE-001",),
+    )
+
+    with pytest.raises(PersistenceError) as captured:
+        ProjectStateStore(tmp_path).save(state)
+
+    assert captured.value.code == "INVALID_CERTIFICATION_INTEGRITY"
+    assert "REQUIRED_GATE_NOT_SATISFIED" in captured.value.message
+    assert "NOT_APPLICABLE_AUTHORITY_UNUSED" in captured.value.message
 
 
 def test_multiple_compatible_certifications_do_not_invalidate_state(

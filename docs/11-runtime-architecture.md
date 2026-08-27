@@ -221,11 +221,16 @@ aucun wrapper décoratif n'est requis.
 - **Input** : User Story, commit ciblé, résultats des critères et Gates,
   Evidence résolues et approbations humaines applicables.
 - **Output** : `Certification` avec verdict `CERTIFIED`, `REJECTED` ou
-  `BLOCKED`, et justification traçable.
+  `BLOCKED`, justification traçable et liste persistée des seuls Gates requis
+  dont le résultat `NOT_APPLICABLE` a effectivement été autorisé.
 - **Responsabilité** : appliquer les conditions de certification Phase 0 et
-  lier la décision à un commit précis.
+  lier la décision à un commit précis. L'autorité `NOT_APPLICABLE` provient du
+  contexte explicite de certification ; elle n'est jamais déduite du résultat
+  du Gate.
 - **Fail-closed** : un échec prouvé donne `REJECTED` ; une donnée absente,
-  ambiguë, stale ou inconnue donne `BLOCKED`, jamais `CERTIFIED`.
+  ambiguë, stale ou inconnue donne `BLOCKED`, jamais `CERTIFIED`. Une autorité
+  inconnue n'est pas persistée et bloque la décision ; une autorité inutilisée
+  n'est pas ajoutée au dossier.
 - **Ne doit pas** : modifier le code, le contrat, les critères, les Gates ou les
   Evidence, ni fabriquer une approbation humaine.
 
@@ -237,7 +242,9 @@ aucun wrapper décoratif n'est requis.
 - **Responsabilité** : fournir la frontière de persistance, contrôler la
   version du format et préserver l'historique append-oriented.
 - **Fail-closed** : fichier absent lorsqu'il est requis, JSON invalide, version
-  inconnue, écriture partielle ou erreur disque sont des échecs explicites.
+  inconnue, écriture partielle, erreur disque ou dossier `CERTIFIED` portant un
+  Gate requis `NOT_APPLICABLE` sans autorité persistée sont des échecs
+  explicites.
 - **Ne doit pas** : décider une transition, évaluer un Gate, certifier, réparer
   silencieusement ou dépendre de Codex.
 
@@ -273,6 +280,15 @@ repository :
 retenu parce que les contrats disposent de JSON Schemas, que son parsing est
 non ambigu et que sa sérialisation canonique est testable. YAML et SQLite
 n'apportent pas de valeur démontrée à ce stade.
+
+La `Certification` sérialise `authorized_not_applicable_gates` comme une liste
+explicite, unique et limitée aux Gates requis réellement autorisés pour cette
+décision. Le validateur d'intégrité partagé impose `PASS` normalement, refuse
+toujours `FAIL` et `UNKNOWN`, et n'accepte `NOT_APPLICABLE` que si le même
+identifiant figure dans cette liste persistée. Cette correction de sécurité
+durcit le contrat V1 sans modifier `ProjectState.schema_version` : aucun nouveau
+format d'état ni mécanisme de migration n'est introduit. Un ancien dossier qui
+omet le champ est refusé par le schéma, sans réparation ou inférence silencieuse.
 
 La lecture valide strictement le sixième schéma puis hydrate les modèles du
 domaine. L'écriture sérialise et valide avant de créer un fichier temporaire

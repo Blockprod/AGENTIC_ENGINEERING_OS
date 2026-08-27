@@ -120,6 +120,16 @@ class CertificationService:
         failures: list[str] = []
         blockers: list[str] = []
         used_evidence: list[str] = []
+        authorized_not_applicable_gates: list[str] = []
+
+        unknown_gate_authorities = (
+            resolved_context.allowed_not_applicable_gate_ids
+            - set(user_story.required_gates)
+        )
+        blockers.extend(
+            f"gate-authority:{gate_id}:unknown-or-not-required"
+            for gate_id in sorted(unknown_gate_authorities)
+        )
 
         acceptance_map = self._evaluate_acceptance(
             user_story,
@@ -140,6 +150,7 @@ class CertificationService:
             failures,
             blockers,
             used_evidence,
+            authorized_not_applicable_gates,
         )
         human_map = self._evaluate_human_approval(
             user_story,
@@ -171,6 +182,9 @@ class CertificationService:
             evidence_refs=tuple(dict.fromkeys(used_evidence)),
             certified_at=timestamp,
             certifier=certifier,
+            authorized_not_applicable_gates=tuple(
+                authorized_not_applicable_gates
+            ),
         )
         self._validate_certification(certification)
         integrity_issues = certified_dossier_issues(
@@ -290,6 +304,7 @@ class CertificationService:
         failures: list[str],
         blockers: list[str],
         used_evidence: list[str],
+        authorized_not_applicable_gates: list[str],
     ) -> dict[str, str]:
         by_id: dict[str, list[Gate]] = {}
         for gate in supplied:
@@ -331,6 +346,7 @@ class CertificationService:
                 gate.result is GateResult.NOT_APPLICABLE
                 and gate_id in context.allowed_not_applicable_gate_ids
             ):
+                authorized_not_applicable_gates.append(gate_id)
                 continue
             else:
                 blockers.append(f"gate:{gate_id}:not-proven")

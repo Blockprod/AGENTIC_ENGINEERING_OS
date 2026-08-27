@@ -50,5 +50,10 @@ métier plutôt que de JSON Schema :
 - satisfaction complète des critères et Gates avant un verdict `CERTIFIED`,
   ainsi que la validité d'une intégration transitive.
 
+Le contrat structurel `Certification` exige la liste unique
+`authorized_not_applicable_gates`. La cohérence de chaque identifiant avec les
+Gates requis, leur résultat persistant et la décision `CERTIFIED` reste une
+validation sémantique fail-closed effectuée par le runtime.
+
 Ces limites ne réduisent pas les contrats normatifs. Une règle sémantique non
 vérifiée reste `UNKNOWN` et doit être traitée selon la politique fail-closed.

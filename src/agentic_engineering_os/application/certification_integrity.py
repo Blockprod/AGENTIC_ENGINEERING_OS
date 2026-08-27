@@ -124,6 +124,23 @@ def certified_dossier_issues(
             )
 
     required_gate_ids = set(story.required_gates)
+    authorized_not_applicable_gates = (
+        certification.authorized_not_applicable_gates
+    )
+    authorized_gate_ids = set(authorized_not_applicable_gates)
+    if len(authorized_gate_ids) != len(authorized_not_applicable_gates):
+        _issue(
+            issues,
+            "NOT_APPLICABLE_AUTHORITY_DUPLICATE",
+            "persisted NOT_APPLICABLE Gate authority contains duplicates",
+        )
+    for gate_id in sorted(authorized_gate_ids - required_gate_ids):
+        _issue(
+            issues,
+            "NOT_APPLICABLE_AUTHORITY_UNKNOWN",
+            f"persisted NOT_APPLICABLE authority is not a required Gate: {gate_id}",
+        )
+
     if set(certification.gate_results) != required_gate_ids:
         _issue(
             issues,
@@ -158,6 +175,24 @@ def certified_dossier_issues(
                 issues,
                 "REQUIRED_GATE_NOT_SATISFIED",
                 f"required Gate cannot support CERTIFIED: {gate_id}",
+            )
+        if (
+            gate.result is GateResult.NOT_APPLICABLE
+            and gate_id not in authorized_gate_ids
+        ):
+            _issue(
+                issues,
+                "NOT_APPLICABLE_AUTHORITY_MISSING",
+                f"required NOT_APPLICABLE Gate lacks persisted authority: {gate_id}",
+            )
+        if (
+            gate.result is not GateResult.NOT_APPLICABLE
+            and gate_id in authorized_gate_ids
+        ):
+            _issue(
+                issues,
+                "NOT_APPLICABLE_AUTHORITY_UNUSED",
+                f"persisted NOT_APPLICABLE authority does not match Gate result: {gate_id}",
             )
         if gate.result is GateResult.PASS and not gate.evidence_refs:
             _issue(

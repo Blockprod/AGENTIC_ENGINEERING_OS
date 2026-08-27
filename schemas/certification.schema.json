@@ -14,7 +14,8 @@
     "human_approval",
     "evidence_refs",
     "certified_at",
-    "certifier"
+    "certifier",
+    "authorized_not_applicable_gates"
   ],
   "properties": {
     "certification_id": {
@@ -57,6 +58,14 @@
     "certifier": {
       "type": "string",
       "minLength": 1
+    },
+    "authorized_not_applicable_gates": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   }
 }

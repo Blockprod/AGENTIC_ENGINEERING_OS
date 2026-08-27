@@ -392,6 +392,52 @@ def test_explicitly_allowed_not_applicable_required_gate_is_accepted() -> None:
     )
 
     assert result.result is CertificationResult.CERTIFIED
+    assert result.authorized_not_applicable_gates == ("GATE-001",)
+
+
+def test_unknown_not_applicable_gate_authority_blocks_without_persisting_it() -> None:
+    result = certify(
+        context=CertificationContext(
+            allowed_not_applicable_gate_ids=frozenset({"GATE-UNKNOWN"})
+        ),
+    )
+
+    assert result.result is CertificationResult.BLOCKED
+    assert result.authorized_not_applicable_gates == ()
+
+
+def test_unused_not_applicable_gate_authority_is_not_persisted() -> None:
+    result = certify(
+        context=CertificationContext(
+            allowed_not_applicable_gate_ids=frozenset({"GATE-001"})
+        ),
+    )
+
+    assert result.result is CertificationResult.CERTIFIED
+    assert result.authorized_not_applicable_gates == ()
+
+
+@pytest.mark.parametrize(
+    ("gate_result", "evidence_refs", "expected_verdict"),
+    [
+        (GateResult.UNKNOWN, (), CertificationResult.BLOCKED),
+        (GateResult.FAIL, ("EV-GATE-001",), CertificationResult.REJECTED),
+    ],
+)
+def test_not_applicable_authority_cannot_override_unknown_or_fail(
+    gate_result: GateResult,
+    evidence_refs: tuple[str, ...],
+    expected_verdict: CertificationResult,
+) -> None:
+    result = certify(
+        gates=(gate(result=gate_result, evidence_refs=evidence_refs),),
+        context=CertificationContext(
+            allowed_not_applicable_gate_ids=frozenset({"GATE-001"})
+        ),
+    )
+
+    assert result.result is expected_verdict
+    assert result.authorized_not_applicable_gates == ()
 
 
 def test_required_human_approval_absence_blocks() -> None:

@@ -530,6 +530,12 @@ def _hydrate_certification(data: Mapping[str, object]) -> Certification:
         evidence_refs=tuple(_strings(data["evidence_refs"], "evidence_refs")),
         certified_at=_datetime(data["certified_at"], "certified_at"),
         certifier=_string(data["certifier"], "certifier"),
+        authorized_not_applicable_gates=tuple(
+            _strings(
+                data["authorized_not_applicable_gates"],
+                "authorized_not_applicable_gates",
+            )
+        ),
     )
 
 
