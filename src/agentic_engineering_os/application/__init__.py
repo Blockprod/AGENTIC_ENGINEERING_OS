@@ -13,6 +13,12 @@ from .contract_validator import (
     ValidationIssue,
     ValidationResult,
 )
+from .control_loop import (
+    ControlLoop,
+    ControlLoopError,
+    EvidenceRecorderFactory,
+    ProjectStateStorePort,
+)
 from .evidence_recorder import (
     EvidenceObservation,
     EvidenceProvenance,
@@ -45,10 +51,13 @@ __all__ = [
     "CertificationError",
     "CertificationService",
     "ContractValidator",
+    "ControlLoop",
+    "ControlLoopError",
     "ALLOWED_TRANSITIONS",
     "EvidenceObservation",
     "EvidenceProvenance",
     "EvidenceRecorder",
+    "EvidenceRecorderFactory",
     "EvidenceRecordingError",
     "GateCondition",
     "GateContract",
@@ -59,6 +68,7 @@ __all__ = [
     "GateReason",
     "ParseError",
     "ProvenanceKind",
+    "ProjectStateStorePort",
     "StateTransitionService",
     "TERMINAL_STATES",
     "TransitionContext",

@@ -86,6 +86,40 @@ réalisée par l'infrastructure ; elle ne crée pas une interface par classe.
 | Certification | Agréger critères, Gates, approbations, Evidence et commit pour un verdict. | Ne remédie pas, ne modifie pas le contrat et ne certifie pas une inconnue. |
 | Persistent project state | Charger et enregistrer l'état autoritatif versionné dans le repository. | Ne contient aucune règle de transition, Gate ou certification. |
 
+## ControlLoop intégré P1.9
+
+`ControlLoop` est le service applicatif minimal qui coordonne les composants
+certifiés sur le `ProjectState` autoritatif. Ses collaborateurs sont fournis
+explicitement : un port `ProjectStateStorePort`, une factory
+`EvidenceRecorder`, `GateEvaluator`, `CertificationService` et
+`StateTransitionService`. Le port maintient la direction des dépendances : la
+couche application ne connaît ni le chemin ni le format concret du stockage,
+et `ProjectStateStore` le réalise par typage structurel.
+
+L'API V1 expose uniquement `load_state`, `record_evidence`, `evaluate_gate`,
+`certify_user_story` et `transition_user_story`. Chaque opération modificatrice
+charge l'état courant, crée une copie contrôlée des collections, délègue la
+décision au service spécialisé, puis confie l'état candidat au store. Pour une
+transition, la User Story ciblée et ses sous-objets mutables sont également
+copiés avant l'appel à `StateTransitionService`. Un refus ou une exception ne
+déclenche aucune sauvegarde ; une erreur de sauvegarde reste un échec global et
+ne produit aucun résultat de succès.
+
+Les flux restent séparés : `EvidenceRecorder` construit l'Evidence,
+`GateEvaluator` détermine le résultat du Gate, `CertificationService` produit
+le verdict et `StateTransitionService` est seul à modifier
+`UserStory.status`. Une Certification, y compris `CERTIFIED`, ne déclenche
+aucune transition implicite. Toute validation du `ProjectState` candidat et
+toute écriture de `state.json` restent sous la responsabilité exclusive de
+`ProjectStateStore`.
+
+P1.9 ne produit pas automatiquement d'`AuditEvent`. Le contrat existant exige
+notamment une identité, un rôle, un commit, un horodatage et un payload
+attribuables ; aucune politique complète ne spécifie encore ces valeurs pour
+les cinq opérations intégrées. Les événements déjà persistés sont conservés
+sans modification. Leur production coordonnée reste hors scope jusqu'à la
+définition explicite de cette politique.
+
 ## Futurs objets du domaine
 
 Les objets suivants seront définis sans comportement d'infrastructure :
