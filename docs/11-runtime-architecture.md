@@ -42,6 +42,12 @@ les échecs explicites et utilise une frontière de persistance minimale. Il ne
 décide pas à partir d'un texte libre ou d'un jugement LLM et ne dépend d'aucun
 format de stockage concret.
 
+Pour P1.3, `ContractValidator` résout directement les cinq JSON Schemas
+certifiés depuis un répertoire local explicite. Cette exception étroite porte
+sur les définitions statiques des contrats, pas sur la persistance de l'état du
+projet. Elle ne sera extraite vers un adaptateur que si un second consommateur
+ou un mode de packaging le justifie.
+
 ### Infrastructure
 
 Contient les adaptateurs aux détails externes : chargement des JSON Schemas,
