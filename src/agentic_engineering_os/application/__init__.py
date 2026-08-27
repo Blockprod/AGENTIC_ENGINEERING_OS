@@ -14,6 +14,15 @@ from .evidence_recorder import (
     EvidenceRecordingError,
     ProvenanceKind,
 )
+from .gate_evaluator import (
+    GateCondition,
+    GateContract,
+    GateEvaluation,
+    GateEvaluationContext,
+    GateEvaluationError,
+    GateEvaluator,
+    GateReason,
+)
 from .state_transition_service import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATES,
@@ -31,6 +40,13 @@ __all__ = [
     "EvidenceProvenance",
     "EvidenceRecorder",
     "EvidenceRecordingError",
+    "GateCondition",
+    "GateContract",
+    "GateEvaluation",
+    "GateEvaluationContext",
+    "GateEvaluationError",
+    "GateEvaluator",
+    "GateReason",
     "ParseError",
     "ProvenanceKind",
     "StateTransitionService",
