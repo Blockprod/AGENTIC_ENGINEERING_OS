@@ -42,7 +42,7 @@ les échecs explicites et utilise une frontière de persistance minimale. Il ne
 décide pas à partir d'un texte libre ou d'un jugement LLM et ne dépend d'aucun
 format de stockage concret.
 
-Pour P1.3, `ContractValidator` résout directement les cinq JSON Schemas
+Pour P1.3, `ContractValidator` résout directement les six JSON Schemas
 certifiés depuis un répertoire local explicite. Cette exception étroite porte
 sur les définitions statiques des contrats, pas sur la persistance de l'état du
 projet. Elle ne sera extraite vers un adaptateur que si un second consommateur
@@ -280,6 +280,17 @@ dans le même répertoire, le vide avec `flush` et `fsync`, puis effectue un
 remplacement atomique. Le fichier est versionné par Git : le repository reste
 la mémoire persistante et la source autoritative.
 
+La persistance impose aussi un invariant d'intégrité agrégée : toute User Story
+au statut `CERTIFIED` doit avoir au moins une Certification du même sujet dont
+le résultat est `CERTIFIED`. Ce contrôle est appliqué avant l'écriture atomique
+et après l'hydratation. Il vérifie uniquement l'artefact persisté et ses
+références locales ; il ne recalcule ni critères, ni Gates, ni Evidence, ni
+autorité humaine. Le modèle User Story ne portant pas de commit, la persistance
+ne peut pas établir de correspondance de commit supplémentaire. Plusieurs
+Certifications `CERTIFIED` du même sujet sont compatibles ; la coexistence avec
+un résultat `BLOCKED` ou `REJECTED` est contradictoire et rend l'état invalide,
+faute de pointeur persistant vers un dossier autoritatif précis.
+
 La limite de concurrence V1 est explicite : `single-writer expected`. Aucun
 locking distribué ou gestionnaire de verrous n'est fourni.
 
@@ -303,7 +314,7 @@ explicitement aux frontières lorsqu'ils influencent le résultat.
 - **Unit** : objets, enums, invariants, table de transitions et décisions pures
   des Gates et certifications.
 - **Contract/schema consistency** : parité entre modèles Python, valeurs
-  canoniques et cinq JSON Schemas, avec fixtures valides et invalides.
+  canoniques et six JSON Schemas, avec fixtures valides et invalides.
 - **Negative/fail-closed** : parsing invalide, état ou transition inconnus,
   dépendance non certifiée, Evidence absente ou stale, approbation manquante et
   panne de stockage.

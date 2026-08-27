@@ -348,6 +348,27 @@ def _validate_integrity(state: ProjectState) -> None:
                 f"Human Evidence: {human_ref}"
             )
 
+    for story in state.user_stories:
+        if story.status is not UserStoryStatus.CERTIFIED:
+            continue
+        results = {
+            certification.result
+            for certification in state.certifications
+            if certification.subject == story.id
+        }
+        if CertificationResult.CERTIFIED not in results:
+            raise PersistenceError(
+                "INVALID_STATE_INTEGRITY",
+                f"User Story {story.id} is CERTIFIED without an applicable "
+                "CERTIFIED Certification",
+            )
+        if results != {CertificationResult.CERTIFIED}:
+            raise PersistenceError(
+                "INVALID_STATE_INTEGRITY",
+                f"User Story {story.id} is CERTIFIED with contradictory "
+                "Certification results",
+            )
+
 
 def _unique_ids(items: Sequence[object], field: str, label: str) -> set[str]:
     values = [getattr(item, field) for item in items]

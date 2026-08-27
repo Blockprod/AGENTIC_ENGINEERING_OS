@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,13 +37,14 @@ def user_story(
     story_id: str = "US-0001",
     *,
     depends_on: tuple[str, ...] = (),
+    status: UserStoryStatus = UserStoryStatus.CERTIFIED,
 ) -> UserStory:
     return UserStory(
         schema_version="1.0",
         id=story_id,
         title="Mémoire persistante déterministe",
         description="Persist all canonical categories as validated JSON.",
-        status=UserStoryStatus.CERTIFIED,
+        status=status,
         priority=1,
         risk=RiskLevel.HIGH,
         depends_on=depends_on,
@@ -503,6 +505,164 @@ def test_invalid_save_preserves_previous_authoritative_state(tmp_path: Path) -> 
 
     assert store.state_path.read_bytes() == previous
     assert to_dict(store.load()) == to_dict(original)
+
+
+def test_direct_certified_mutation_without_certification_is_refused(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    original = ProjectState(
+        schema_version="1.0",
+        user_stories=[user_story(status=UserStoryStatus.CERTIFICATION)],
+    )
+    store.save(original)
+    previous = store.state_path.read_bytes()
+    bypass = store.load()
+    bypass.user_stories[0].status = UserStoryStatus.CERTIFIED
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(bypass)
+
+    assert captured.value.code == "INVALID_STATE_INTEGRITY"
+    assert "US-0001" in captured.value.message
+    assert store.state_path.read_bytes() == previous
+    assert store.load().user_stories[0].status is UserStoryStatus.CERTIFICATION
+
+
+def test_load_refuses_tampered_certified_status_without_modifying_file(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    store.save(
+        ProjectState(
+            schema_version="1.0",
+            user_stories=[user_story(status=UserStoryStatus.CERTIFICATION)],
+        )
+    )
+    candidate = json.loads(store.state_path.read_text(encoding="utf-8"))
+    candidate["user_stories"][0]["status"] = "CERTIFIED"
+    write_json(store.state_path, candidate)
+    tampered = store.state_path.read_bytes()
+
+    with pytest.raises(PersistenceError) as captured:
+        store.load()
+
+    assert captured.value.code == "INVALID_STATE_INTEGRITY"
+    assert "US-0001" in captured.value.message
+    assert store.state_path.read_bytes() == tampered
+
+
+@pytest.mark.parametrize(
+    "result",
+    (None, CertificationResult.BLOCKED, CertificationResult.REJECTED),
+    ids=("missing", "blocked", "rejected"),
+)
+def test_non_certifying_record_cannot_back_a_certified_status(
+    tmp_path: Path,
+    result: CertificationResult | None,
+) -> None:
+    if result is None:
+        state = ProjectState(schema_version="1.0", user_stories=[user_story()])
+    else:
+        state = full_state()
+        state.certifications[0] = replace(state.certifications[0], result=result)
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_STATE_INTEGRITY"
+    assert "US-0001" in captured.value.message
+    assert not store.state_path.exists()
+
+
+def test_certification_for_another_story_cannot_back_certified_status(
+    tmp_path: Path,
+) -> None:
+    state = full_state()
+    state.user_stories.append(
+        user_story("US-0002", status=UserStoryStatus.CERTIFICATION)
+    )
+    state.certifications[0] = replace(
+        state.certifications[0],
+        subject="US-0002",
+    )
+    store = ProjectStateStore(tmp_path)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_STATE_INTEGRITY"
+    assert "US-0001" in captured.value.message
+
+
+@pytest.mark.parametrize(
+    "status",
+    tuple(
+        status
+        for status in UserStoryStatus
+        if status is not UserStoryStatus.CERTIFIED
+    ),
+)
+def test_non_certified_statuses_do_not_require_certification(
+    tmp_path: Path,
+    status: UserStoryStatus,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    state = ProjectState(
+        schema_version="1.0",
+        user_stories=[user_story(status=status)],
+    )
+
+    store.save(state)
+
+    assert store.load().user_stories[0].status is status
+
+
+def test_certified_status_with_applicable_certification_round_trips(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    state = full_state()
+
+    store.save(state)
+
+    assert store.load().user_stories[0].status is UserStoryStatus.CERTIFIED
+
+
+def test_multiple_compatible_certifications_do_not_invalidate_state(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    state = full_state()
+    state.certifications.append(
+        replace(certification(), certification_id="CERT-002")
+    )
+
+    store.save(state)
+
+    assert len(store.load().certifications) == 2
+
+
+def test_contradictory_certifications_make_certified_status_ambiguous(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    state = full_state()
+    state.certifications.append(
+        replace(
+            certification(),
+            certification_id="CERT-BLOCKED",
+            result=CertificationResult.BLOCKED,
+        )
+    )
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(state)
+
+    assert captured.value.code == "INVALID_STATE_INTEGRITY"
+    assert "US-0001" in captured.value.message
+    assert "contradictory" in captured.value.message
 
 
 def test_write_failure_before_replace_preserves_previous_state(
