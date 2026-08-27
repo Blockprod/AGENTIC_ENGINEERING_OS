@@ -21,3 +21,5 @@ Documentation :
 - [Contrat canonique d'une User Story](docs/06-user-story-contract.md)
 - [Contrat des preuves](docs/07-evidence-contract.md)
 - [Contrat des gates](docs/08-gate-contract.md)
+- [Modèle d'audit](docs/09-audit-model.md)
+- [Modèle de certification](docs/10-certification-model.md)
