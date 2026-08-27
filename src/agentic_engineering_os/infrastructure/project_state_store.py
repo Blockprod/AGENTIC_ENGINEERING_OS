@@ -47,6 +47,23 @@ class PersistenceError(RuntimeError):
         super().__init__(f"{code}: {message}")
 
 
+class _DuplicateJsonKeyError(ValueError):
+    """A JSON object contains an ambiguous repeated member name."""
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+        super().__init__(key)
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    candidate: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in candidate:
+            raise _DuplicateJsonKeyError(key)
+        candidate[key] = value
+    return candidate
+
+
 class ProjectStateStore:
     """Atomic local ProjectState store; V1 expects a single writer."""
 
@@ -109,7 +126,11 @@ class ProjectStateStore:
                 "READ_FAILED", f"state cannot be read: {self._state_path}"
             ) from error
         try:
-            candidate = json.loads(text)
+            candidate = json.loads(text, object_pairs_hook=_reject_duplicate_json_keys)
+        except _DuplicateJsonKeyError as error:
+            raise PersistenceError(
+                "INVALID_JSON", f"duplicate JSON key: {error.key}"
+            ) from error
         except json.JSONDecodeError as error:
             raise PersistenceError(
                 "INVALID_JSON",

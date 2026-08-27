@@ -266,6 +266,81 @@ def test_corrupt_json_is_explicit_and_never_replaced_by_empty_state(
     assert store.state_path.read_bytes() == corrupt
 
 
+def test_load_rejects_duplicate_root_json_key_without_modifying_file(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    valid_state = json.dumps(to_dict(ProjectState(schema_version="1.0")))
+    ambiguous_state = valid_state.replace(
+        '"schema_version": "1.0"',
+        '"schema_version": "discarded", "schema_version": "1.0"',
+        1,
+    ).encode()
+    store.state_path.parent.mkdir()
+    store.state_path.write_bytes(ambiguous_state)
+
+    with pytest.raises(PersistenceError, match="duplicate JSON key") as captured:
+        store.load()
+
+    assert captured.value.code == "INVALID_JSON"
+    assert "schema_version" in captured.value.message
+    assert store.state_path.read_bytes() == ambiguous_state
+
+
+@pytest.mark.parametrize(
+    ("location", "needle", "replacement", "duplicate_key"),
+    [
+        (
+            "collection",
+            '"user_stories": [',
+            '"user_stories": [], "user_stories": [',
+            "user_stories",
+        ),
+        (
+            "nested-user-story",
+            '"status": "CERTIFIED"',
+            '"status": "discarded", "status": "CERTIFIED"',
+            "status",
+        ),
+        (
+            "nested-evidence",
+            '"producer": "Codex/Tester"',
+            '"producer": "discarded", "producer": "Codex/Tester"',
+            "producer",
+        ),
+        (
+            "deep-audit-payload",
+            '"payload": {"certification_id": "CERT-001", "result": "CERTIFIED"}',
+            (
+                '"payload": {"certification_id": "CERT-001", '
+                '"result": "discarded", "result": "CERTIFIED"}'
+            ),
+            "result",
+        ),
+    ],
+)
+def test_load_rejects_duplicate_json_keys_at_every_nested_depth(
+    tmp_path: Path,
+    location: str,
+    needle: str,
+    replacement: str,
+    duplicate_key: str,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    valid_state = json.dumps(to_dict(full_state()), ensure_ascii=False)
+    assert needle in valid_state, f"invalid adversarial fixture for {location}"
+    ambiguous_state = valid_state.replace(needle, replacement, 1).encode("utf-8")
+    store.state_path.parent.mkdir()
+    store.state_path.write_bytes(ambiguous_state)
+
+    with pytest.raises(PersistenceError, match="duplicate JSON key") as captured:
+        store.load()
+
+    assert captured.value.code == "INVALID_JSON"
+    assert duplicate_key in captured.value.message
+    assert store.state_path.read_bytes() == ambiguous_state
+
+
 def test_schema_invalid_state_is_refused_on_load(tmp_path: Path) -> None:
     store = ProjectStateStore(tmp_path)
     candidate = to_dict(ProjectState(schema_version="1.0"))
