@@ -7,10 +7,26 @@ from .contract_validator import (
     ValidationIssue,
     ValidationResult,
 )
+from .state_transition_service import (
+    ALLOWED_TRANSITIONS,
+    TERMINAL_STATES,
+    StateTransitionService,
+    TransitionContext,
+    TransitionError,
+    TransitionRefusal,
+    TransitionResult,
+)
 
 __all__ = [
     "ContractValidator",
+    "ALLOWED_TRANSITIONS",
     "ParseError",
+    "StateTransitionService",
+    "TERMINAL_STATES",
+    "TransitionContext",
+    "TransitionError",
+    "TransitionRefusal",
+    "TransitionResult",
     "ValidationError",
     "ValidationIssue",
     "ValidationResult",
