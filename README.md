@@ -9,7 +9,7 @@ Principes fondamentaux : état réel comme source de vérité, responsabilités
 séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
-Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `IN PROGRESS — P3.10`
+Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `IN PROGRESS — P3.11`
 
 Documentation :
 
@@ -46,4 +46,5 @@ Documentation :
 - [Parallel Implementer Coordinator](docs/30-parallel-implementer-coordinator.md)
 - [Integration Gate](docs/31-integration-gate.md)
 - [Merge Coordinator](docs/32-merge-coordinator.md)
+- [Mission parallèle end-to-end](docs/33-end-to-end-parallel-mission.md)
 - [JSON Schemas V1](schemas/README.md)

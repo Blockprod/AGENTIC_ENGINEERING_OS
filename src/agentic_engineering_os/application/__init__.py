@@ -116,6 +116,15 @@ from .parallel_implementer_coordinator import (
     PreparedParallelGroup,
     WorktreeManagerPort,
 )
+from .parallel_mission_workflow import (
+    ParallelIntegrationAttempt,
+    ParallelMissionPlan,
+    ParallelMissionResult,
+    ParallelMissionWorkflow,
+    ParallelMissionWorkflowError,
+    ParallelStoryDossier,
+    ParallelStoryStage,
+)
 from .readiness_engine import ReadinessEngine, ReadinessEvaluationError
 from .reviewer import (
     ReviewDimension,
@@ -233,6 +242,13 @@ __all__ = [
     "ParallelGroupStatus",
     "ParallelImplementerCoordinator",
     "ParallelMemberResult",
+    "ParallelIntegrationAttempt",
+    "ParallelMissionPlan",
+    "ParallelMissionResult",
+    "ParallelMissionWorkflow",
+    "ParallelMissionWorkflowError",
+    "ParallelStoryDossier",
+    "ParallelStoryStage",
     "PreparedImplementerContext",
     "PreparedParallelGroup",
     "ProvenanceKind",

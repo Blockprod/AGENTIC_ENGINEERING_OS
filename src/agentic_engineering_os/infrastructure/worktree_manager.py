@@ -533,9 +533,12 @@ class WorktreeManager:
             if item.status is not WorktreeStatus.CLEANED
         }
         for worktree in worktrees:
-            if worktree.branch_name is None or not worktree.branch_name.startswith(
-                "agentic/"
-            ):
+            if worktree.branch_name is None:
+                continue
+            if worktree.branch_name.startswith("agentic/integration/"):
+                # P3.10 owns this separate, deterministic resource namespace.
+                continue
+            if not worktree.branch_name.startswith("agentic/"):
                 continue
             key = (_path_key(worktree.path), _branch_key(worktree.branch_name))
             if key not in live_records:
