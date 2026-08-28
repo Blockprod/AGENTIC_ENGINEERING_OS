@@ -9,6 +9,7 @@ from typing import TypeAlias, cast
 from .enums import (
     AuditEventType,
     CertificationResult,
+    DeferredReason,
     EvidenceType,
     GateResult,
     MissionRole,
@@ -207,6 +208,40 @@ class ReadinessSnapshot:
     @property
     def terminal_ids(self) -> tuple[str, ...]:
         return self._ids_for(ReadinessClassification.TERMINAL)
+
+
+@dataclass(frozen=True, slots=True)
+class WaveMember:
+    """Minimal member of one prospective logical execution layer."""
+
+    user_story_id: str
+    priority: int
+    risk: RiskLevel
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionWave:
+    """One zero-based logical DAG layer, not a concurrency authorization."""
+
+    wave_index: int
+    members: tuple[WaveMember, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DeferredNode:
+    """A node excluded from prospective waves with a deterministic reason."""
+
+    user_story_id: str
+    reason: DeferredReason
+    blocking_dependencies: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WavePlan:
+    """Immutable prospective DAG layering with all non-planned nodes explained."""
+
+    waves: tuple[ExecutionWave, ...]
+    deferred: tuple[DeferredNode, ...]
 
 
 @dataclass(slots=True)

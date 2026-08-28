@@ -23,6 +23,7 @@ La projection DAG de Phase 3 utilise également ce draft :
 
 - `dag-snapshot.schema.json`
 - `readiness-snapshot.schema.json`
+- `wave-plan.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
@@ -52,6 +53,12 @@ ordres canoniques ne sont pas exprimables de façon robuste par ce schéma ;
 catalogue fermé. La correspondance avec le DAG et le ProjectState, la
 satisfaction des dépendances et la politique d'état restent vérifiées par
 `ReadinessEngine`. Ce snapshot n'est pas persisté.
+
+`wave-plan.schema.json` contraint les Waves logiques, leurs indices et membres,
+ainsi que les nœuds différés et leurs raisons. Le layering topologique, la
+cohérence avec la readiness et l'ordre canonique restent applicatifs sous
+`WavePlanner`. Le plan n'est pas persisté et n'accorde aucune autorité
+d'exécution.
 
 ## Limites sémantiques
 

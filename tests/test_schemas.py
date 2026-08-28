@@ -25,6 +25,7 @@ SCHEMA_FILES = {
     "certifier-result": "certifier-result.schema.json",
     "dag-snapshot": "dag-snapshot.schema.json",
     "readiness-snapshot": "readiness-snapshot.schema.json",
+    "wave-plan": "wave-plan.schema.json",
 }
 
 VALID_FIXTURES = [(name, f"{name}.json") for name in SCHEMA_FILES]
@@ -46,6 +47,11 @@ INVALID_FIXTURES = [
         "readiness-snapshot",
         "readiness-snapshot-invalid-structure.json",
         ["nodes", 0, "classification"],
+    ),
+    (
+        "wave-plan",
+        "wave-plan-invalid-structure.json",
+        ["waves", 0, "wave_index"],
     ),
 ]
 

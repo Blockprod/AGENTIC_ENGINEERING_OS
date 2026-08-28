@@ -32,6 +32,7 @@ _SCHEMA_FILES = {
     "certifier-result": "certifier-result.schema.json",
     "dag-snapshot": "dag-snapshot.schema.json",
     "readiness-snapshot": "readiness-snapshot.schema.json",
+    "wave-plan": "wave-plan.schema.json",
 }
 
 

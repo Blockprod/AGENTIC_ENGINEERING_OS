@@ -118,6 +118,7 @@ from .tester import (
     TesterVerdict,
     TesterVerificationResult,
 )
+from .wave_planner import WavePlanner, WavePlanningError
 
 __all__ = [
     "AcceptanceResult",
@@ -211,4 +212,6 @@ __all__ = [
     "ValidationResult",
     "VerificationOutcome",
     "VerificationResult",
+    "WavePlanner",
+    "WavePlanningError",
 ]

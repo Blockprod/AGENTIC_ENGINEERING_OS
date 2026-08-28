@@ -1,0 +1,16 @@
+{
+  "waves": [
+    {
+      "wave_index": -1,
+      "members": []
+    }
+  ],
+  "deferred": [
+    {
+      "user_story_id": "US-0001",
+      "reason": "PARALLEL_CONFLICT",
+      "blocking_dependencies": []
+    }
+  ],
+  "worktrees": []
+}

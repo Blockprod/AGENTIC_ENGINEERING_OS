@@ -49,5 +49,6 @@ approbations ne sont jamais mutés, y compris après une erreur.
 
 La priorité et le risque ne changent pas la classification. P3.3 ne produit ni
 Wave, batch, groupe parallèle, conflit d'exécution, worktree, scheduling ou
-transition. Le futur P3.4 pourra consommer les IDs `READY` sans que le
-ReadinessEngine décide de leur regroupement ou de leur ordre d'exécution.
+transition. Le Wave Planner décrit dans `docs/26-wave-planner.md` consomme ces
+diagnostics sans que le ReadinessEngine décide de leur regroupement ou de leur
+ordre d'exécution.

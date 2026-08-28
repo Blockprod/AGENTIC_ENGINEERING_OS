@@ -34,6 +34,14 @@ class ReadinessClassification(str, Enum):
     TERMINAL = "TERMINAL"
 
 
+class DeferredReason(str, Enum):
+    BLOCKED = "BLOCKED"
+    INELIGIBLE = "INELIGIBLE"
+    TERMINAL_SATISFIED = "TERMINAL_SATISFIED"
+    TERMINAL_UNSATISFIED = "TERMINAL_UNSATISFIED"
+    UNPLANNABLE_DEPENDENCY = "UNPLANNABLE_DEPENDENCY"
+
+
 class GateResult(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"

@@ -1,0 +1,31 @@
+{
+  "waves": [
+    {
+      "wave_index": 0,
+      "members": [
+        {
+          "user_story_id": "US-0001",
+          "priority": 1,
+          "risk": "LOW"
+        }
+      ]
+    },
+    {
+      "wave_index": 1,
+      "members": [
+        {
+          "user_story_id": "US-0002",
+          "priority": 2,
+          "risk": "MEDIUM"
+        }
+      ]
+    }
+  ],
+  "deferred": [
+    {
+      "user_story_id": "US-0003",
+      "reason": "TERMINAL_SATISFIED",
+      "blocking_dependencies": []
+    }
+  ]
+}
