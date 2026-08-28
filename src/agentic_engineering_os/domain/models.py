@@ -20,6 +20,7 @@ from .enums import (
     ReadinessClassification,
     RiskLevel,
     UserStoryStatus,
+    WorktreeStatus,
 )
 
 
@@ -282,6 +283,29 @@ class ConflictAnalysis:
     @property
     def unknown_pairs(self) -> tuple[ExecutionConflict, ...]:
         return self._pairs_for(ConflictClassification.UNKNOWN)
+
+
+@dataclass(frozen=True, slots=True)
+class WorktreeAssignment:
+    """Immutable expected state of one isolated Git worktree assignment."""
+
+    assignment_id: str
+    mission_id: str
+    user_story_id: str
+    workflow_generation: int
+    baseline_commit: str
+    branch_name: str
+    worktree_path: str
+    status: WorktreeStatus
+    result_commit: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class WorktreeRegistry:
+    """Versioned, deterministic expected state for external worktree resources."""
+
+    schema_version: str
+    assignments: tuple[WorktreeAssignment, ...]
 
 
 @dataclass(slots=True)

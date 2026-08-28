@@ -25,6 +25,8 @@ La projection DAG de Phase 3 utilise également ce draft :
 - `readiness-snapshot.schema.json`
 - `wave-plan.schema.json`
 - `conflict-analysis.schema.json`
+- `worktree-assignment.schema.json`
+- `worktree-registry.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
@@ -67,6 +69,13 @@ chevauchement. La cohérence avec le WavePlan et le ProjectState, l'ordre
 lexical des IDs, la sémantique de scope et le calcul des chevauchements restent
 vérifiés par `ExecutionConflictAnalyzer`. Cette projection n'est pas persistée
 et n'accorde aucune autorité d'exécution.
+
+`worktree-assignment.schema.json` ferme le modèle d'identité, de génération,
+de baseline, de branche, de path, de lifecycle et de result commit.
+`worktree-registry.schema.json` versionne la collection persistante. Le store
+et `WorktreeManager` vérifient applicativement l'ordre canonique, les identités
+dérivées, l'unicité des ressources actives, les transitions autorisées et la
+cohérence avec la réalité Git.
 
 ## Limites sémantiques
 

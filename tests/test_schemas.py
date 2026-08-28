@@ -27,6 +27,8 @@ SCHEMA_FILES = {
     "readiness-snapshot": "readiness-snapshot.schema.json",
     "wave-plan": "wave-plan.schema.json",
     "conflict-analysis": "conflict-analysis.schema.json",
+    "worktree-assignment": "worktree-assignment.schema.json",
+    "worktree-registry": "worktree-registry.schema.json",
 }
 
 VALID_FIXTURES = [(name, f"{name}.json") for name in SCHEMA_FILES]
@@ -58,6 +60,16 @@ INVALID_FIXTURES = [
         "conflict-analysis",
         "conflict-analysis-invalid-structure.json",
         ["pairs", 0, "classification"],
+    ),
+    (
+        "worktree-assignment",
+        "worktree-assignment-invalid-lifecycle.json",
+        ["result_commit"],
+    ),
+    (
+        "worktree-registry",
+        "worktree-registry-invalid-structure.json",
+        ["schema_version"],
     ),
 ]
 

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:worktree-assignment",
+  "title": "Canonical V1 Git Worktree Assignment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assignment_id",
+    "mission_id",
+    "user_story_id",
+    "workflow_generation",
+    "baseline_commit",
+    "branch_name",
+    "worktree_path",
+    "status",
+    "result_commit"
+  ],
+  "properties": {
+    "assignment_id": {
+      "type": "string",
+      "pattern": "^wa-[0-9a-f]{24}$"
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "user_story_id": {
+      "type": "string",
+      "pattern": "^US-[0-9]{4}$"
+    },
+    "workflow_generation": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "baseline_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "branch_name": {
+      "type": "string",
+      "maxLength": 120,
+      "pattern": "^agentic/g(0|[1-9][0-9]*)/us-[0-9]{4}-[0-9a-f]{24}$"
+    },
+    "worktree_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PLANNED", "ACTIVE", "COMPLETED", "FAILED", "CLEANED"]
+    },
+    "result_commit": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"status": {"const": "COMPLETED"}},
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "result_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {"enum": ["PLANNED", "ACTIVE", "FAILED"]}
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {"result_commit": {"type": "null"}}
+      }
+    }
+  ]
+}

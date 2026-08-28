@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:worktree-registry",
+  "title": "Canonical V1 Git Worktree Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "assignments"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "assignments": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:agentic-engineering-os:schema:v1:worktree-assignment"
+      }
+    }
+  }
+}

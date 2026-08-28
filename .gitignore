@@ -9,3 +9,5 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+.agentic-engineering-os/worktrees.json
+.agentic-engineering-os/.worktrees.*.tmp

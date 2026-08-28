@@ -54,6 +54,14 @@ class ConflictReason(str, Enum):
     SCOPE_UNSPECIFIED = "SCOPE_UNSPECIFIED"
 
 
+class WorktreeStatus(str, Enum):
+    PLANNED = "PLANNED"
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CLEANED = "CLEANED"
+
+
 class GateResult(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"

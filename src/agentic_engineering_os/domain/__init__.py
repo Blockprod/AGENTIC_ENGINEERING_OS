@@ -14,6 +14,7 @@ from .enums import (
     ReadinessClassification,
     RiskLevel,
     UserStoryStatus,
+    WorktreeStatus,
 )
 from .models import (
     AcceptanceCriterion,
@@ -38,6 +39,8 @@ from .models import (
     UserStoryScope,
     WaveMember,
     WavePlan,
+    WorktreeAssignment,
+    WorktreeRegistry,
     to_dict,
 )
 
@@ -77,5 +80,8 @@ __all__ = [
     "UserStoryStatus",
     "WaveMember",
     "WavePlan",
+    "WorktreeAssignment",
+    "WorktreeRegistry",
+    "WorktreeStatus",
     "to_dict",
 ]

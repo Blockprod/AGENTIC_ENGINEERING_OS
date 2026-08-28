@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "assignments": [
+    {
+      "assignment_id": "wa-1fab18116d1ff54d995bd8b1",
+      "mission_id": "P3.7",
+      "user_story_id": "US-0001",
+      "workflow_generation": 2,
+      "baseline_commit": "0123456789abcdef0123456789abcdef01234567",
+      "branch_name": "agentic/g2/us-0001-1fab18116d1ff54d995bd8b1",
+      "worktree_path": "D:\\worktrees\\wa-1fab18116d1ff54d995bd8b1",
+      "status": "PLANNED",
+      "result_commit": null
+    }
+  ]
+}
