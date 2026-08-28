@@ -30,6 +30,7 @@ _SCHEMA_FILES = {
     "tester-result": "tester-result.schema.json",
     "reviewer-result": "reviewer-result.schema.json",
     "certifier-result": "certifier-result.schema.json",
+    "dag-snapshot": "dag-snapshot.schema.json",
 }
 
 

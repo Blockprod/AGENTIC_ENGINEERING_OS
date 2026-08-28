@@ -23,6 +23,7 @@ SCHEMA_FILES = {
     "tester-result": "tester-result.schema.json",
     "reviewer-result": "reviewer-result.schema.json",
     "certifier-result": "certifier-result.schema.json",
+    "dag-snapshot": "dag-snapshot.schema.json",
 }
 
 VALID_FIXTURES = [(name, f"{name}.json") for name in SCHEMA_FILES]
@@ -35,6 +36,11 @@ INVALID_FIXTURES = [
     ("certification", "certification-unknown-verdict.json", ["result"]),
     ("project-state", "project-state-unknown-version.json", ["schema_version"]),
     ("certifier-result", "certifier-result-certified.json", ["verdict"]),
+    (
+        "dag-snapshot",
+        "dag-snapshot-invalid-structure.json",
+        ["nodes", 0, "priority"],
+    ),
 ]
 
 

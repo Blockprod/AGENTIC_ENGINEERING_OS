@@ -19,6 +19,10 @@ Les contrats opérationnels de Phase 2 utilisent le même draft :
 - `reviewer-result.schema.json`
 - `certifier-result.schema.json`
 
+La projection DAG de Phase 3 utilise également ce draft :
+
+- `dag-snapshot.schema.json`
+
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
 dans les objets dont le contrat est fermé.
@@ -38,6 +42,11 @@ d'unicité des IDs et de résolution des références persistées évidentes.
 `MissionStateStore` valide séparément `mission.json` ; ce document n'ajoute
 aucune autorité au `ProjectState`.
 
+`dag-snapshot.schema.json` contraint les nœuds et edges sérialisés. Les
+références globales, cycles, unicité des IDs de nœuds, complétude des edges et
+ordres canoniques ne sont pas exprimables de façon robuste par ce schéma ;
+`DAGValidator` les vérifie applicativement. Le snapshot n'est pas persisté.
+
 ## Limites sémantiques
 
 Les règles suivantes restent obligatoires, mais relèvent de la future logique
@@ -45,8 +54,7 @@ métier plutôt que de JSON Schema :
 
 - stabilité et non-réutilisation historique des identifiants à l'échelle du
   projet au-delà de l'état chargé ;
-- existence des User Stories référencées, absence d'auto-dépendance, absence de
-  cycles et état `CERTIFIED` des dépendances ;
+- état `CERTIFIED` des dépendances pour la future décision de readiness ;
 - unicité des IDs de critères d'acceptation lorsque deux objets différents
   portent le même ID ;
 - priorité de `forbidden_paths` et contrôle des modifications réelles contre le

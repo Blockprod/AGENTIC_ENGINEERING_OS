@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "user_story_id": "US-0001",
+      "status": "MAGIC",
+      "priority": 0,
+      "risk": "LOW",
+      "depends_on": []
+    }
+  ],
+  "edges": [
+    {
+      "dependency_id": "US-0001"
+    }
+  ],
+  "ready_nodes": ["US-0001"]
+}

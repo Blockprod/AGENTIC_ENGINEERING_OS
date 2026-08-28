@@ -42,6 +42,7 @@ from .control_loop import (
     EvidenceRecorderFactory,
     ProjectStateStorePort,
 )
+from .dag_validator import DAGValidationError, DAGValidator
 from .evidence_recorder import (
     EvidenceObservation,
     EvidenceProvenance,
@@ -141,6 +142,8 @@ __all__ = [
     "ContractValidator",
     "ControlLoop",
     "ControlLoopError",
+    "DAGValidationError",
+    "DAGValidator",
     "ALLOWED_TRANSITIONS",
     "EvidenceObservation",
     "EvidenceProvenance",

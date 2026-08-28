@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "user_story_id": "US-0001",
+      "status": "CERTIFIED",
+      "priority": 1,
+      "risk": "LOW",
+      "depends_on": []
+    },
+    {
+      "user_story_id": "US-0002",
+      "status": "PLANNED",
+      "priority": 2,
+      "risk": "MEDIUM",
+      "depends_on": ["US-0001"]
+    }
+  ],
+  "edges": [
+    {
+      "dependency_id": "US-0001",
+      "dependent_id": "US-0002"
+    }
+  ]
+}

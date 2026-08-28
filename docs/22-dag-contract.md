@@ -119,9 +119,9 @@ couple `(prerequisite_id, dependent_id)`. Elle ne dépend ni de l'ordre du
 filesystem, ni d'un LLM, ni du réseau. Cet ordre assure une représentation
 stable mais ne constitue pas un ordre de scheduling.
 
-P3.1 n'introduit ni modèle Python ni JSON Schema décoratif. Le modèle concret
-et son schéma machine-validable seront introduits avec P3.2, lorsque le DAG
-Validator exécutable définira leur usage réel.
+P3.1 n'introduisait ni modèle Python ni JSON Schema décoratif. P3.2 fournit
+désormais le modèle concret, son schéma machine-validable et le DAG Validator
+exécutable décrits dans `docs/24-dag-validator.md`.
 
 ## Relations avec les autorités existantes
 

@@ -136,6 +136,33 @@ class ProjectState:
     audit_events: list[AuditEvent] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class DAGNode:
+    """Immutable projection of one User Story into the logical DAG."""
+
+    user_story_id: str
+    status: UserStoryStatus
+    priority: int
+    risk: RiskLevel
+    depends_on: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DAGEdge:
+    """Directed dependency edge: dependency -> dependent."""
+
+    dependency_id: str
+    dependent_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class DAGSnapshot:
+    """Immutable, deterministic and non-persistent ProjectState projection."""
+
+    nodes: tuple[DAGNode, ...]
+    edges: tuple[DAGEdge, ...]
+
+
 @dataclass(slots=True)
 class MissionState:
     """Operational mission memory without project-control authority."""
