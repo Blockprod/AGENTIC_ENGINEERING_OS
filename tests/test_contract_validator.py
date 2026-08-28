@@ -22,6 +22,7 @@ VALID_FIXTURES = [
     ("audit-event", "audit-event.json"),
     ("certification", "certification.json"),
     ("implementer-result", "implementer-result.json"),
+    ("tester-result", "tester-result.json"),
 ]
 
 INVALID_FIXTURES = [
@@ -31,6 +32,7 @@ INVALID_FIXTURES = [
     ("gate", "gate-unknown-result.json"),
     ("certification", "certification-unknown-verdict.json"),
     ("implementer-result", "implementer-result-certified.json"),
+    ("tester-result", "tester-result-ready-with-fail.json"),
 ]
 
 

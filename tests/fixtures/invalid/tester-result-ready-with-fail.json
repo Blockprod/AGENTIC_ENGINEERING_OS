@@ -1,0 +1,18 @@
+{
+  "mission_id": "P2.6",
+  "role": "TESTER",
+  "subject": "US-0001",
+  "user_story_id": "US-0001",
+  "observed_commit": "a6d78c2e800f3a247f8474a0b674190599ea049f",
+  "summary": "A failure cannot be ready for review.",
+  "test_plan": {"acceptance_criteria": ["AC-001"], "positive_tests": ["Positive"], "negative_tests": ["Negative"], "edge_cases": ["Edge"], "regressions": ["Regression"], "commands": ["python -m pytest"]},
+  "acceptance_results": [{"acceptance_criterion_id": "AC-001", "result": "FAIL", "evidence": ["TC-001 failed"], "notes": "Failure observed."}],
+  "test_cases": [{"id": "TC-001", "type": "REGRESSION", "objective": "Find regression.", "expected_result": "Pass", "observed_result": "Fail", "required": true, "executed": true, "verdict": "FAIL"}],
+  "test_files_changed": [],
+  "verification_commands": ["python -m pytest"],
+  "verification_results": [{"command": "python -m pytest", "required": true, "executed": true, "result": "FAIL", "exit_code": 1, "details": "1 failed"}],
+  "findings": ["Regression found."],
+  "blockers": ["Contradicts READY_FOR_REVIEW"],
+  "recommended_next_role": "REVIEWER",
+  "verdict": "READY_FOR_REVIEW"
+}

@@ -1,0 +1,30 @@
+{
+  "mission_id": "P2.6",
+  "role": "TESTER",
+  "subject": "US-0001",
+  "user_story_id": "US-0001",
+  "observed_commit": "a6d78c2e800f3a247f8474a0b674190599ea049f",
+  "summary": "Independent adversarial verification completed.",
+  "test_plan": {
+    "acceptance_criteria": ["AC-001"],
+    "positive_tests": ["Verify the expected behavior."],
+    "negative_tests": ["Reject an invalid input."],
+    "edge_cases": ["Check the empty boundary."],
+    "regressions": ["Re-run the existing regression."],
+    "commands": ["python -m pytest tests/test_feature.py"]
+  },
+  "acceptance_results": [{"acceptance_criterion_id": "AC-001", "result": "PASS", "evidence": ["TC-001 through TC-004 passed"], "notes": "Observable behavior matched the criterion."}],
+  "test_cases": [
+    {"id": "TC-001", "type": "POSITIVE", "objective": "Verify expected behavior.", "expected_result": "Success", "observed_result": "Success", "required": true, "executed": true, "verdict": "PASS"},
+    {"id": "TC-002", "type": "NEGATIVE", "objective": "Reject invalid input.", "expected_result": "Rejected", "observed_result": "Rejected", "required": true, "executed": true, "verdict": "PASS"},
+    {"id": "TC-003", "type": "EDGE", "objective": "Check empty boundary.", "expected_result": "Handled", "observed_result": "Handled", "required": true, "executed": true, "verdict": "PASS"},
+    {"id": "TC-004", "type": "REGRESSION", "objective": "Check existing behavior.", "expected_result": "Preserved", "observed_result": "Preserved", "required": true, "executed": true, "verdict": "PASS"}
+  ],
+  "test_files_changed": ["tests/test_feature.py"],
+  "verification_commands": ["python -m pytest tests/test_feature.py"],
+  "verification_results": [{"command": "python -m pytest tests/test_feature.py", "required": true, "executed": true, "result": "PASS", "exit_code": 0, "details": "4 passed"}],
+  "findings": [],
+  "blockers": [],
+  "recommended_next_role": "REVIEWER",
+  "verdict": "READY_FOR_REVIEW"
+}
