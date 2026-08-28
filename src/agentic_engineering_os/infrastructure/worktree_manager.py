@@ -132,6 +132,15 @@ class WorktreeManager:
         except PersistenceError as error:
             raise _registry_error(error) from error
 
+    def current_primary_commit(self) -> str:
+        """Return the observed primary HEAD through the manager's Git boundary."""
+
+        self._verify_repository()
+        try:
+            return self._git.current_head(self._repository_root)
+        except GitOperationError as error:
+            raise _git_error(error) from error
+
     def plan_assignment(
         self,
         *,

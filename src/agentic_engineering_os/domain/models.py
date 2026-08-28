@@ -286,6 +286,27 @@ class ConflictAnalysis:
 
 
 @dataclass(frozen=True, slots=True)
+class ParallelExecutionGroup:
+    """One deterministic set of pairwise-SAFE members from a logical Wave."""
+
+    group_index: int
+    wave_index: int
+    user_story_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ParallelExecutionPlan:
+    """Reconstructible grouping bound to one mission generation and baseline."""
+
+    mission_id: str
+    workflow_generation: int
+    baseline_commit: str
+    wave_index: int
+    groups: tuple[ParallelExecutionGroup, ...]
+    source_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
 class WorktreeAssignment:
     """Immutable expected state of one isolated Git worktree assignment."""
 

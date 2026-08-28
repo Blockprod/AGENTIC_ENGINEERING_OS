@@ -27,6 +27,7 @@ SCHEMA_FILES = {
     "readiness-snapshot": "readiness-snapshot.schema.json",
     "wave-plan": "wave-plan.schema.json",
     "conflict-analysis": "conflict-analysis.schema.json",
+    "parallel-execution-plan": "parallel-execution-plan.schema.json",
     "worktree-assignment": "worktree-assignment.schema.json",
     "worktree-registry": "worktree-registry.schema.json",
 }
@@ -60,6 +61,11 @@ INVALID_FIXTURES = [
         "conflict-analysis",
         "conflict-analysis-invalid-structure.json",
         ["pairs", 0, "classification"],
+    ),
+    (
+        "parallel-execution-plan",
+        "parallel-execution-plan-invalid-structure.json",
+        ["baseline_commit"],
     ),
     (
         "worktree-assignment",

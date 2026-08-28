@@ -1,0 +1,14 @@
+{
+  "mission_id": "mission-parallel",
+  "workflow_generation": 3,
+  "baseline_commit": "0123456789abcdef0123456789abcdef01234567",
+  "wave_index": 0,
+  "groups": [
+    {
+      "group_index": 0,
+      "wave_index": 0,
+      "user_story_ids": ["US-0001", "US-0002"]
+    }
+  ],
+  "source_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}

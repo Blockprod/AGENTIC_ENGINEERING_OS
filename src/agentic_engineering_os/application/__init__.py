@@ -85,6 +85,17 @@ from .orchestrator import (
     ProjectStateReaderPort,
     RoleHandoff,
 )
+from .parallel_implementer_coordinator import (
+    ParallelCoordinationError,
+    ParallelCoordinationInput,
+    ParallelGroupResult,
+    ParallelGroupStatus,
+    ParallelImplementerCoordinator,
+    ParallelMemberResult,
+    PreparedImplementerContext,
+    PreparedParallelGroup,
+    WorktreeManagerPort,
+)
 from .readiness_engine import ReadinessEngine, ReadinessEvaluationError
 from .reviewer import (
     ReviewDimension,
@@ -180,6 +191,14 @@ __all__ = [
     "Orchestrator",
     "OrchestratorConfigurationError",
     "ParseError",
+    "ParallelCoordinationError",
+    "ParallelCoordinationInput",
+    "ParallelGroupResult",
+    "ParallelGroupStatus",
+    "ParallelImplementerCoordinator",
+    "ParallelMemberResult",
+    "PreparedImplementerContext",
+    "PreparedParallelGroup",
     "ProvenanceKind",
     "ProjectStateStorePort",
     "ProjectStateReaderPort",
@@ -220,4 +239,5 @@ __all__ = [
     "VerificationResult",
     "WavePlanner",
     "WavePlanningError",
+    "WorktreeManagerPort",
 ]

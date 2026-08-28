@@ -27,6 +27,7 @@ La projection DAG de Phase 3 utilise également ce draft :
 - `conflict-analysis.schema.json`
 - `worktree-assignment.schema.json`
 - `worktree-registry.schema.json`
+- `parallel-execution-plan.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
@@ -76,6 +77,13 @@ de baseline, de branche, de path, de lifecycle et de result commit.
 et `WorktreeManager` vérifient applicativement l'ordre canonique, les identités
 dérivées, l'unicité des ressources actives, les transitions autorisées et la
 cohérence avec la réalité Git.
+
+`parallel-execution-plan.schema.json` ferme la projection reconstructible des
+groupes d'une Wave courante, liée à une mission, une génération, une baseline
+et un fingerprint de contexte. La compatibilité pairwise, le regroupement
+greedy, la fraîcheur et la complétude restent contrôlés applicativement par le
+`ParallelImplementerCoordinator`. Ce plan n'est pas persisté et n'accorde
+aucune autorité Git ou Control Plane.
 
 ## Limites sémantiques
 
