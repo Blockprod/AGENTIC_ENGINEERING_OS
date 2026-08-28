@@ -278,6 +278,7 @@ def _validate_human_approval(
         and item.result is True
         and item.source.casefold() == "human"
         and item.producer == approval.approved_by
+        and approval.evidence_ref == evidence_id
         and is_attributable_human_identity(item.producer)
         and (item.commit is None or item.commit == certification.commit)
     ):

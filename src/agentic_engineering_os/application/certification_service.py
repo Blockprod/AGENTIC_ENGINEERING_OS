@@ -451,6 +451,10 @@ class CertificationService:
             and is_attributable_human_identity(evidence.producer)
             and approval.approved_by is not None
             and approval.approved_by == evidence.producer
+            and (
+                evidence.result is False
+                or approval.evidence_ref == evidence.evidence_id
+            )
             and approval.approved_at is not None
             and approval.approved_at.tzinfo is not None
             and isinstance(evidence.result, bool)

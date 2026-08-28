@@ -101,6 +101,7 @@ def story(
             approved=human_approved,
             approved_by=approved_by,
             approved_at=NOW if approved_by is not None else None,
+            evidence_ref="EV-HUMAN" if human_approved else None,
         ),
         metadata=UserStoryMetadata(
             created_at=NOW,

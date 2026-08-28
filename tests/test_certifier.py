@@ -36,7 +36,13 @@ def story(*, status=UserStoryStatus.CERTIFICATION, human=False, producer="Alice"
         RiskLevel.HIGH, (), UserStoryScope(("src/", "tests/"), ("src/no.py",)),
         (AcceptanceCriterion("AC-001", "Behavior works.", True),),
         ("GATE-TESTS",),
-        HumanApproval(human, human, producer if human else None, NOW if human else None),
+        HumanApproval(
+            human,
+            human,
+            producer if human else None,
+            NOW if human else None,
+            "EV-HUMAN" if human else None,
+        ),
         UserStoryMetadata(NOW, "Codex/Architect", NOW),
     )
 

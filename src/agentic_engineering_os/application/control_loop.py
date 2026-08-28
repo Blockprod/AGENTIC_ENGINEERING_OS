@@ -31,6 +31,7 @@ from .gate_evaluator import (
     GateEvaluationContext,
     GateEvaluator,
 )
+from .human_approval_service import HumanApprovalResult, HumanApprovalService
 from .state_transition_service import (
     StateTransitionService,
     TransitionContext,
@@ -70,12 +71,42 @@ class ControlLoop:
         gate_evaluator: GateEvaluator,
         certification_service: CertificationService,
         transition_service: StateTransitionService,
+        human_approval_service: HumanApprovalService | None = None,
     ) -> None:
         self._state_store = state_store
         self._evidence_recorder_factory = evidence_recorder_factory
         self._gate_evaluator = gate_evaluator
         self._certification_service = certification_service
         self._transition_service = transition_service
+        self._human_approval_service = human_approval_service or HumanApprovalService()
+
+    def apply_human_approval(
+        self,
+        user_story_id: str,
+        evidence_id: str,
+        *,
+        expected_commit: str,
+    ) -> HumanApprovalResult:
+        """Apply one already-persisted Human Evidence to a copied User Story."""
+        candidate = _candidate_state(self.load_state())
+        index, current = _require_unique_story(candidate, user_story_id)
+        matches = [
+            item for item in candidate.evidence if item.evidence_id == evidence_id
+        ]
+        if len(matches) != 1:
+            raise ControlLoopError(
+                "HUMAN_EVIDENCE_NOT_FOUND",
+                "persisted Human Evidence is missing or ambiguous",
+            )
+        story = _candidate_story(current)
+        candidate.user_stories[index] = story
+        result = self._human_approval_service.apply(
+            story,
+            matches[0],
+            expected_commit=expected_commit,
+        )
+        self._state_store.save(candidate)
+        return result
 
     def load_state(self) -> ProjectState:
         """Load the authoritative state without manufacturing a fallback."""

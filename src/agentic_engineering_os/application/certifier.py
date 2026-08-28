@@ -327,7 +327,7 @@ def _dossier_truth(context: CertifierInput, validator: ContractValidator) -> dic
     gates_by_id = {x.gate_id: x for x in context.gates}
     human_matches = [x for x in context.evidence if x.evidence_type is EvidenceType.HUMAN_APPROVAL and x.subject == context.user_story.id]
     approval = context.user_story.human_approval
-    human_valid = (not approval.required) or (len(human_matches) == 1 and approval.approved and approval.approved_at is not None and is_attributable_human_identity(approval.approved_by) and human_matches[0].result is True and human_matches[0].source.casefold() == "human" and human_matches[0].producer == approval.approved_by and is_attributable_human_identity(human_matches[0].producer) and (human_matches[0].commit is None or human_matches[0].commit.casefold() == context.observed_commit.casefold()))
+    human_valid = (not approval.required) or (len(human_matches) == 1 and approval.approved and approval.approved_at is not None and approval.evidence_ref == human_matches[0].evidence_id and is_attributable_human_identity(approval.approved_by) and human_matches[0].result is True and human_matches[0].source.casefold() == "human" and human_matches[0].producer == approval.approved_by and is_attributable_human_identity(human_matches[0].producer) and (human_matches[0].commit is None or human_matches[0].commit.casefold() == context.observed_commit.casefold()))
     return {"context": context, "artifacts": artifacts, "acceptance": acceptance, "gates": gates_by_id, "evidence": evidence, "human_matches": human_matches, "human_valid": human_valid}
 
 

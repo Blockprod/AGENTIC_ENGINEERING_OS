@@ -67,6 +67,11 @@ from .implementer import (
     VerificationOutcome,
     VerificationResult,
 )
+from .human_approval_service import (
+    HumanApprovalError,
+    HumanApprovalResult,
+    HumanApprovalService,
+)
 from .orchestrator import (
     MissionStateStorePort,
     OrchestrationResult,
@@ -146,6 +151,9 @@ __all__ = [
     "GateReason",
     "GateCheck",
     "HumanApprovalCheck",
+    "HumanApprovalError",
+    "HumanApprovalResult",
+    "HumanApprovalService",
     "ImplementerInput",
     "ImplementerInputError",
     "ImplementerResult",

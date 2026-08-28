@@ -127,7 +127,13 @@
     "human_approval": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required", "approved", "approved_by", "approved_at"],
+      "required": [
+        "required",
+        "approved",
+        "approved_by",
+        "approved_at",
+        "evidence_ref"
+      ],
       "properties": {
         "required": {
           "type": "boolean"
@@ -142,6 +148,10 @@
         "approved_at": {
           "type": ["string", "null"],
           "format": "date-time"
+        },
+        "evidence_ref": {
+          "type": ["string", "null"],
+          "minLength": 1
         }
       }
     },

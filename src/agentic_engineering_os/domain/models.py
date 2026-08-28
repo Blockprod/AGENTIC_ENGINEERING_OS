@@ -42,6 +42,7 @@ class HumanApproval:
     approved: bool
     approved_by: str | None
     approved_at: datetime | None
+    evidence_ref: str | None = None
 
 
 @dataclass(slots=True)

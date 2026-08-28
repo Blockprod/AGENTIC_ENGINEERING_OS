@@ -15,6 +15,9 @@ from agentic_engineering_os.application import ContractValidator
 from agentic_engineering_os.application.certification_integrity import (
     certified_dossier_issues,
 )
+from agentic_engineering_os.application._identity import (
+    is_attributable_human_identity,
+)
 from agentic_engineering_os.domain import (
     AcceptanceCriterion,
     AuditEvent,
@@ -367,6 +370,35 @@ def _validate_integrity(state: ProjectState) -> None:
             )
 
     for story in state.user_stories:
+        approval = story.human_approval
+        if approval.approved:
+            matches = [
+                item
+                for item in state.evidence
+                if item.evidence_id == approval.evidence_ref
+            ]
+            if not (
+                approval.required
+                and len(matches) == 1
+                and matches[0].evidence_type is EvidenceType.HUMAN_APPROVAL
+                and matches[0].subject == story.id
+                and matches[0].result is True
+                and matches[0].source.casefold() == "human"
+                and matches[0].producer == approval.approved_by
+                and is_attributable_human_identity(approval.approved_by)
+                and approval.approved_at == matches[0].timestamp
+            ):
+                raise PersistenceError(
+                    "INVALID_HUMAN_APPROVAL",
+                    f"User Story {story.id} has no applicable Human Evidence",
+                )
+        elif approval.evidence_ref is not None:
+            raise PersistenceError(
+                "INVALID_HUMAN_APPROVAL",
+                f"unapproved User Story {story.id} cannot reference approval Evidence",
+            )
+
+    for story in state.user_stories:
         if story.status is not UserStoryStatus.CERTIFIED:
             continue
         results = {
@@ -471,6 +503,9 @@ def _hydrate_user_story(data: Mapping[str, object]) -> UserStory:
             ),
             approved_at=_optional_datetime(
                 approval["approved_at"], "human_approval.approved_at"
+            ),
+            evidence_ref=_optional_string(
+                approval.get("evidence_ref"), "human_approval.evidence_ref"
             ),
         ),
         metadata=UserStoryMetadata(

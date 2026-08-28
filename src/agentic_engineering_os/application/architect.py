@@ -275,6 +275,7 @@ class ArchitectResultValidator:
                 approval["approved"] is not False
                 or approval["approved_by"] is not None
                 or approval["approved_at"] is not None
+                or approval["evidence_ref"] is not None
             ):
                 issues.append(
                     ValidationIssue(

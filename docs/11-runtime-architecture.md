@@ -82,6 +82,7 @@ réalisée par l'infrastructure ; elle ne crée pas une interface par classe.
 | Contract validation | Combiner validation structurelle des schémas et règles sémantiques applicables. | Ne modifie pas les données pour les rendre valides. |
 | State transition validation | Autoriser uniquement une transition canonique dont les préconditions sont prouvées. | Ne persiste pas et ne force aucune transition. |
 | Evidence recording | Vérifier la forme, la provenance et le contexte avant enregistrement. | Ne produit ni Gate ni certification et ne fabrique aucune preuve. |
+| Human approval application | Appliquer une décision Human attribuable depuis une Evidence persistée et applicable. | Ne crée ni la décision ni l'Evidence et ne certifie pas. |
 | Gate evaluation | Évaluer une condition à partir d'Evidence résolues et applicables. | Ne collecte ni ne réécrit les Evidence. |
 | Certification | Agréger critères, Gates, approbations, Evidence et commit pour un verdict. | Ne remédie pas, ne modifie pas le contrat et ne certifie pas une inconnue. |
 | Persistent project state | Charger et enregistrer l'état autoritatif versionné dans le repository. | Ne contient aucune règle de transition, Gate ou certification. |
@@ -96,8 +97,9 @@ explicitement : un port `ProjectStateStorePort`, une factory
 couche application ne connaît ni le chemin ni le format concret du stockage,
 et `ProjectStateStore` le réalise par typage structurel.
 
-L'API V1 expose uniquement `load_state`, `record_evidence`, `evaluate_gate`,
-`certify_user_story` et `transition_user_story`. Chaque opération modificatrice
+L'API V1 expose uniquement `load_state`, `record_evidence`,
+`apply_human_approval`, `evaluate_gate`, `certify_user_story` et
+`transition_user_story`. Chaque opération modificatrice
 charge l'état courant, crée une copie contrôlée des collections, délègue la
 décision au service spécialisé, puis confie l'état candidat au store. Pour une
 transition, la User Story ciblée et ses sous-objets mutables sont également
@@ -112,6 +114,16 @@ le verdict et `StateTransitionService` est seul à modifier
 aucune transition implicite. Toute validation du `ProjectState` candidat et
 toute écriture de `state.json` restent sous la responsabilité exclusive de
 `ProjectStateStore`.
+
+Une décision humaine, son Evidence et son application sont trois faits
+distincts. `EvidenceRecorder` conserve l'observation historique sans modifier
+la User Story. `HumanApprovalService` évalue explicitement une Evidence
+`HUMAN_APPROVAL` déjà persistée ; `ControlLoop` applique ensuite la décision à
+une copie et persiste l'état candidat. Le champ `evidence_ref` relie
+l'approbation appliquée à sa source et permet au store de refuser un
+`approved=True` forgé ou incohérent. Une décision `False` reste une Evidence
+observable mais ne devient jamais une approbation. La révocation et le
+remplacement restent indéfinis et échouent donc en mode fail-closed.
 
 La promotion `CERTIFICATION → CERTIFIED` possède une frontière de confiance
 supplémentaire : le contexte public reste une déclaration de faits sans pouvoir
