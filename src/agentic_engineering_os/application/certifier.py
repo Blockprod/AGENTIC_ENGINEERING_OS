@@ -365,10 +365,17 @@ def _validate_acceptance_checks(data: Mapping[str, object], truth: Mapping[str, 
         for ref in cast(list[str], item["evidence_refs"]):
             evidence = available.get(ref)
             context = cast(CertifierInput, truth["context"])
+            expected_payload = (
+                True
+                if result == GateResult.PASS.value
+                else False if result == GateResult.FAIL.value else None
+            )
             if evidence is not None and (
                 evidence.subject != item["acceptance_criterion_id"]
                 or evidence.evidence_type is not EvidenceType.ACCEPTANCE_CRITERION_CHECK
-                or evidence.result != result
+                or not isinstance(evidence.result, bool)
+                or expected_payload is None
+                or evidence.result is not expected_payload
                 or evidence.commit is None
                 or evidence.commit.casefold() != context.observed_commit.casefold()
             ):

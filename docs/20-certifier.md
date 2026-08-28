@@ -38,7 +38,13 @@ Le runtime conserve `FAIL → REMEDIATION_REQUIRED` et
 
 Les références ne peuvent désigner que les Evidence réellement fournies. Un
 résultat de rôle ou une observation du Certifier ne devient pas une Evidence du
-Control Plane. Une approbation requise exige une Evidence `HUMAN_APPROVAL`
+Control Plane. Un résultat d'Acceptance Criterion porté par un rôle utilise
+`PASS`, `FAIL` ou `UNKNOWN`, tandis qu'une Evidence Control Plane
+`ACCEPTANCE_CRITERION_CHECK` utilise exclusivement le booléen explicite `true`
+ou `false`. Aucune chaîne, valeur numérique ou valeur truthy/falsy n'est
+convertie implicitement.
+
+Une approbation requise exige une Evidence `HUMAN_APPROVAL`
 applicable et une identité humaine attribuable selon les règles canoniques ;
 Codex ne peut pas l'apporter.
 

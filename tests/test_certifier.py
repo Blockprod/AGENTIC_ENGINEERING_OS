@@ -3,7 +3,8 @@ from datetime import datetime
 import pytest
 
 from agentic_engineering_os.application import (
-    AcceptanceCheck, ArchitectResult, ArchitectVerdict, ArtifactCheck,
+    AcceptanceCheck, AcceptanceResult, ArchitectResult, ArchitectVerdict, ArtifactCheck,
+    CertificationService,
     CertifierFinding, CertifierInput, CertifierInputError,
     CertifierRecommendedAction, CertifierResult, CertifierResultValidator,
     CertifierVerdict, GateCheck, HumanApprovalCheck, ImplementerResult,
@@ -13,7 +14,7 @@ from agentic_engineering_os.application import (
     VerificationResult,
 )
 from agentic_engineering_os.domain import (
-    AcceptanceCriterion, Evidence, EvidenceType, Gate, GateResult, HumanApproval,
+    AcceptanceCriterion, CertificationResult, Evidence, EvidenceType, Gate, GateResult, HumanApproval,
     MissionRole, OperatingStep, RiskLevel, UserStory, UserStoryMetadata,
     UserStoryScope, UserStoryStatus, to_dict,
 )
@@ -91,7 +92,7 @@ def reviewer(**overrides):
     return ReviewerResult(**values)
 
 
-def evidence(identifier="EV-AC", *, kind=EvidenceType.ACCEPTANCE_CRITERION_CHECK, subject="AC-001", result="PASS", producer="Codex/Tester", source="pytest", commit=COMMIT):
+def evidence(identifier="EV-AC", *, kind=EvidenceType.ACCEPTANCE_CRITERION_CHECK, subject="AC-001", result=True, producer="Codex/Tester", source="pytest", commit=COMMIT):
     return Evidence(identifier, kind, subject, result, source, None, None, None, commit, NOW, producer)
 
 
@@ -146,6 +147,92 @@ def validate(candidate=None, context=None):
 
 def test_nominal_dossier_is_ready_for_control_plane():
     assert validate().is_valid
+
+
+@pytest.mark.parametrize("payload", ["PASS", "FAIL", 1, 0])
+def test_acceptance_evidence_requires_an_explicit_boolean(payload):
+    context = certifier_input(evidence_items=(evidence(result=payload), evidence("EV-GATE", kind=EvidenceType.TEST_RESULT, subject="US-0001", result=True)))
+    assert not validate(context=context).is_valid
+
+
+def test_tester_pass_and_boolean_false_are_contradictory():
+    context = certifier_input(evidence_items=(evidence(result=False), evidence("EV-GATE", kind=EvidenceType.TEST_RESULT, subject="US-0001", result=True)))
+    assert not validate(context=context).is_valid
+
+
+def test_wrong_acceptance_evidence_subject_is_rejected():
+    context = certifier_input(evidence_items=(evidence(subject="AC-OTHER"), evidence("EV-GATE", kind=EvidenceType.TEST_RESULT, subject="US-0001", result=True)))
+    assert not validate(context=context).is_valid
+
+
+def test_wrong_acceptance_evidence_commit_is_rejected():
+    context = certifier_input(evidence_items=(evidence(commit=OTHER_COMMIT), evidence("EV-GATE", kind=EvidenceType.TEST_RESULT, subject="US-0001", result=True)))
+    assert not validate(context=context).is_valid
+
+
+def test_boolean_acceptance_evidence_crosses_certifier_and_certification_service():
+    context = certifier_input()
+    assert CertifierResultValidator().validate(result(), certifier_input=context).is_valid
+    certification = CertificationService().certify(
+        context.user_story, COMMIT,
+        (AcceptanceResult("AC-001", GateResult.PASS, ("EV-AC",)),),
+        context.gates, context.evidence, certifier="Codex/Certifier",
+        certification_id="CERT-R1-PASS", certified_at=NOW,
+    )
+    assert certification.result is CertificationResult.CERTIFIED
+
+
+def test_multiple_mandatory_criteria_accept_explicit_true_evidence():
+    assigned = story()
+    assigned.acceptance_criteria = (*assigned.acceptance_criteria, AcceptanceCriterion("AC-002", "Second behavior works.", True))
+    proposed = story(status=UserStoryStatus.PROPOSED)
+    proposed.acceptance_criteria = assigned.acceptance_criteria
+    tested = make_tester_result(
+        test_plan=TesterPlan(("AC-001", "AC-002"), ("p",), ("n",), ("e",), ("r",), (COMMAND,)),
+        acceptance_results=(
+            TesterAcceptanceResult("AC-001", GateResult.PASS, ("TC-1",), "pass"),
+            TesterAcceptanceResult("AC-002", GateResult.PASS, ("TC-2",), "pass"),
+        ),
+    )
+    context = certifier_input(
+        assigned=assigned, architecture=architect(user_stories=(proposed,)), testing=tested,
+        evidence_items=(evidence(), evidence("EV-AC-2", subject="AC-002"), evidence("EV-GATE", kind=EvidenceType.TEST_RESULT, subject="US-0001", result=True)),
+    )
+    candidate = result(
+        acceptance_checks=(
+            AcceptanceCheck("AC-001", True, GateResult.PASS, ("EV-AC",), "Supported."),
+            AcceptanceCheck("AC-002", True, GateResult.PASS, ("EV-AC-2",), "Supported."),
+        ),
+        evidence_refs=("EV-AC", "EV-AC-2", "EV-GATE"),
+    )
+    assert CertifierResultValidator().validate(candidate, certifier_input=context).is_valid
+
+
+def test_false_acceptance_evidence_supports_remediation_and_rejection():
+    failed_testing = make_tester_result(
+        acceptance_results=(TesterAcceptanceResult("AC-001", GateResult.FAIL, ("TC-1",), "failed"),)
+    )
+    context = certifier_input(
+        testing=failed_testing,
+        evidence_items=(evidence(result=False), evidence("EV-GATE", kind=EvidenceType.TEST_RESULT, subject="US-0001", result=True)),
+    )
+    checks = list(result().artifact_checks)
+    checks[2] = ArtifactCheck(MissionRole.TESTER, True, False, "Tester reported FAIL.")
+    candidate = result(
+        artifact_checks=tuple(checks),
+        acceptance_checks=(AcceptanceCheck("AC-001", True, GateResult.FAIL, ("EV-AC",), "Explicit failure."),),
+        findings=(CertifierFinding("AC_FAIL", "Acceptance Criterion failed.", True),),
+        recommended_action=CertifierRecommendedAction.RETURN_FOR_REMEDIATION,
+        verdict=CertifierVerdict.REMEDIATION_REQUIRED,
+    )
+    assert CertifierResultValidator().validate(candidate, certifier_input=context).is_valid
+    certification = CertificationService().certify(
+        context.user_story, COMMIT,
+        (AcceptanceResult("AC-001", GateResult.FAIL, ("EV-AC",)),),
+        context.gates, context.evidence, certifier="Codex/Certifier",
+        certification_id="CERT-R1-FAIL", certified_at=NOW,
+    )
+    assert certification.result is CertificationResult.REJECTED
 
 
 def test_schema_fixes_role_to_certifier():

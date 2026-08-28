@@ -31,6 +31,11 @@ Schema, ni moteur de preuves, ni agent.
 `result` décrit une observation brute, par exemple un nombre de tests et leur
 sortie. Il ne remplace pas le résultat d'un Gate.
 
+Pour `ACCEPTANCE_CRITERION_CHECK`, le payload V1 est un booléen explicite :
+`true` signifie que le critère est satisfait et `false` qu'il échoue. Les
+chaînes `PASS`/`FAIL` restent des résultats structurés de rôle et ne sont pas
+converties en booléens Evidence.
+
 Selon `evidence_type`, `command`, `exit_code`, `artifact` ou `commit` peuvent
 être explicitement non applicables. Une valeur absente ou nulle alors qu'elle
 est requise pour établir le fait rend la preuve insuffisante ; elle ne peut
