@@ -29,6 +29,7 @@ La projection DAG de Phase 3 utilise également ce draft :
 - `worktree-registry.schema.json`
 - `parallel-execution-plan.schema.json`
 - `integration-gate-result.schema.json`
+- `merge-result.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
@@ -91,6 +92,12 @@ aucune autorité Git ou Control Plane.
 fichiers observés par membre, l'ordre déterministe, les findings et le résultat
 `PASS`, `FAIL` ou `UNKNOWN`. La réalité Git, les scopes, collisions et
 preflights `merge-tree` restent vérifiés applicativement par `IntegrationGate`.
+
+`merge-result.schema.json` ferme le résultat P3.10 avec le contexte de groupe,
+l'ordre et les commits membres, le commit d'intégration observé, les HEAD du
+primary avant/après, le statut `MERGED`, `FAILED` ou `BLOCKED` et les findings.
+La fraîcheur du Gate, la cohérence Git, l'ancestry et la promotion restent des
+preuves applicatives du `MergeCoordinator`.
 
 ## Limites sémantiques
 

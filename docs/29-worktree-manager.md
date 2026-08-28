@@ -94,10 +94,11 @@ disparition, puis persiste `CLEANED`. La branche est toujours conservée.
 ## Sécurité et limites
 
 L'adaptateur Git utilise `subprocess.run` avec une liste d'arguments,
-`shell=False`, capture stdout/stderr et refuse tout exit code inattendu. Il ne
-contient ni reset/clean forcé, retrait forcé, suppression de branche, merge,
-rebase, cherry-pick, force-push, stash automatique, thread, async ou invocation
-Codex.
+`shell=False`, capture stdout/stderr et refuse tout exit code inattendu. La
+frontière P3.7 ne contient aucun merge ; les primitives de merge ajoutées en
+P3.10 sont exposées uniquement au `MergeCoordinator`. L'adaptateur ne contient
+ni reset/clean forcé, retrait forcé, suppression de branche, rebase,
+cherry-pick, force-push, stash automatique, thread, async ou invocation Codex.
 
 Le registre runtime et ses temporaires sont ignorés par Git. Le contrôle dirty
 du primary exclut uniquement le registre canonique attendu ; tout autre

@@ -132,6 +132,12 @@ class WorktreeManager:
     def registry_store(self) -> WorktreeRegistryStore:
         return self._store
 
+    @property
+    def _integration_git_adapter(self) -> GitAdapter:
+        """Provide the existing adapter only to the controlled integration boundary."""
+
+        return self._git
+
     def initialize_registry(self) -> WorktreeRegistry:
         self._verify_repository()
         try:

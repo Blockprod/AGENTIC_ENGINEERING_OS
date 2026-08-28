@@ -593,7 +593,7 @@ def test_cleanup_refuses_completed_branch_advanced_after_recording(
     assert path.exists()
 
 
-def test_manager_source_has_no_destructive_merge_or_parallel_execution_primitives() -> None:
+def test_manager_source_has_no_unauthorized_merge_or_parallel_execution_primitives() -> None:
     source = (
         Path(__file__).parents[1]
         / "src"
@@ -608,14 +608,7 @@ def test_manager_source_has_no_destructive_merge_or_parallel_execution_primitive
         / "infrastructure"
         / "git_adapter.py"
     ).read_text(encoding="utf-8")
-    implementation = f"{source}\n{adapter}".casefold()
-
-    forbidden = (
-        "reset --hard",
-        "clean -fd",
-        "remove --force",
-        "branch -d",
-        "force push",
+    manager_forbidden = (
         '"merge"',
         '"rebase"',
         '"cherry-pick"',
@@ -623,5 +616,18 @@ def test_manager_source_has_no_destructive_merge_or_parallel_execution_primitive
         "asyncio",
         "codex",
     )
-    assert all(item not in implementation for item in forbidden)
-    assert "shell=false" in implementation
+    adapter_forbidden = (
+        "reset --hard",
+        "clean -fd",
+        "remove --force",
+        "branch -d",
+        "force push",
+        '"rebase"',
+        '"cherry-pick"',
+        "thread",
+        "asyncio",
+        "codex",
+    )
+    assert all(item not in source.casefold() for item in manager_forbidden)
+    assert all(item not in adapter.casefold() for item in adapter_forbidden)
+    assert "shell=false" in adapter.casefold()

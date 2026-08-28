@@ -29,6 +29,7 @@ SCHEMA_FILES = {
     "conflict-analysis": "conflict-analysis.schema.json",
     "parallel-execution-plan": "parallel-execution-plan.schema.json",
     "integration-gate-result": "integration-gate-result.schema.json",
+    "merge-result": "merge-result.schema.json",
     "worktree-assignment": "worktree-assignment.schema.json",
     "worktree-registry": "worktree-registry.schema.json",
 }
@@ -71,6 +72,11 @@ INVALID_FIXTURES = [
     (
         "integration-gate-result",
         "integration-gate-result-invalid-structure.json",
+        ["baseline_commit"],
+    ),
+    (
+        "merge-result",
+        "merge-result-invalid-structure.json",
         ["baseline_commit"],
     ),
     (

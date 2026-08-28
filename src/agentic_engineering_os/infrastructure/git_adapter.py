@@ -57,6 +57,12 @@ class GitMergePreflight:
 
 
 @dataclass(frozen=True, slots=True)
+class GitMergeResult:
+    merged: bool
+    head_commit: str
+
+
+@dataclass(frozen=True, slots=True)
 class _CommandResult:
     args: tuple[str, ...]
     returncode: int
@@ -198,6 +204,23 @@ class GitAdapter:
         )
         return result.returncode == 0
 
+    def commit_parents(self, commit: str) -> tuple[str, ...]:
+        fields = self._run("rev-list", "--parents", "-n", "1", commit).stdout.split()
+        if not fields or self.resolve_commit(fields[0]) != self.resolve_commit(commit):
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "Git did not return the requested commit"
+            )
+        parents = tuple(item.casefold() for item in fields[1:])
+        if any(
+            len(item) != 40
+            or any(character not in "0123456789abcdef" for character in item)
+            for item in parents
+        ):
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "Git returned an invalid parent commit"
+            )
+        return parents
+
     def primary_state(self) -> GitPrimaryState:
         self.verify_repository()
         return GitPrimaryState(
@@ -278,6 +301,59 @@ class GitAdapter:
                 },
             )
         return GitMergePreflight(mergeable=result.returncode == 0)
+
+    def merge_no_ff(
+        self,
+        worktree_path: Path,
+        commit: str,
+        *,
+        message: str,
+    ) -> GitMergeResult:
+        """Merge one exact commit, preserving an explicit integration boundary."""
+
+        result = self._execute(
+            worktree_path,
+            (0, 1),
+            "merge",
+            "--no-ff",
+            "--no-edit",
+            "-m",
+            message,
+            commit,
+        )
+        return GitMergeResult(
+            merged=result.returncode == 0,
+            head_commit=self.current_head(worktree_path),
+        )
+
+    def merge_in_progress(self, worktree_path: Path) -> bool:
+        result = self._execute(
+            worktree_path,
+            (0, 1, 128),
+            "rev-parse",
+            "--verify",
+            "MERGE_HEAD",
+        )
+        return result.returncode == 0
+
+    def abort_merge(self, worktree_path: Path) -> None:
+        self._run_at(worktree_path, "merge", "--abort")
+
+    def fast_forward(
+        self, worktree_path: Path, expected_old: str, commit: str
+    ) -> str:
+        """Advance a clean checkout only when Git proves a fast-forward."""
+
+        if self.current_head(worktree_path) != expected_old:
+            raise GitOperationError(
+                "STALE_REF", "worktree HEAD differs from the expected old commit"
+            )
+        if not self.is_clean(worktree_path, exclude_registry=True):
+            raise GitOperationError(
+                "DIRTY_WORKTREE", "worktree became dirty before fast-forward"
+            )
+        self._run_at(worktree_path, "merge", "--ff-only", commit)
+        return self.current_head(worktree_path)
 
     def _run(self, *arguments: str) -> _CommandResult:
         return self._run_allowed((0,), *arguments)

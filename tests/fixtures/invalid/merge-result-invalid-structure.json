@@ -1,0 +1,14 @@
+{
+  "mission_id": "mission-parallel",
+  "workflow_generation": 2,
+  "wave_index": 0,
+  "group_index": 0,
+  "baseline_commit": "not-a-commit",
+  "integration_order": ["US-0001"],
+  "member_commits": ["1123456789abcdef0123456789abcdef01234567"],
+  "integration_commit": null,
+  "primary_before": "0123456789abcdef0123456789abcdef01234567",
+  "primary_after": "0123456789abcdef0123456789abcdef01234567",
+  "result": "MERGED",
+  "findings": []
+}

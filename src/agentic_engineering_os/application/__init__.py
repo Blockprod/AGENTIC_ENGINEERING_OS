@@ -83,6 +83,15 @@ from .integration_gate import (
     IntegrationMemberCommit,
     IntegrationWorktreeManagerPort,
 )
+from .merge_coordinator import (
+    MergeContext,
+    MergeCoordinationError,
+    MergeCoordinator,
+    MergeFinding,
+    MergeFindingCode,
+    MergeResult,
+    MergeStatus,
+)
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -206,6 +215,13 @@ __all__ = [
     "IntegrationGateResult",
     "IntegrationMemberCommit",
     "IntegrationWorktreeManagerPort",
+    "MergeContext",
+    "MergeCoordinationError",
+    "MergeCoordinator",
+    "MergeFinding",
+    "MergeFindingCode",
+    "MergeResult",
+    "MergeStatus",
     "MissionStateStorePort",
     "OrchestrationResult",
     "Orchestrator",
