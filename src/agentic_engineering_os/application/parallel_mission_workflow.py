@@ -24,6 +24,7 @@ from agentic_engineering_os.domain import (
     UserStory,
     UserStoryStatus,
     WavePlan,
+    WorktreeStatus,
 )
 from agentic_engineering_os.infrastructure.worktree_manager import WorktreeManager
 
@@ -57,6 +58,7 @@ from .orchestrator import RoleHandoff
 from .parallel_implementer_coordinator import (
     ParallelCoordinationInput,
     ParallelGroupResult,
+    ParallelGroupStatus,
     ParallelImplementerCoordinator,
     ParallelMemberResult,
     PreparedParallelGroup,
@@ -101,6 +103,20 @@ class ParallelStoryStage(str, Enum):
     CERTIFIED = "CERTIFIED"
     BLOCKED = "BLOCKED"
     REMEDIATION_REQUIRED = "REMEDIATION_REQUIRED"
+
+
+class ParallelRemediationStage(str, Enum):
+    IMPLEMENTER = "IMPLEMENTER"
+    INTEGRATION_GATE = "INTEGRATION_GATE"
+    MERGE = "MERGE"
+    TESTER = "TESTER"
+    REVIEWER = "REVIEWER"
+    CERTIFIER = "CERTIFIER"
+
+
+class ParallelRecoveryStatus(str, Enum):
+    READY = "READY"
+    BLOCKED = "BLOCKED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +164,32 @@ class ParallelMissionResult:
     current_group: int | None
     blockers: tuple[str, ...]
     recommended_next_action: str
+
+
+@dataclass(frozen=True, slots=True)
+class ParallelRemediationPlan:
+    mission_id: str
+    previous_generation: int
+    new_generation: int
+    triggering_stage: ParallelRemediationStage
+    affected_user_story_ids: tuple[str, ...]
+    reexecution_user_story_ids: tuple[str, ...]
+    baseline_commit: str
+    preserved_artifacts: tuple[str, ...]
+    stale_artifacts: tuple[str, ...]
+    recommended_next_action: str
+
+
+@dataclass(frozen=True, slots=True)
+class ParallelRecoveryInspection:
+    mission_id: str
+    active_generation: int
+    status: ParallelRecoveryStatus
+    primary_commit: str
+    stale_assignment_ids: tuple[str, ...]
+    failed_assignment_ids: tuple[str, ...]
+    anomalies: tuple[str, ...]
+    recommended_recovery_action: str
 
 
 class ParallelMissionWorkflowError(RuntimeError):
@@ -305,6 +347,367 @@ class ParallelMissionWorkflow:
             current_mission=self._mission_store.load(),
         )
         return result
+
+    def record_blocked_member(
+        self,
+        prepared_group: PreparedParallelGroup,
+        assignment_id: str,
+        candidate: ImplementerResult,
+        *,
+        implementer_input: ImplementerInput,
+    ) -> ParallelGroupResult:
+        """Preserve an explicit BLOCKED Implementer outcome as a failed assignment."""
+
+        contexts = [
+            item
+            for item in prepared_group.contexts
+            if item.assignment_id == assignment_id
+        ]
+        if len(contexts) != 1:
+            raise ParallelMissionWorkflowError(
+                "ASSIGNMENT_MISMATCH", "blocked result must identify one prepared member"
+            )
+        context = contexts[0]
+        validation = self._implementer_validator.validate(
+            candidate, implementer_input=implementer_input
+        )
+        if (
+            not validation.is_valid
+            or candidate.verdict is not ImplementerVerdict.BLOCKED
+            or candidate.user_story_id != context.user_story_id
+            or candidate.workflow_generation != prepared_group.workflow_generation
+            or candidate.observed_commit != prepared_group.baseline_commit
+        ):
+            raise ParallelMissionWorkflowError(
+                "INVALID_BLOCKED_IMPLEMENTER",
+                "blocked Implementer artifact is invalid or stale",
+            )
+        return self.fail_member(prepared_group, assignment_id)
+
+    def remediate_failed_group(
+        self,
+        plan: ParallelMissionPlan,
+        group_result: ParallelGroupResult,
+        *,
+        affected_user_story_ids: Iterable[str],
+        updated_at: datetime,
+    ) -> ParallelRemediationPlan:
+        """Open a new generation after a proven pre-merge member failure."""
+
+        self._require_plan_identity(plan)
+        if (
+            not isinstance(group_result, ParallelGroupResult)
+            or group_result.status is not ParallelGroupStatus.FAILED
+        ):
+            raise ParallelMissionWorkflowError(
+                "IMPLEMENTER_FAILURE_NOT_PROVEN",
+                "group remediation requires a FAILED ParallelGroupResult",
+            )
+        group_ids = self._plan_group_ids(plan, group_result.group_index)
+        registry = self._manager.registry_store.load()
+        assignments = [
+            item for item in registry.assignments if item.assignment_id in group_result.assignment_ids
+        ]
+        if (
+            len(assignments) != len(group_result.assignment_ids)
+            or any(item.workflow_generation != plan.workflow_generation for item in assignments)
+            or not any(item.status is WorktreeStatus.FAILED for item in assignments)
+        ):
+            raise ParallelMissionWorkflowError(
+                "IMPLEMENTER_FAILURE_NOT_PROVEN",
+                "registry does not prove the failed group in the active generation",
+            )
+        failed_story_ids = {
+            item.user_story_id
+            for item in assignments
+            if item.status is WorktreeStatus.FAILED
+        }
+        affected = self._explicit_affected(
+            affected_user_story_ids, group_ids, required=failed_story_ids
+        )
+        preserved = tuple(
+            sorted(
+                {
+                    *(f"assignment:{item.assignment_id}" for item in assignments),
+                    *(
+                        f"commit:{item.result_commit}"
+                        for item in assignments
+                        if item.result_commit is not None
+                    ),
+                }
+            )
+        )
+        return self._start_remediation(
+            ParallelRemediationStage.IMPLEMENTER,
+            affected,
+            group_ids,
+            preserved,
+            updated_at,
+        )
+
+    def remediate_integration(
+        self,
+        attempt: ParallelIntegrationAttempt,
+        *,
+        affected_user_story_ids: Iterable[str],
+        updated_at: datetime,
+    ) -> ParallelRemediationPlan:
+        """Open a new generation after a proven Gate FAIL or Merge FAILED."""
+
+        if not isinstance(attempt, ParallelIntegrationAttempt):
+            raise ParallelMissionWorkflowError(
+                "INVALID_FAILURE_CONTEXT", "integration attempt is required"
+            )
+        self._require_plan_identity(attempt.plan)
+        self._require_replayed_gate(attempt)
+        group_ids = tuple(
+            item.user_story_id for item in attempt.group_result.member_results
+        )
+        if attempt.gate_result.result is IntegrationGateClassification.UNKNOWN:
+            raise ParallelMissionWorkflowError(
+                "RECOVERY_REQUIRED",
+                "Integration Gate UNKNOWN requires explicit recovery, not remediation",
+            )
+        if attempt.gate_result.result is IntegrationGateClassification.FAIL:
+            if attempt.merge_result is not None:
+                raise ParallelMissionWorkflowError(
+                    "INVALID_FAILURE_CONTEXT", "Gate FAIL must not have a MergeResult"
+                )
+            stage = ParallelRemediationStage.INTEGRATION_GATE
+            attributable = {
+                member
+                for finding in attempt.gate_result.findings
+                for member in finding.members
+                if member in group_ids
+            }
+        elif (
+            attempt.gate_result.result is IntegrationGateClassification.PASS
+            and isinstance(attempt.merge_result, MergeResult)
+            and attempt.merge_result.result is MergeStatus.FAILED
+        ):
+            stage = ParallelRemediationStage.MERGE
+            attributable = set(group_ids)
+        elif (
+            isinstance(attempt.merge_result, MergeResult)
+            and attempt.merge_result.result is MergeStatus.BLOCKED
+        ):
+            raise ParallelMissionWorkflowError(
+                "RECOVERY_REQUIRED",
+                "Merge BLOCKED requires reconstruct/replan, not remediation",
+            )
+        else:
+            raise ParallelMissionWorkflowError(
+                "REMEDIATION_NOT_PROVEN",
+                "attempt does not prove a remediable Gate or Merge failure",
+            )
+        affected = self._explicit_affected(
+            affected_user_story_ids,
+            group_ids,
+            required=attributable,
+        )
+        preserved = tuple(
+            sorted(
+                {
+                    *(f"assignment:{item.assignment_id}" for item in attempt.group_result.member_results),
+                    *(f"commit:{item.result_commit}" for item in attempt.group_result.member_results),
+                    f"integration-gate:g{attempt.gate_result.workflow_generation}:w{attempt.gate_result.wave_index}:g{attempt.gate_result.group_index}",
+                    *(
+                        (f"integration-commit:{attempt.merge_result.integration_commit}",)
+                        if attempt.merge_result is not None
+                        and attempt.merge_result.integration_commit is not None
+                        else ()
+                    ),
+                }
+            )
+        )
+        return self._start_remediation(
+            stage,
+            affected,
+            group_ids,
+            preserved,
+            updated_at,
+        )
+
+    def remediate_dossier(
+        self,
+        dossier: ParallelStoryDossier,
+        *,
+        updated_at: datetime,
+    ) -> ParallelRemediationPlan:
+        """Open forward remediation for a validated post-merge role failure."""
+
+        if (
+            not isinstance(dossier, ParallelStoryDossier)
+            or dossier.stage is not ParallelStoryStage.REMEDIATION_REQUIRED
+        ):
+            raise ParallelMissionWorkflowError(
+                "REMEDIATION_NOT_PROVEN", "remediation dossier is required"
+            )
+        self._require_remediation_dossier_fresh(dossier)
+        if (
+            dossier.tester_result is not None
+            and dossier.tester_result.verdict is TesterVerdict.REMEDIATION_REQUIRED
+            and dossier.reviewer_result is None
+        ):
+            stage = ParallelRemediationStage.TESTER
+        elif (
+            dossier.reviewer_result is not None
+            and dossier.reviewer_result.verdict is ReviewerVerdict.REMEDIATION_REQUIRED
+            and dossier.certifier_result is None
+        ):
+            stage = ParallelRemediationStage.REVIEWER
+        elif (
+            dossier.certifier_result is not None
+            and dossier.certifier_result.verdict is CertifierVerdict.REMEDIATION_REQUIRED
+        ):
+            stage = ParallelRemediationStage.CERTIFIER
+        else:
+            raise ParallelMissionWorkflowError(
+                "REMEDIATION_NOT_PROVEN",
+                "dossier does not contain a validated remediation verdict",
+            )
+        preserved = (
+            f"integration-commit:{dossier.integration_commit}",
+            f"implementer-result:{dossier.user_story_id}:g{dossier.workflow_generation}",
+            *(
+                (f"tester-result:{dossier.user_story_id}:g{dossier.workflow_generation}",)
+                if dossier.tester_result is not None
+                else ()
+            ),
+            *(
+                (f"reviewer-result:{dossier.user_story_id}:g{dossier.workflow_generation}",)
+                if dossier.reviewer_result is not None
+                else ()
+            ),
+        )
+        return self._start_remediation(
+            stage,
+            (dossier.user_story_id,),
+            (dossier.user_story_id,),
+            tuple(sorted(preserved)),
+            updated_at,
+        )
+
+    def block_for_recovery(
+        self,
+        attempt: ParallelIntegrationAttempt,
+        *,
+        updated_at: datetime,
+    ) -> ParallelRecoveryInspection:
+        """Persist an explicit technical recovery boundary without retrying."""
+
+        if not isinstance(attempt, ParallelIntegrationAttempt):
+            raise ParallelMissionWorkflowError(
+                "INVALID_FAILURE_CONTEXT", "integration attempt is required"
+            )
+        self._require_plan_identity(attempt.plan)
+        self._require_replayed_gate(attempt)
+        gate_unknown = (
+            attempt.gate_result.result is IntegrationGateClassification.UNKNOWN
+        )
+        merge_blocked = (
+            isinstance(attempt.merge_result, MergeResult)
+            and attempt.merge_result.result is MergeStatus.BLOCKED
+        )
+        if not gate_unknown and not merge_blocked:
+            raise ParallelMissionWorkflowError(
+                "RECOVERY_NOT_REQUIRED", "attempt does not prove UNKNOWN or BLOCKED"
+            )
+        reason = "INTEGRATION_GATE_UNKNOWN" if gate_unknown else "MERGE_BLOCKED"
+        mission = self._mission_store.load()
+        candidate = replace(
+            mission,
+            status=MissionStatus.BLOCKED,
+            role=MissionRole.ORCHESTRATOR,
+            blockers=[reason],
+            next_action="Resolve the technical uncertainty, then explicitly resume recovery.",
+            updated_at=updated_at,
+        )
+        self._save_mission(mission, candidate, "BLOCK_PARALLEL_RECOVERY")
+        return self.inspect_recovery()
+
+    def inspect_recovery(self) -> ParallelRecoveryInspection:
+        mission = self._mission_store.load()
+        primary = self._manager.inspect_primary()
+        registry = self._manager.registry_store.load()
+        reconciliation = self._manager.inspect_all(
+            current_generation=mission.workflow_generation
+        )
+        stale = tuple(
+            sorted(
+                item.assignment_id
+                for item in registry.assignments
+                if item.workflow_generation != mission.workflow_generation
+                and item.status is not WorktreeStatus.CLEANED
+            )
+        )
+        failed = tuple(
+            sorted(
+                item.assignment_id
+                for item in registry.assignments
+                if item.workflow_generation == mission.workflow_generation
+                and item.status is WorktreeStatus.FAILED
+            )
+        )
+        anomalies = set(reconciliation.anomalies)
+        if not primary.clean:
+            anomalies.add("PRIMARY_DIRTY")
+        if primary.head_commit != mission.observed_commit.casefold():
+            anomalies.add("PRIMARY_DRIFT")
+        status = (
+            ParallelRecoveryStatus.BLOCKED
+            if anomalies or failed or mission.status is MissionStatus.BLOCKED
+            else ParallelRecoveryStatus.READY
+        )
+        action = (
+            "Reconstruct registry and Git divergence before any retry."
+            if anomalies
+            else "Begin an explicit new-generation remediation."
+            if failed
+            else "Resolve the recorded technical blocker, then resume explicitly."
+            if mission.status is MissionStatus.BLOCKED
+            else "Reconstruct the current plan from authoritative state."
+        )
+        return ParallelRecoveryInspection(
+            mission_id=mission.mission_id,
+            active_generation=mission.workflow_generation,
+            status=status,
+            primary_commit=primary.head_commit,
+            stale_assignment_ids=stale,
+            failed_assignment_ids=failed,
+            anomalies=tuple(sorted(anomalies)),
+            recommended_recovery_action=action,
+        )
+
+    def resume_recovery(self, *, updated_at: datetime) -> ParallelRecoveryInspection:
+        """Explicitly leave a technical block after physical state is coherent."""
+
+        mission = self._mission_store.load()
+        inspection = self.inspect_recovery()
+        if (
+            mission.status is not MissionStatus.BLOCKED
+            or inspection.anomalies
+            or inspection.failed_assignment_ids
+            or not mission.blockers
+            or any(
+                item not in {"INTEGRATION_GATE_UNKNOWN", "MERGE_BLOCKED"}
+                for item in mission.blockers
+            )
+        ):
+            raise ParallelMissionWorkflowError(
+                "RECOVERY_NOT_READY", "technical recovery conditions are not proven"
+            )
+        candidate = replace(
+            mission,
+            status=MissionStatus.ACTIVE,
+            role=MissionRole.ORCHESTRATOR,
+            operating_step=OperatingStep.ACT,
+            blockers=[],
+            next_action="Reconstruct and explicitly retry the failed technical observation.",
+            updated_at=updated_at,
+        )
+        self._save_mission(mission, candidate, "RESUME_PARALLEL_RECOVERY")
+        return self.inspect_recovery()
 
     def integrate_group(
         self,
@@ -681,6 +1084,192 @@ class ParallelMissionWorkflow:
         ):
             raise ParallelMissionWorkflowError(
                 "PLAN_STALE", "plan identity differs from current mission context"
+            )
+
+    @staticmethod
+    def _plan_group_ids(plan: ParallelMissionPlan, group_index: int) -> tuple[str, ...]:
+        groups = [
+            item
+            for item in plan.execution_plan.groups
+            if item.group_index == group_index
+        ]
+        if len(groups) != 1:
+            raise ParallelMissionWorkflowError(
+                "GROUP_MISMATCH", "failure must identify one planned group"
+            )
+        return groups[0].user_story_ids
+
+    @staticmethod
+    def _explicit_affected(
+        supplied: Iterable[str],
+        group_ids: tuple[str, ...],
+        *,
+        required: set[str],
+    ) -> tuple[str, ...]:
+        affected = tuple(dict.fromkeys(supplied))
+        if (
+            not affected
+            or any(not isinstance(item, str) or not item for item in affected)
+            or not set(affected).issubset(set(group_ids))
+            or not required.issubset(set(affected))
+        ):
+            raise ParallelMissionWorkflowError(
+                "MULTI_STORY_REMEDIATION_REQUIRED",
+                "affected stories must be explicit and cover every attributable member",
+            )
+        return tuple(item for item in group_ids if item in set(affected))
+
+    def _start_remediation(
+        self,
+        stage: ParallelRemediationStage,
+        affected: tuple[str, ...],
+        initial_reexecution: tuple[str, ...],
+        preserved: tuple[str, ...],
+        updated_at: datetime,
+    ) -> ParallelRemediationPlan:
+        mission, state = self._authoritative_context()
+        primary = self._manager.inspect_primary()
+        if not primary.clean or primary.head_commit != mission.observed_commit.casefold():
+            raise ParallelMissionWorkflowError(
+                "RECONSTRUCT_REQUIRED",
+                "remediation baseline must be the clean authoritative primary HEAD",
+            )
+        registry = self._manager.registry_store.load()
+        assigned_current = {
+            item.user_story_id
+            for item in registry.assignments
+            if item.mission_id == mission.mission_id
+            and item.workflow_generation == mission.workflow_generation
+            and item.status is not WorktreeStatus.CLEANED
+        }
+        stories = {item.id: item for item in state.user_stories}
+        requested = set(initial_reexecution) | assigned_current
+        reexecution = tuple(
+            item.id
+            for item in state.user_stories
+            if item.id in requested
+            and item.status not in {UserStoryStatus.CERTIFIED, UserStoryStatus.CANCELLED}
+        )
+        if not set(affected).issubset(set(reexecution)):
+            raise ParallelMissionWorkflowError(
+                "REMEDIATION_TARGET_INVALID",
+                "affected stories must remain non-terminal and replayable",
+            )
+        for story_id in reexecution:
+            self._ready_for_reexecution(story_id)
+        stale_assignments = tuple(
+            sorted(
+                f"assignment:{item.assignment_id}"
+                for item in registry.assignments
+                if item.mission_id == mission.mission_id
+                and item.workflow_generation == mission.workflow_generation
+                and item.status is not WorktreeStatus.CLEANED
+            )
+        )
+        stale = (
+            f"parallel-execution-plan:g{mission.workflow_generation}",
+            f"prepared-groups:g{mission.workflow_generation}",
+            f"implementer-results:g{mission.workflow_generation}",
+            f"integration-gates:g{mission.workflow_generation}",
+            f"merge-results:g{mission.workflow_generation}",
+            f"tester-results:g{mission.workflow_generation}",
+            f"reviewer-results:g{mission.workflow_generation}",
+            f"certifier-results:g{mission.workflow_generation}",
+            *stale_assignments,
+        )
+        new_generation = mission.workflow_generation + 1
+        candidate = replace(
+            mission,
+            workflow_generation=new_generation,
+            status=MissionStatus.ACTIVE,
+            role=MissionRole.ORCHESTRATOR,
+            operating_step=OperatingStep.ACT,
+            blockers=[],
+            next_action=(
+                f"Execute generation {new_generation} remediation from {stage.value} "
+                f"for {', '.join(affected)}; replay {', '.join(reexecution)}."
+            ),
+            observed_commit=primary.head_commit,
+            updated_at=updated_at,
+        )
+        self._save_mission(mission, candidate, "BEGIN_PARALLEL_REMEDIATION")
+        return ParallelRemediationPlan(
+            mission_id=mission.mission_id,
+            previous_generation=mission.workflow_generation,
+            new_generation=new_generation,
+            triggering_stage=stage,
+            affected_user_story_ids=affected,
+            reexecution_user_story_ids=reexecution,
+            baseline_commit=primary.head_commit,
+            preserved_artifacts=preserved,
+            stale_artifacts=tuple(stale),
+            recommended_next_action=(
+                "Reconstruct a new plan and create generation-specific worktrees; "
+                "then rerun Gate, Merge, Tester, Reviewer and Certifier."
+            ),
+        )
+
+    def _ready_for_reexecution(self, story_id: str) -> None:
+        status = self._story(story_id).status
+        if status is UserStoryStatus.PLANNED:
+            self._transition(story_id, UserStoryStatus.READY)
+            return
+        if status is UserStoryStatus.READY:
+            return
+        if status is UserStoryStatus.BLOCKED:
+            self._transition(story_id, UserStoryStatus.READY)
+            return
+        if status is UserStoryStatus.IN_PROGRESS:
+            self._transition(story_id, UserStoryStatus.BLOCKED)
+            self._transition(story_id, UserStoryStatus.READY)
+            return
+        if status is UserStoryStatus.IMPLEMENTED:
+            self._transition(story_id, UserStoryStatus.TESTING)
+            status = UserStoryStatus.TESTING
+        if status in {
+            UserStoryStatus.TESTING,
+            UserStoryStatus.REVIEW,
+            UserStoryStatus.CERTIFICATION,
+        }:
+            self._transition(story_id, UserStoryStatus.REJECTED)
+            self._transition(story_id, UserStoryStatus.REMEDIATION_REQUIRED)
+            self._transition(story_id, UserStoryStatus.READY)
+            return
+        if status is UserStoryStatus.REJECTED:
+            self._transition(story_id, UserStoryStatus.REMEDIATION_REQUIRED)
+            self._transition(story_id, UserStoryStatus.READY)
+            return
+        if status is UserStoryStatus.REMEDIATION_REQUIRED:
+            self._transition(story_id, UserStoryStatus.READY)
+            return
+        raise ParallelMissionWorkflowError(
+            "REMEDIATION_TARGET_INVALID",
+            f"story {story_id} cannot enter remediation from {status.value}",
+        )
+
+    def _require_remediation_dossier_fresh(
+        self, dossier: ParallelStoryDossier
+    ) -> None:
+        mission = self._mission_store.load()
+        primary = self._manager.inspect_primary()
+        if (
+            dossier.mission_id != mission.mission_id
+            or dossier.workflow_generation != mission.workflow_generation
+            or dossier.integration_commit != mission.observed_commit.casefold()
+            or primary.head_commit != dossier.integration_commit
+            or not primary.clean
+        ):
+            raise ParallelMissionWorkflowError(
+                "STALE_ROLE_ARTIFACT",
+                "remediation dossier is stale against generation or integrated primary",
+            )
+
+    def _require_replayed_gate(self, attempt: ParallelIntegrationAttempt) -> None:
+        observed = self._gate.evaluate(attempt.gate_context)
+        if observed != attempt.gate_result:
+            raise ParallelMissionWorkflowError(
+                "STALE_INTEGRATION_GATE",
+                "failure handling requires the exact currently reproducible Gate result",
             )
 
     def _prove_integration(self, attempt: ParallelIntegrationAttempt) -> str:

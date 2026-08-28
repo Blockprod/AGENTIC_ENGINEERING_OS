@@ -248,12 +248,15 @@ def implement_group(harness: Harness, workflow: ParallelMissionWorkflow, plan, i
         for relative in changed:
             target = path / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(f"VALUE = '{story.id}'\n", encoding="utf-8")
+            target.write_text(
+                f"VALUE = '{story.id}-g{plan.workflow_generation}'\n",
+                encoding="utf-8",
+            )
         git(path, "add", ".")
         git(path, "commit", "-m", f"feat: implement {story.id}")
         candidate = ImplementerResult(
-            mission_id="P3.11",
-            workflow_generation=0,
+            mission_id=plan.mission_id,
+            workflow_generation=plan.workflow_generation,
             subject=story.id,
             user_story_id=story.id,
             observed_commit=plan.baseline_commit,
@@ -281,7 +284,9 @@ def implement_group(harness: Harness, workflow: ParallelMissionWorkflow, plan, i
     return prepared, branch_results, workflow.complete_group(prepared, tuple(members))
 
 
-def make_tester_result(story: UserStory, commit: str) -> TesterResult:
+def make_tester_result(
+    story: UserStory, commit: str, *, generation: int = 0
+) -> TesterResult:
     criterion = story.acceptance_criteria[0].id
     cases = tuple(
         TesterTestCase(
@@ -292,7 +297,7 @@ def make_tester_result(story: UserStory, commit: str) -> TesterResult:
     )
     return TesterResult(
         mission_id="P3.11",
-        workflow_generation=0,
+        workflow_generation=generation,
         subject=story.id,
         user_story_id=story.id,
         observed_commit=commit,
@@ -326,17 +331,18 @@ def certify_member(
 ) -> ParallelStoryDossier:
     commit = attempt.merge_result.integration_commit
     assert commit is not None
+    generation = attempt.plan.workflow_generation
     story = next(
         item for item in harness.project_store.load().user_stories if item.id == story_id
     )
     implementation = replace(branch_result, observed_commit=commit)
     dossier = workflow.accept_integrated_implementer(attempt, story_id, implementation)
-    testing = make_tester_result(story, commit)
+    testing = make_tester_result(story, commit, generation=generation)
     dossier = workflow.accept_tester(dossier, testing)
     criterion = story.acceptance_criteria[0].id
     suffix = story.id.casefold().replace("us-", "")
-    acceptance_evidence = f"EV-AC-{suffix}"
-    gate_evidence = f"EV-GATE-{suffix}"
+    acceptance_evidence = f"EV-AC-{suffix}-G{generation}"
+    gate_evidence = f"EV-GATE-{suffix}-G{generation}"
     workflow.record_evidence(
         EvidenceObservation(
             EvidenceType.ACCEPTANCE_CRITERION_CHECK,
@@ -372,8 +378,8 @@ def certify_member(
         evaluated_at=NOW,
     )
     review = ReviewerResult(
-        mission_id="P3.11",
-        workflow_generation=0,
+        mission_id=attempt.plan.mission_id,
+        workflow_generation=generation,
         subject=story.id,
         user_story_id=story.id,
         observed_commit=commit,
@@ -387,8 +393,8 @@ def certify_member(
     )
     dossier = workflow.accept_reviewer(dossier, review)
     architecture = ArchitectResult(
-        mission_id="P3.11",
-        workflow_generation=0,
+        mission_id=attempt.plan.mission_id,
+        workflow_generation=generation,
         subject=story.id,
         observed_commit=commit,
         summary="Story contract is explicit.",
@@ -401,8 +407,8 @@ def certify_member(
         verdict=ArchitectVerdict.READY,
     )
     certifier = CertifierResult(
-        mission_id="P3.11",
-        workflow_generation=0,
+        mission_id=attempt.plan.mission_id,
+        workflow_generation=generation,
         subject=story.id,
         user_story_id=story.id,
         observed_commit=commit,
@@ -444,7 +450,7 @@ def certify_member(
         certification_context=CertificationContext(),
         certifier="Codex/Certifier",
         updated_at=NOW,
-        certification_id=f"CERT-{suffix}",
+        certification_id=f"CERT-{suffix}-G{generation}",
     )
 
 
@@ -498,11 +504,16 @@ def implement_group_from_prepared(harness: Harness, workflow, prepared):
         for relative in changed:
             target = path / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(f"VALUE = '{story.id}'\n", encoding="utf-8")
+            target.write_text(
+                f"VALUE = '{story.id}-g{prepared.workflow_generation}'\n",
+                encoding="utf-8",
+            )
         git(path, "add", ".")
         git(path, "commit", "-m", f"feat: implement {story.id}")
         candidate = ImplementerResult(
-            mission_id="P3.11", workflow_generation=0, subject=story.id,
+            mission_id=prepared.contexts[0].handoff.mission_id,
+            workflow_generation=prepared.workflow_generation,
+            subject=story.id,
             user_story_id=story.id, observed_commit=prepared.baseline_commit,
             summary="Isolated implementation completed.", files_changed=changed,
             tests_added_or_modified=(changed[1],), verification_commands=(COMMAND,),
