@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    {
+      "user_story_id": "US-0001",
+      "classification": "TERMINAL",
+      "satisfied_dependencies": [],
+      "unsatisfied_dependencies": [],
+      "reason": "TERMINAL_STATUS:CERTIFIED"
+    },
+    {
+      "user_story_id": "US-0002",
+      "classification": "READY",
+      "satisfied_dependencies": ["US-0001"],
+      "unsatisfied_dependencies": [],
+      "reason": "LOGICALLY_ELIGIBLE"
+    }
+  ]
+}

@@ -41,9 +41,10 @@ edges et ordres canoniques restent des invariants applicatifs vérifiés par
 Le snapshot peut être sérialisé de façon déterministe avec `to_dict`, mais il
 n'est jamais persisté. Aucun `dag.json` n'est créé.
 
-## Frontière P3.3
+## Frontière Readiness
 
 P3.2 valide uniquement la structure logique. Il ne calcule ni dépendances
-satisfaites, ni ready set, blocked set, Wave ou ensemble exécutable. P3.3
-consommera un `DAGSnapshot` valide et les statuts correspondants pour déterminer
-l'éligibilité sans obtenir d'autorité de transition.
+satisfaites, ni ready set, blocked set, Wave ou ensemble exécutable. Le
+Readiness Engine décrit dans `docs/25-readiness-engine.md` consomme un
+`DAGSnapshot` valide et les statuts correspondants sans obtenir d'autorité de
+transition.

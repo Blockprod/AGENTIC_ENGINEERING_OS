@@ -22,6 +22,7 @@ Les contrats opérationnels de Phase 2 utilisent le même draft :
 La projection DAG de Phase 3 utilise également ce draft :
 
 - `dag-snapshot.schema.json`
+- `readiness-snapshot.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
@@ -47,6 +48,11 @@ références globales, cycles, unicité des IDs de nœuds, complétude des edges
 ordres canoniques ne sont pas exprimables de façon robuste par ce schéma ;
 `DAGValidator` les vérifie applicativement. Le snapshot n'est pas persisté.
 
+`readiness-snapshot.schema.json` contraint les diagnostics sérialisés et leur
+catalogue fermé. La correspondance avec le DAG et le ProjectState, la
+satisfaction des dépendances et la politique d'état restent vérifiées par
+`ReadinessEngine`. Ce snapshot n'est pas persisté.
+
 ## Limites sémantiques
 
 Les règles suivantes restent obligatoires, mais relèvent de la future logique
@@ -54,7 +60,6 @@ métier plutôt que de JSON Schema :
 
 - stabilité et non-réutilisation historique des identifiants à l'échelle du
   projet au-delà de l'état chargé ;
-- état `CERTIFIED` des dépendances pour la future décision de readiness ;
 - unicité des IDs de critères d'acceptation lorsque deux objets différents
   portent le même ID ;
 - priorité de `forbidden_paths` et contrôle des modifications réelles contre le

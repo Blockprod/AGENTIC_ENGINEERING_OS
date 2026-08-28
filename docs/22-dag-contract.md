@@ -131,8 +131,8 @@ exécutable décrits dans `docs/24-dag-validator.md`.
   supprimer ou inverser une edge. Toute modification revient au contrat User
   Story et à son autorité applicable.
 - **Control Plane** : le DAG n'est pas une autorité de transition. Les statuts
-  restent sous `StateTransitionService` et `ControlLoop`. Un futur Readiness
-  Engine pourra consulter le DAG sans muter directement une User Story.
+  restent sous `StateTransitionService` et `ControlLoop`. Le Readiness Engine
+  consulte le DAG sans muter directement une User Story.
 
 ## Limites P3.1
 

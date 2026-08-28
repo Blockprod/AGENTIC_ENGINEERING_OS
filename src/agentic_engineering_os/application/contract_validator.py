@@ -31,6 +31,7 @@ _SCHEMA_FILES = {
     "reviewer-result": "reviewer-result.schema.json",
     "certifier-result": "certifier-result.schema.json",
     "dag-snapshot": "dag-snapshot.schema.json",
+    "readiness-snapshot": "readiness-snapshot.schema.json",
 }
 
 

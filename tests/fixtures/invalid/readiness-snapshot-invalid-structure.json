@@ -1,0 +1,12 @@
+{
+  "nodes": [
+    {
+      "user_story_id": "US-0001",
+      "classification": "PARALLEL_READY",
+      "satisfied_dependencies": [],
+      "unsatisfied_dependencies": [],
+      "reason": ""
+    }
+  ],
+  "wave_id": "WAVE-001"
+}

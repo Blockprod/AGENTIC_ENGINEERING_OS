@@ -9,7 +9,7 @@ Principes fondamentaux : état réel comme source de vérité, responsabilités
 séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
-Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `IN PROGRESS — P3.2`
+Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `IN PROGRESS — P3.3`
 
 Documentation :
 
@@ -38,4 +38,5 @@ Documentation :
 - [Contrat canonique du DAG de User Stories](docs/22-dag-contract.md)
 - [Roadmap Phase 3](docs/23-phase-3-roadmap.md)
 - [DAG Validator](docs/24-dag-validator.md)
+- [Readiness Engine](docs/25-readiness-engine.md)
 - [JSON Schemas V1](schemas/README.md)

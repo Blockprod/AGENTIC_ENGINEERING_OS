@@ -81,6 +81,7 @@ from .orchestrator import (
     ProjectStateReaderPort,
     RoleHandoff,
 )
+from .readiness_engine import ReadinessEngine, ReadinessEvaluationError
 from .reviewer import (
     ReviewDimension,
     ReviewFinding,
@@ -184,6 +185,8 @@ __all__ = [
     "ReviewerResult",
     "ReviewerResultValidator",
     "ReviewerVerdict",
+    "ReadinessEngine",
+    "ReadinessEvaluationError",
     "SequentialMissionResult",
     "SequentialMissionWorkflow",
     "SequentialMissionWorkflowError",

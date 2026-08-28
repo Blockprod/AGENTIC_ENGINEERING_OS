@@ -26,6 +26,14 @@ class RiskLevel(str, Enum):
     CRITICAL = "CRITICAL"
 
 
+class ReadinessClassification(str, Enum):
+    READY = "READY"
+    WAITING_DEPENDENCIES = "WAITING_DEPENDENCIES"
+    BLOCKED = "BLOCKED"
+    INELIGIBLE = "INELIGIBLE"
+    TERMINAL = "TERMINAL"
+
+
 class GateResult(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"

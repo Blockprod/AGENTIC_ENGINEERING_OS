@@ -14,6 +14,7 @@ from .enums import (
     MissionRole,
     MissionStatus,
     OperatingStep,
+    ReadinessClassification,
     RiskLevel,
     UserStoryStatus,
 )
@@ -161,6 +162,51 @@ class DAGSnapshot:
 
     nodes: tuple[DAGNode, ...]
     edges: tuple[DAGEdge, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NodeReadiness:
+    """One deterministic readiness diagnosis for a DAG node."""
+
+    user_story_id: str
+    classification: ReadinessClassification
+    satisfied_dependencies: tuple[str, ...]
+    unsatisfied_dependencies: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReadinessSnapshot:
+    """Immutable readiness diagnoses in canonical User Story order."""
+
+    nodes: tuple[NodeReadiness, ...]
+
+    def _ids_for(self, classification: ReadinessClassification) -> tuple[str, ...]:
+        return tuple(
+            node.user_story_id
+            for node in self.nodes
+            if node.classification is classification
+        )
+
+    @property
+    def ready_ids(self) -> tuple[str, ...]:
+        return self._ids_for(ReadinessClassification.READY)
+
+    @property
+    def waiting_ids(self) -> tuple[str, ...]:
+        return self._ids_for(ReadinessClassification.WAITING_DEPENDENCIES)
+
+    @property
+    def blocked_ids(self) -> tuple[str, ...]:
+        return self._ids_for(ReadinessClassification.BLOCKED)
+
+    @property
+    def ineligible_ids(self) -> tuple[str, ...]:
+        return self._ids_for(ReadinessClassification.INELIGIBLE)
+
+    @property
+    def terminal_ids(self) -> tuple[str, ...]:
+        return self._ids_for(ReadinessClassification.TERMINAL)
 
 
 @dataclass(slots=True)
