@@ -106,7 +106,8 @@ Un **execution conflict** signifie que deux User Stories logiquement
 indépendantes pourraient ne pas pouvoir s'exécuter simultanément, par exemple
 si elles touchent les mêmes fichiers, migrations, schémas ou une même ressource
 exclusive. Un conflit d'exécution n'est pas une dépendance logique et ne crée
-aucune edge DAG. Son contrat est réservé à P3.5.
+aucune edge DAG. P3.5 le formalise séparément dans
+`docs/27-execution-conflict-model.md`.
 
 ## Projection, ordre canonique et persistance
 

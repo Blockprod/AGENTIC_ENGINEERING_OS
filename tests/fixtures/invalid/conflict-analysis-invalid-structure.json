@@ -1,0 +1,13 @@
+{
+  "pairs": [
+    {
+      "wave_index": -1,
+      "left_user_story_id": "US-0001",
+      "right_user_story_id": "US-0002",
+      "classification": "PARALLEL_ALLOWED",
+      "reasons": ["RESOURCE_GUESS"],
+      "overlapping_paths": []
+    }
+  ],
+  "safe_groups": []
+}

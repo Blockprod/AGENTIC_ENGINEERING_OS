@@ -56,6 +56,6 @@ DAG, le ProjectState, les classifications et leurs détails. Toute divergence
 bloque fail-closed. Aucun input n'est muté et aucun WavePlan n'est persisté.
 
 Après un succès ou un échec réel, le plan doit être recalculé depuis le nouvel
-état autoritatif. P3.5 pourra transformer une Wave logique en groupes tenant
-compte des conflits d'exécution ; P3.4 ne crée ni conflit, scheduler, worktree,
-transition, exécution ou autorité de certification.
+état autoritatif. P3.5 analyse désormais séparément les conflits d'exécution
+sans transformer une Wave logique en groupes ; le planner ne crée ni conflit,
+scheduler, worktree, transition, exécution ou autorité de certification.

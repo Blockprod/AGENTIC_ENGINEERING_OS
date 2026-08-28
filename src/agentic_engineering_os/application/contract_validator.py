@@ -33,6 +33,7 @@ _SCHEMA_FILES = {
     "dag-snapshot": "dag-snapshot.schema.json",
     "readiness-snapshot": "readiness-snapshot.schema.json",
     "wave-plan": "wave-plan.schema.json",
+    "conflict-analysis": "conflict-analysis.schema.json",
 }
 
 

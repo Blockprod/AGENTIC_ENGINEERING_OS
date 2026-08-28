@@ -24,6 +24,7 @@ La projection DAG de Phase 3 utilise également ce draft :
 - `dag-snapshot.schema.json`
 - `readiness-snapshot.schema.json`
 - `wave-plan.schema.json`
+- `conflict-analysis.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
@@ -59,6 +60,13 @@ ainsi que les nœuds différés et leurs raisons. Le layering topologique, la
 cohérence avec la readiness et l'ordre canonique restent applicatifs sous
 `WavePlanner`. Le plan n'est pas persisté et n'accorde aucune autorité
 d'exécution.
+
+`conflict-analysis.schema.json` contraint les résultats pairwise d'une même
+Wave, les classifications, le catalogue de raisons et les chemins de
+chevauchement. La cohérence avec le WavePlan et le ProjectState, l'ordre
+lexical des IDs, la sémantique de scope et le calcul des chevauchements restent
+vérifiés par `ExecutionConflictAnalyzer`. Cette projection n'est pas persistée
+et n'accorde aucune autorité d'exécution.
 
 ## Limites sémantiques
 

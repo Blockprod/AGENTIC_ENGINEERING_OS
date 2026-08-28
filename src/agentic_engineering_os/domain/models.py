@@ -9,6 +9,8 @@ from typing import TypeAlias, cast
 from .enums import (
     AuditEventType,
     CertificationResult,
+    ConflictClassification,
+    ConflictReason,
     DeferredReason,
     EvidenceType,
     GateResult,
@@ -242,6 +244,44 @@ class WavePlan:
 
     waves: tuple[ExecutionWave, ...]
     deferred: tuple[DeferredNode, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionConflict:
+    """Canonical pairwise compatibility result within one logical Wave."""
+
+    wave_index: int
+    left_user_story_id: str
+    right_user_story_id: str
+    classification: ConflictClassification
+    reasons: tuple[ConflictReason, ...]
+    overlapping_paths: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ConflictAnalysis:
+    """Immutable same-Wave pairwise conflict analysis."""
+
+    pairs: tuple[ExecutionConflict, ...]
+
+    def _pairs_for(
+        self, classification: ConflictClassification
+    ) -> tuple[ExecutionConflict, ...]:
+        return tuple(
+            pair for pair in self.pairs if pair.classification is classification
+        )
+
+    @property
+    def safe_pairs(self) -> tuple[ExecutionConflict, ...]:
+        return self._pairs_for(ConflictClassification.SAFE)
+
+    @property
+    def conflicting_pairs(self) -> tuple[ExecutionConflict, ...]:
+        return self._pairs_for(ConflictClassification.CONFLICT)
+
+    @property
+    def unknown_pairs(self) -> tuple[ExecutionConflict, ...]:
+        return self._pairs_for(ConflictClassification.UNKNOWN)
 
 
 @dataclass(slots=True)

@@ -1,0 +1,20 @@
+{
+  "pairs": [
+    {
+      "wave_index": 0,
+      "left_user_story_id": "US-0001",
+      "right_user_story_id": "US-0002",
+      "classification": "CONFLICT",
+      "reasons": ["PATH_OVERLAP"],
+      "overlapping_paths": ["src/auth/models.py"]
+    },
+    {
+      "wave_index": 0,
+      "left_user_story_id": "US-0001",
+      "right_user_story_id": "US-0003",
+      "classification": "SAFE",
+      "reasons": [],
+      "overlapping_paths": []
+    }
+  ]
+}

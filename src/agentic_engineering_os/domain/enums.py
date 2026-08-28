@@ -42,6 +42,18 @@ class DeferredReason(str, Enum):
     UNPLANNABLE_DEPENDENCY = "UNPLANNABLE_DEPENDENCY"
 
 
+class ConflictClassification(str, Enum):
+    SAFE = "SAFE"
+    CONFLICT = "CONFLICT"
+    UNKNOWN = "UNKNOWN"
+
+
+class ConflictReason(str, Enum):
+    PATH_OVERLAP = "PATH_OVERLAP"
+    SCOPE_AMBIGUOUS = "SCOPE_AMBIGUOUS"
+    SCOPE_UNSPECIFIED = "SCOPE_UNSPECIFIED"
+
+
 class GateResult(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"

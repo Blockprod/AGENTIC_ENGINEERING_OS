@@ -50,6 +50,10 @@ from .evidence_recorder import (
     EvidenceRecordingError,
     ProvenanceKind,
 )
+from .execution_conflict_analyzer import (
+    ExecutionConflictAnalyzer,
+    ExecutionConflictError,
+)
 from .gate_evaluator import (
     GateCondition,
     GateContract,
@@ -152,6 +156,8 @@ __all__ = [
     "EvidenceRecorder",
     "EvidenceRecorderFactory",
     "EvidenceRecordingError",
+    "ExecutionConflictAnalyzer",
+    "ExecutionConflictError",
     "GateCondition",
     "GateContract",
     "GateEvaluation",
