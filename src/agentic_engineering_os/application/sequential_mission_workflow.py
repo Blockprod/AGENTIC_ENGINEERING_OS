@@ -77,6 +77,7 @@ class ProjectStateStorePort(Protocol):
 @dataclass(frozen=True, slots=True)
 class SequentialMissionResult:
     mission_id: str
+    workflow_generation: int
     status: MissionStatus
     current_role: MissionRole
     current_step: OperatingStep
@@ -634,7 +635,10 @@ class SequentialMissionWorkflow:
         self._transition(subject, UserStoryStatus.READY)
         self._transition(subject, UserStoryStatus.IN_PROGRESS)
         advanced = self._advance(
-            mission,
+            replace(
+                mission,
+                workflow_generation=mission.workflow_generation + 1,
+            ),
             OperatingStep.ACT,
             "Route the explicit remediation to Implementer, then re-test.",
             updated_at,
@@ -673,6 +677,7 @@ class SequentialMissionWorkflow:
             or handoff.to_role is not role
             or handoff.operating_step is not step
             or handoff.mission_id != mission.mission_id
+            or handoff.workflow_generation != mission.workflow_generation
             or handoff.subject != mission.subject
             or handoff.objective != mission.objective
             or handoff.blockers != tuple(mission.blockers)
@@ -755,6 +760,7 @@ class SequentialMissionWorkflow:
     ) -> SequentialMissionResult:
         return SequentialMissionResult(
             mission_id=mission.mission_id,
+            workflow_generation=mission.workflow_generation,
             status=mission.status,
             current_role=mission.role,
             current_step=mission.operating_step,

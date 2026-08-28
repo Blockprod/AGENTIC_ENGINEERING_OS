@@ -19,6 +19,10 @@ autorisations `NOT_APPLICABLE`. Elle est copiée et protégée par un snapshot.
 La chaîne positive exige quatre artefacts présents, valides, associés à la même
 mission, à la même User Story et au même commit, avec les verdicts `READY`,
 `READY_FOR_TEST`, `READY_FOR_REVIEW` et `READY_FOR_CERTIFICATION`.
+Implementer, Tester, Reviewer et le `CertifierResult` appartiennent exactement
+à la génération active. L'ArchitectResult initial peut rester la référence
+historique d'une génération antérieure lorsque la remediation ne modifie pas
+la spécification Architect.
 
 ## Vérifications et verdicts
 

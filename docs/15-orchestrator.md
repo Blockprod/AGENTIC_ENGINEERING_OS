@@ -34,12 +34,15 @@ implémentés séparément.
 
 ## Handoff et résultat
 
-`RoleHandoff` contient `from_role`, `to_role`, `mission_id`, `subject`,
-`objective`, `observed_commit`, `operating_step`, `blockers` et des
+`RoleHandoff` contient `from_role`, `to_role`, `mission_id`,
+`workflow_generation`, `subject`, `objective`, `observed_commit`,
+`operating_step`, `blockers` et des
 `instructions` factuelles. Les instructions combinent la règle fixe de l'étape,
 le sujet de mission et, lorsqu'elle existe, l'observation correspondante dans
 `ProjectState`. Le handoff transmet du contexte et n'accorde jamais d'autorité
 Control Plane.
+La génération est toujours copiée depuis le `MissionState` chargé ;
+l'Orchestrator ne la choisit et ne l'incrémente pas.
 
 `OrchestrationResult` expose le succès, le rôle courant, le rôle suivant, le
 handoff éventuel, les blockers, une raison explicite et le `MissionState`

@@ -4,9 +4,10 @@
   "title": "Certifier Role Result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["mission_id", "role", "subject", "user_story_id", "observed_commit", "summary", "artifact_checks", "acceptance_checks", "gate_checks", "evidence_refs", "human_approval_check", "findings", "blockers", "recommended_action", "verdict"],
+  "required": ["mission_id", "workflow_generation", "role", "subject", "user_story_id", "observed_commit", "summary", "artifact_checks", "acceptance_checks", "gate_checks", "evidence_refs", "human_approval_check", "findings", "blockers", "recommended_action", "verdict"],
   "properties": {
     "mission_id": {"type": "string", "minLength": 1},
+    "workflow_generation": {"type": "integer", "minimum": 0},
     "role": {"const": "CERTIFIER"},
     "subject": {"type": "string", "minLength": 1},
     "user_story_id": {"type": "string", "pattern": "^US-[0-9]{4}$"},

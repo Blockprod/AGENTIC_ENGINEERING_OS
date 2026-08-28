@@ -64,6 +64,7 @@ class RoleHandoff:
     from_role: MissionRole
     to_role: MissionRole
     mission_id: str
+    workflow_generation: int
     subject: str
     objective: str
     observed_commit: str
@@ -185,6 +186,7 @@ class Orchestrator:
             from_role=mission.role,
             to_role=next_role,
             mission_id=mission.mission_id,
+            workflow_generation=mission.workflow_generation,
             subject=mission.subject,
             objective=mission.objective,
             observed_commit=current_commit,
@@ -241,6 +243,12 @@ def _mission_error(mission: object) -> str | None:
         return "INVALID_MISSION_SCHEMA_VERSION"
     if not isinstance(mission.mission_id, str) or not mission.mission_id.strip():
         return "EMPTY_MISSION_ID"
+    if (
+        not isinstance(mission.workflow_generation, int)
+        or isinstance(mission.workflow_generation, bool)
+        or mission.workflow_generation < 0
+    ):
+        return "INVALID_WORKFLOW_GENERATION"
     if not isinstance(mission.status, MissionStatus):
         return "UNKNOWN_MISSION_STATUS"
     if not isinstance(mission.role, MissionRole):

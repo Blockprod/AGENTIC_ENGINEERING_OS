@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": [
     "mission_id",
+    "workflow_generation",
     "role",
     "subject",
     "observed_commit",
@@ -22,6 +23,10 @@
     "mission_id": {
       "type": "string",
       "minLength": 1
+    },
+    "workflow_generation": {
+      "type": "integer",
+      "minimum": 0
     },
     "role": {
       "const": "ARCHITECT"

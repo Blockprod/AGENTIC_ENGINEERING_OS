@@ -1,5 +1,6 @@
 {
   "mission_id": "P2.4",
+  "workflow_generation": 0,
   "role": "ARCHITECT",
   "subject": "Architect role contract",
   "observed_commit": "d32e5148e895185668c97626106a4537cb739952",

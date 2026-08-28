@@ -69,6 +69,7 @@ def handoff(**overrides: object) -> RoleHandoff:
         "from_role": MissionRole.ORCHESTRATOR,
         "to_role": MissionRole.IMPLEMENTER,
         "mission_id": "P2.5",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "objective": "Implement the bounded User Story.",
         "observed_commit": COMMIT,
@@ -98,6 +99,7 @@ def verification(
 def output(**overrides: object) -> ImplementerResult:
     values: dict[str, object] = {
         "mission_id": "P2.5",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "user_story_id": "US-0001",
         "observed_commit": COMMIT,
@@ -212,10 +214,15 @@ def test_blocked_result_reports_failed_required_verification() -> None:
     ).is_valid
 
 
-@pytest.mark.parametrize("field", ["mission_id", "subject", "user_story_id", "observed_commit"])
+@pytest.mark.parametrize(
+    "field",
+    ["mission_id", "workflow_generation", "subject", "user_story_id", "observed_commit"],
+)
 def test_result_context_must_match_assignment(field: str) -> None:
     if field == "observed_commit":
         value = "0" * 40
+    elif field == "workflow_generation":
+        value = 1
     elif field == "user_story_id":
         value = "US-9999"
     else:

@@ -72,6 +72,32 @@ def test_valid_fixture_passes(schema_name: str, fixture_file: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "schema_name",
+    [
+        "mission-state",
+        "architect-result",
+        "implementer-result",
+        "tester-result",
+        "reviewer-result",
+        "certifier-result",
+    ],
+)
+def test_workflow_generation_is_required_and_non_negative(
+    schema_name: str,
+) -> None:
+    instance = load_json(FIXTURE_DIR / "valid" / f"{schema_name}.json")
+    assert isinstance(instance, dict)
+
+    missing = dict(instance)
+    del missing["workflow_generation"]
+    negative = dict(instance)
+    negative["workflow_generation"] = -1
+
+    assert list(validator(schema_name).iter_errors(missing))
+    assert list(validator(schema_name).iter_errors(negative))
+
+
+@pytest.mark.parametrize(
     ("schema_name", "fixture_file", "expected_path"), INVALID_FIXTURES
 )
 def test_invalid_fixture_fails(

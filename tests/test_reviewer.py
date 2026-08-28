@@ -88,6 +88,7 @@ def story(
 def implementer_result(**overrides: object) -> ImplementerResult:
     values: dict[str, object] = {
         "mission_id": "P2.7",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "user_story_id": "US-0001",
         "observed_commit": COMMIT,
@@ -128,6 +129,7 @@ def make_tester_result(**overrides: object) -> TesterResult:
     )
     values: dict[str, object] = {
         "mission_id": "P2.7",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "user_story_id": "US-0001",
         "observed_commit": COMMIT,
@@ -165,6 +167,7 @@ def handoff(**overrides: object) -> RoleHandoff:
         "from_role": MissionRole.ORCHESTRATOR,
         "to_role": MissionRole.REVIEWER,
         "mission_id": "P2.7",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "objective": "Review engineering quality independently.",
         "observed_commit": COMMIT,
@@ -204,6 +207,7 @@ def finding(
 def reviewer_result(**overrides: object) -> ReviewerResult:
     values: dict[str, object] = {
         "mission_id": "P2.7",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "user_story_id": "US-0001",
         "observed_commit": COMMIT,
@@ -451,9 +455,12 @@ def test_unknown_verdict_and_missing_field_are_rejected() -> None:
     assert not validate(missing).is_valid
 
 
-@pytest.mark.parametrize("field", ["mission_id", "subject", "user_story_id", "observed_commit"])
+@pytest.mark.parametrize(
+    "field",
+    ["mission_id", "workflow_generation", "subject", "user_story_id", "observed_commit"],
+)
 def test_result_context_must_match_reviewer_input(field: str) -> None:
-    value = "0" * 40 if field == "observed_commit" else "US-9999" if field == "user_story_id" else "different"
+    value = 1 if field == "workflow_generation" else "0" * 40 if field == "observed_commit" else "US-9999" if field == "user_story_id" else "different"
 
     validation = validate(mapping(**{field: value}))
 

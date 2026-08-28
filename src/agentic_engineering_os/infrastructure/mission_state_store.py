@@ -258,6 +258,9 @@ def _hydrate_mission_state(data: Mapping[str, object]) -> MissionState:
     return MissionState(
         schema_version=_string(data["schema_version"], "schema_version"),
         mission_id=_string(data["mission_id"], "mission_id"),
+        workflow_generation=_integer(
+            data["workflow_generation"], "workflow_generation"
+        ),
         status=MissionStatus(_string(data["status"], "status")),
         role=MissionRole(_string(data["role"], "role")),
         objective=_string(data["objective"], "objective"),
@@ -288,6 +291,12 @@ def _strings(value: object, label: str) -> list[str]:
     if not isinstance(value, list):
         raise PersistenceError("INVALID_DOMAIN_DATA", f"{label} must be an array")
     return [_string(item, label) for item in value]
+
+
+def _integer(value: object, label: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise PersistenceError("INVALID_DOMAIN_DATA", f"{label} must be an integer")
+    return value
 
 
 def _datetime(value: object, label: str) -> datetime:

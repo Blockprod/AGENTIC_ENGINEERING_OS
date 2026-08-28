@@ -21,6 +21,11 @@ persisté attendu et la validation déterministe du RoleResult. Le coordinateur
 ne possède aucune table de transitions parallèle : toutes les évolutions de
 User Story passent par `ControlLoop` et `StateTransitionService`.
 
+Chaque handoff et RoleResult porte la `workflow_generation` active persistée
+dans `MissionState`. La fraîcheur Git et la fraîcheur du workflow sont deux
+conditions distinctes : le commit et la génération doivent tous deux être
+applicables.
+
 ## Frontières et bridges
 
 Les RoleResults restent des rapports sans autorité. L'intégration d'une User
@@ -48,7 +53,11 @@ transition de confiance vers `UserStory.CERTIFIED`; la mission ne devient
 
 Un échec Tester ou Reviewer suit le cycle normatif `REJECTED →
 REMEDIATION_REQUIRED → READY → IN_PROGRESS`, retourne à Implementer et impose
-un nouveau passage Tester. `BLOCKED` n'avance jamais au rôle suivant. Un Gate
+un nouveau passage Tester. Cette opération incrémente la génération avant le
+nouveau handoff Implementer. Les RoleResults antérieurs restent des artefacts
+historiques, mais ne peuvent plus autoriser la progression de la génération
+active. L'ArchitectResult initial reste une référence lorsque la spécification
+n'est pas reprise. `BLOCKED` n'avance jamais au rôle suivant. Un Gate
 `NOT_APPLICABLE` requis exige la même autorisation explicite dans le dossier du
 Certifier et dans le contexte de certification.
 

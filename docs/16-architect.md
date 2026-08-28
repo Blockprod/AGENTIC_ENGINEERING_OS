@@ -5,8 +5,8 @@
 L'Architect est le rôle Codex qui spécifie une solution conceptuelle minimale,
 décompose le travail et produit des User Stories candidates. Son entrée
 canonique est un `RoleHandoff(to_role=ARCHITECT)` émis par l'Orchestrator.
-`ArchitectInput.from_handoff` en extrait `mission_id`, objectif, sujet, commit
-observé, blockers et instructions ; les contraintes disponibles sont fournies
+`ArchitectInput.from_handoff` en extrait `mission_id`, `workflow_generation`,
+objectif, sujet, commit observé, blockers et instructions ; les contraintes disponibles sont fournies
 explicitement par l'appelant.
 
 L'Architect observe les faits transmis, explicite toute hypothèse et signale
@@ -21,7 +21,8 @@ convention native ou propriétaire d'exécution des rôles.
 
 `ArchitectResult` contient :
 
-- la mission, le rôle fixe `ARCHITECT`, le sujet et le commit observé ;
+- la mission, la génération, le rôle fixe `ARCHITECT`, le sujet et le commit
+  observé ;
 - un résumé, les hypothèses, décisions, risques et blockers explicites ;
 - zéro ou plusieurs User Stories candidates ;
 - un rôle suivant recommandé sans autorité de routing ;
@@ -52,7 +53,8 @@ ne fabrique et ne réutilise aucune approbation Human.
 `ArchitectResultValidator` soumet chaque User Story à `ContractValidator`,
 impose `PROPOSED`, vérifie l'unicité des IDs, résout les dépendances locales et
 refuse toute auto-approbation Human. Lorsqu'un `ArchitectInput` est fourni, il
-vérifie aussi l'identité de mission, le sujet et le commit observé.
+vérifie aussi l'identité de mission, la génération, le sujet et le commit
+observé.
 
 Le validateur accepte ou refuse un contenu produit par Codex. Il ne génère pas
 la solution, ne réécrit aucune décision, n'invente ni Acceptance Criterion ni

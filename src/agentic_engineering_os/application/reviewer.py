@@ -80,6 +80,7 @@ class ReviewerInput:
     """Immutable review assignment derived from all required prior artifacts."""
 
     mission_id: str
+    workflow_generation: int
     user_story: UserStory
     implementer_result: ImplementerResult
     tester_result: TesterResult
@@ -123,6 +124,7 @@ class ReviewerInput:
         )
         result = cls(
             mission_id=handoff.mission_id,
+            workflow_generation=handoff.workflow_generation,
             user_story=deepcopy(user_story),
             implementer_result=deepcopy(implementer_result),
             tester_result=deepcopy(tester_result),
@@ -140,6 +142,7 @@ class ReviewerResult:
     """Structured quality review without mutation or Certification authority."""
 
     mission_id: str
+    workflow_generation: int
     role: MissionRole = field(default=MissionRole.REVIEWER, init=False)
     subject: str
     user_story_id: str
@@ -234,6 +237,12 @@ def _require_reviewer_handoff(handoff: RoleHandoff) -> None:
         raise ReviewerInputError("handoff text fields must be non-empty")
     if not _COMMIT_PATTERN.fullmatch(handoff.observed_commit):
         raise ReviewerInputError("observed_commit must be a full Git SHA")
+    if (
+        not isinstance(handoff.workflow_generation, int)
+        or isinstance(handoff.workflow_generation, bool)
+        or handoff.workflow_generation < 0
+    ):
+        raise ReviewerInputError("workflow_generation must be a non-negative integer")
     if not isinstance(handoff.blockers, tuple) or not all(
         isinstance(blocker, str) and blocker.strip() for blocker in handoff.blockers
     ):
@@ -272,6 +281,7 @@ def _require_tester_result(
         raise ReviewerInputError("TesterResult must be READY_FOR_REVIEW")
     if (
         result.mission_id != handoff.mission_id
+        or result.workflow_generation != handoff.workflow_generation
         or result.subject != user_story.id
         or result.user_story_id != user_story.id
         or result.observed_commit.casefold() != handoff.observed_commit.casefold()
@@ -335,12 +345,14 @@ def _validate_context(
 ) -> None:
     expected = {
         "mission_id": reviewer_input.mission_id,
+        "workflow_generation": reviewer_input.workflow_generation,
         "subject": reviewer_input.user_story.id,
         "user_story_id": reviewer_input.user_story.id,
         "observed_commit": reviewer_input.observed_commit.casefold(),
     }
     actual = {
         "mission_id": serialized["mission_id"],
+        "workflow_generation": serialized["workflow_generation"],
         "subject": serialized["subject"],
         "user_story_id": serialized["user_story_id"],
         "observed_commit": cast(str, serialized["observed_commit"]).casefold(),
@@ -525,6 +537,7 @@ def _input_snapshot(value: ReviewerInput) -> str:
     return json.dumps(
         {
             "mission_id": value.mission_id,
+            "workflow_generation": value.workflow_generation,
             "user_story": to_dict(value.user_story),
             "implementer_result": to_dict(value.implementer_result),
             "tester_result": to_dict(value.tester_result),

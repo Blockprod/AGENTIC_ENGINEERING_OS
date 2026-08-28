@@ -49,6 +49,7 @@ class ArchitectInput:
     """Repository-local Architect context derived from an Orchestrator handoff."""
 
     mission_id: str
+    workflow_generation: int
     objective: str
     subject: str
     observed_commit: str
@@ -81,6 +82,12 @@ class ArchitectInput:
             raise ArchitectInputError("handoff text fields must be non-empty")
         if not _COMMIT_PATTERN.fullmatch(handoff.observed_commit):
             raise ArchitectInputError("observed_commit must be a full Git SHA")
+        if (
+            not isinstance(handoff.workflow_generation, int)
+            or isinstance(handoff.workflow_generation, bool)
+            or handoff.workflow_generation < 0
+        ):
+            raise ArchitectInputError("workflow_generation must be a non-negative integer")
         if not isinstance(handoff.blockers, tuple) or not all(
             isinstance(blocker, str) and blocker.strip()
             for blocker in handoff.blockers
@@ -98,6 +105,7 @@ class ArchitectInput:
             )
         return cls(
             mission_id=handoff.mission_id,
+            workflow_generation=handoff.workflow_generation,
             objective=handoff.objective,
             subject=handoff.subject,
             observed_commit=handoff.observed_commit,
@@ -112,6 +120,7 @@ class ArchitectResult:
     """Structured Architect output; READY is not a Certification."""
 
     mission_id: str
+    workflow_generation: int
     role: MissionRole = field(default=MissionRole.ARCHITECT, init=False)
     subject: str
     observed_commit: str
@@ -175,11 +184,13 @@ class ArchitectResultValidator:
             else:
                 expected = {
                     "mission_id": architect_input.mission_id,
+                    "workflow_generation": architect_input.workflow_generation,
                     "subject": architect_input.subject,
                     "observed_commit": architect_input.observed_commit.casefold(),
                 }
                 actual = {
                     "mission_id": serialized["mission_id"],
+                    "workflow_generation": serialized["workflow_generation"],
                     "subject": serialized["subject"],
                     "observed_commit": cast(
                         str, serialized["observed_commit"]

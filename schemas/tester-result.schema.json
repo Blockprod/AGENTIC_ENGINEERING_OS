@@ -5,13 +5,14 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "mission_id", "role", "subject", "user_story_id", "observed_commit",
+    "mission_id", "workflow_generation", "role", "subject", "user_story_id", "observed_commit",
     "summary", "test_plan", "acceptance_results", "test_cases",
     "test_files_changed", "verification_commands", "verification_results",
     "findings", "blockers", "recommended_next_role", "verdict"
   ],
   "properties": {
     "mission_id": {"type": "string", "minLength": 1},
+    "workflow_generation": {"type": "integer", "minimum": 0},
     "role": {"const": "TESTER"},
     "subject": {"type": "string", "minLength": 1},
     "user_story_id": {"type": "string", "pattern": "^US-[0-9]{4}$"},

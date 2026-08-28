@@ -49,7 +49,7 @@ def story(*, status=UserStoryStatus.CERTIFICATION, human=False, producer="Alice"
 
 def architect(**overrides):
     values = dict(
-        mission_id="P2.8", subject="US-0001", observed_commit=COMMIT,
+        mission_id="P2.8", workflow_generation=0, subject="US-0001", observed_commit=COMMIT,
         summary="Architecture ready.", assumptions=(), decisions=(), risks=(), blockers=(),
         user_stories=(story(status=UserStoryStatus.PROPOSED),),
         recommended_next_role=MissionRole.IMPLEMENTER, verdict=ArchitectVerdict.READY,
@@ -60,7 +60,7 @@ def architect(**overrides):
 
 def implementer(**overrides):
     values = dict(
-        mission_id="P2.8", subject="US-0001", user_story_id="US-0001",
+        mission_id="P2.8", workflow_generation=0, subject="US-0001", user_story_id="US-0001",
         observed_commit=COMMIT, summary="Implemented.",
         files_changed=("src/feature.py", "tests/test_feature.py"),
         tests_added_or_modified=("tests/test_feature.py",), verification_commands=(COMMAND,),
@@ -75,7 +75,7 @@ def implementer(**overrides):
 def make_tester_result(**overrides):
     cases = tuple(TesterTestCase(f"TC-{i}", kind, "Exercise.", "Expected.", "Observed.", True, True, GateResult.PASS) for i, kind in enumerate(TestCaseType, 1))
     values = dict(
-        mission_id="P2.8", subject="US-0001", user_story_id="US-0001", observed_commit=COMMIT,
+        mission_id="P2.8", workflow_generation=0, subject="US-0001", user_story_id="US-0001", observed_commit=COMMIT,
         summary="Tested.", test_plan=TesterPlan(("AC-001",), ("p",), ("n",), ("e",), ("r",), (COMMAND,)),
         acceptance_results=(TesterAcceptanceResult("AC-001", GateResult.PASS, ("TC-1",), "pass"),),
         test_cases=cases, test_files_changed=("tests/test_feature.py",), verification_commands=(COMMAND,),
@@ -89,7 +89,7 @@ def make_tester_result(**overrides):
 
 def reviewer(**overrides):
     values = dict(
-        mission_id="P2.8", subject="US-0001", user_story_id="US-0001", observed_commit=COMMIT,
+        mission_id="P2.8", workflow_generation=0, subject="US-0001", user_story_id="US-0001", observed_commit=COMMIT,
         summary="Reviewed.", dimensions_reviewed=tuple(ReviewDimension),
         reviewed_paths=("src/feature.py", "tests/test_feature.py"), findings=(), blockers=(),
         recommended_next_role=MissionRole.CERTIFIER, verdict=ReviewerVerdict.READY_FOR_CERTIFICATION,
@@ -108,7 +108,7 @@ def gate(*, result=GateResult.PASS, refs=("EV-GATE",)):
 
 def handoff(**overrides):
     values = dict(from_role=MissionRole.ORCHESTRATOR, to_role=MissionRole.CERTIFIER,
-        mission_id="P2.8", subject="US-0001", objective="Inspect proof dossier.",
+        mission_id="P2.8", workflow_generation=0, subject="US-0001", objective="Inspect proof dossier.",
         observed_commit=COMMIT, operating_step=OperatingStep.CONTROLLED_TRANSITION,
         blockers=(), instructions="Inspect without certifying.")
     values.update(overrides)
@@ -133,7 +133,7 @@ def certifier_input(*, assigned=None, architecture=DEFAULT, implementation=DEFAU
 
 def result(**overrides):
     values = dict(
-        mission_id="P2.8", subject="US-0001", user_story_id="US-0001", observed_commit=COMMIT,
+        mission_id="P2.8", workflow_generation=0, subject="US-0001", user_story_id="US-0001", observed_commit=COMMIT,
         summary="Dossier ready.",
         artifact_checks=tuple(ArtifactCheck(role, True, True, "Present and coherent.") for role in (MissionRole.ARCHITECT, MissionRole.IMPLEMENTER, MissionRole.TESTER, MissionRole.REVIEWER)),
         acceptance_checks=(AcceptanceCheck("AC-001", True, GateResult.PASS, ("EV-AC",), "Supported."),),
@@ -266,9 +266,12 @@ def test_story_must_be_in_certification_state():
         certifier_input(assigned=story(status=UserStoryStatus.REVIEW))
 
 
-@pytest.mark.parametrize("field", ["mission_id", "subject", "user_story_id", "observed_commit"])
+@pytest.mark.parametrize(
+    "field",
+    ["mission_id", "workflow_generation", "subject", "user_story_id", "observed_commit"],
+)
 def test_context_mismatch_is_rejected(field):
-    data = to_dict(result()); data[field] = OTHER_COMMIT if field == "observed_commit" else "wrong"
+    data = to_dict(result()); data[field] = 1 if field == "workflow_generation" else OTHER_COMMIT if field == "observed_commit" else "wrong"
     assert not validate(data).is_valid
 
 

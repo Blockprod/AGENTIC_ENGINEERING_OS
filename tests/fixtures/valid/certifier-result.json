@@ -1,5 +1,5 @@
 {
-  "mission_id": "P2.8", "role": "CERTIFIER", "subject": "US-0001",
+  "mission_id": "P2.8", "workflow_generation": 0, "role": "CERTIFIER", "subject": "US-0001",
   "user_story_id": "US-0001", "observed_commit": "b390426f356e6fe8a9f638c9b04e807f75ae5ced",
   "summary": "Dossier ready for deterministic submission.",
   "artifact_checks": [

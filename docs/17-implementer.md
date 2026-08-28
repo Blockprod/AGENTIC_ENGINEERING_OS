@@ -13,7 +13,8 @@ critères d'acceptation, ni l'état persistant, et ne certifie aucun résultat.
 `RoleHandoff(to_role=IMPLEMENTER, operating_step=ACT)` et une User Story valide
 dont l'identifiant correspond au sujet du handoff. Il contient :
 
-- `mission_id`, `user_story`, `observed_commit` et `objective` ;
+- `mission_id`, `workflow_generation`, `user_story`, `observed_commit` et
+  `objective` ;
 - les `blockers` et `instructions` transmis par l'Orchestrator.
 
 La User Story doit être `IN_PROGRESS`, avoir un `allowed_paths` non vide et ne
@@ -46,8 +47,8 @@ autorise. Chaque test déclaré comme ajouté ou modifié doit aussi figurer dan
 
 `ImplementerResult` contient :
 
-- `mission_id`, le rôle constant `IMPLEMENTER`, `subject`, `user_story_id` et
-  `observed_commit` ;
+- `mission_id`, `workflow_generation`, le rôle constant `IMPLEMENTER`,
+  `subject`, `user_story_id` et `observed_commit` ;
 - `summary`, `files_changed` et `tests_added_or_modified` ;
 - `verification_commands` et leurs `verification_results` structurés ;
 - `assumptions`, `findings`, `blockers`, `recommended_next_role` et `verdict`.

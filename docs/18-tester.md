@@ -17,8 +17,9 @@ structure et la cohérence de leurs résultats.
 
 `TesterInput` est dérivé d'un handoff
 `ORCHESTRATOR → TESTER` pour l'étape `VERIFY`, d'une User Story assignée et d'un
-`ImplementerResult` `READY_FOR_TEST`. Mission, sujet, User Story, commit et
-résultat d'implémentation doivent être cohérents et sans blocker actif.
+`ImplementerResult` `READY_FOR_TEST`. Mission, génération, sujet, User Story,
+commit et résultat d'implémentation doivent être cohérents et sans blocker
+actif.
 
 La User Story doit être `TESTING`. Le passage canonique
 `IN_PROGRESS → IMPLEMENTED → TESTING` reste exclusivement contrôlé par le
@@ -27,7 +28,7 @@ de l'affectation bloque toute altération ultérieure du contrat ou des inputs.
 
 ## Sortie et résultats d'acceptation
 
-`TesterResult` contient le contexte, le plan, les résultats des critères, les
+`TesterResult` contient notamment la génération du handoff, le contexte, le plan, les résultats des critères, les
 cas de test, les fichiers de tests modifiés, les commandes et résultats
 observés, les findings, blockers, rôle recommandé et verdict.
 

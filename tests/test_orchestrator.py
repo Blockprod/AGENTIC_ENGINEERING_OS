@@ -36,6 +36,7 @@ def mission_state(**overrides: object) -> MissionState:
     values: dict[str, object] = {
         "schema_version": "1.0",
         "mission_id": "P2.3",
+        "workflow_generation": 0,
         "status": MissionStatus.ACTIVE,
         "role": MissionRole.ORCHESTRATOR,
         "objective": "Coordinate the deterministic mission workflow.",
@@ -173,6 +174,7 @@ def test_handoff_contains_only_complete_context_not_authority(tmp_path: Path) ->
     assert handoff.from_role is MissionRole.TESTER
     assert handoff.to_role is MissionRole.REVIEWER
     assert handoff.mission_id == mission.mission_id
+    assert handoff.workflow_generation == mission.workflow_generation
     assert handoff.subject == mission.subject
     assert handoff.objective == mission.objective
     assert handoff.observed_commit == COMMIT

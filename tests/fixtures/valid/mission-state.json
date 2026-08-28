@@ -1,6 +1,7 @@
 {
   "schema_version": "1.0",
   "mission_id": "P2.2",
+  "workflow_generation": 0,
   "status": "ACTIVE",
   "role": "IMPLEMENTER",
   "objective": "Persist operational mission memory.",

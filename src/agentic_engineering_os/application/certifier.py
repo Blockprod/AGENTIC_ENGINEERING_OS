@@ -97,6 +97,7 @@ class CertifierInput:
     """Immutable dossier supplied by the Orchestrator, without control authority."""
 
     mission_id: str
+    workflow_generation: int
     user_story: UserStory
     architect_result: ArchitectResult | None
     implementer_result: ImplementerResult | None
@@ -152,6 +153,7 @@ class CertifierInput:
         _require_unique_valid_domain_items(evidence, gates, resolved)
         result = cls(
             mission_id=handoff.mission_id,
+            workflow_generation=handoff.workflow_generation,
             user_story=deepcopy(user_story),
             architect_result=deepcopy(architect_result),
             implementer_result=deepcopy(implementer_result),
@@ -174,6 +176,7 @@ class CertifierResult:
     """A dossier-readiness opinion; never an authoritative Certification."""
 
     mission_id: str
+    workflow_generation: int
     role: MissionRole = field(default=MissionRole.CERTIFIER, init=False)
     subject: str
     user_story_id: str
@@ -244,6 +247,12 @@ def _require_handoff(handoff: RoleHandoff) -> None:
         raise CertifierInputError("handoff text fields must be non-empty")
     if not _COMMIT_PATTERN.fullmatch(handoff.observed_commit):
         raise CertifierInputError("observed_commit must be a full Git SHA")
+    if (
+        not isinstance(handoff.workflow_generation, int)
+        or isinstance(handoff.workflow_generation, bool)
+        or handoff.workflow_generation < 0
+    ):
+        raise CertifierInputError("workflow_generation must be a non-negative integer")
 
 
 def _require_story(story: UserStory, validator: ContractValidator) -> None:
@@ -270,10 +279,11 @@ def _artifact_state(value: object, role: MissionRole, contract: str, expected_ve
     valid = validator.validate(contract, to_dict(value)).is_valid
     coherent = valid and getattr(value, "role", None) is role and getattr(value, "mission_id", None) == context.mission_id and getattr(value, "observed_commit", "").casefold() == context.observed_commit.casefold() and getattr(value, "verdict", None) is expected_verdict
     if role is MissionRole.ARCHITECT:
+        coherent = coherent and getattr(value, "workflow_generation", -1) <= context.workflow_generation
         stories = [x for x in cast(ArchitectResult, value).user_stories if x.id == context.user_story.id]
         coherent = coherent and len(stories) == 1 and _same_story_contract(stories[0], context.user_story)
     else:
-        coherent = coherent and getattr(value, "subject", None) == context.user_story.id and getattr(value, "user_story_id", None) == context.user_story.id
+        coherent = coherent and getattr(value, "workflow_generation", None) == context.workflow_generation and getattr(value, "subject", None) == context.user_story.id and getattr(value, "user_story_id", None) == context.user_story.id
     if role is MissionRole.IMPLEMENTER and isinstance(value, ImplementerResult):
         coherent = coherent and not value.blockers and all(
             not item.required or item.result.value == "PASS"
@@ -332,8 +342,8 @@ def _dossier_truth(context: CertifierInput, validator: ContractValidator) -> dic
 
 
 def _validate_context(data: Mapping[str, object], context: CertifierInput, issues: list[ValidationIssue]) -> None:
-    expected = {"mission_id": context.mission_id, "subject": context.user_story.id, "user_story_id": context.user_story.id, "observed_commit": context.observed_commit.casefold()}
-    actual = {**{k: data[k] for k in ("mission_id", "subject", "user_story_id")}, "observed_commit": cast(str, data["observed_commit"]).casefold()}
+    expected = {"mission_id": context.mission_id, "workflow_generation": context.workflow_generation, "subject": context.user_story.id, "user_story_id": context.user_story.id, "observed_commit": context.observed_commit.casefold()}
+    actual = {**{k: data[k] for k in ("mission_id", "workflow_generation", "subject", "user_story_id")}, "observed_commit": cast(str, data["observed_commit"]).casefold()}
     for key, value in expected.items():
         if actual[key] != value:
             issues.append(ValidationIssue("CERTIFIER_CONTEXT_MISMATCH", (key,), f"{key} differs from CertifierInput"))
@@ -486,7 +496,7 @@ def _input_snapshot(value: CertifierInput) -> str:
     def item(candidate: object | None) -> object:
         return None if candidate is None else to_dict(candidate)
     return json.dumps({
-        "mission_id": value.mission_id, "user_story": to_dict(value.user_story),
+        "mission_id": value.mission_id, "workflow_generation": value.workflow_generation, "user_story": to_dict(value.user_story),
         "architect_result": item(value.architect_result), "implementer_result": item(value.implementer_result),
         "tester_result": item(value.tester_result), "reviewer_result": item(value.reviewer_result),
         "evidence": [to_dict(x) for x in value.evidence], "gates": [to_dict(x) for x in value.gates],

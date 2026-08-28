@@ -142,6 +142,7 @@ class MissionState:
 
     schema_version: str
     mission_id: str
+    workflow_generation: int
     status: MissionStatus
     role: MissionRole
     objective: str

@@ -20,9 +20,10 @@ cohérence de son analyse.
 cohérents. La User Story doit être `REVIEW` après la transition contrôlée
 `TESTING → REVIEW`. Le Reviewer ne change jamais directement son statut.
 
-Les quatre contextes doivent partager mission, sujet et commit observé. Un
-snapshot déterministe bloque toute altération ultérieure de la User Story ou
-des résultats précédents.
+Les quatre contextes doivent partager mission, génération active, sujet et
+commit observé. Un snapshot déterministe bloque toute altération ultérieure de
+la User Story ou des résultats précédents. `ReviewerResult` porte cette même
+génération.
 
 ## Dimensions V1
 

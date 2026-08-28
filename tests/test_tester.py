@@ -89,6 +89,7 @@ def story(
 def implementer_result(**overrides: object) -> ImplementerResult:
     values: dict[str, object] = {
         "mission_id": "P2.6",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "user_story_id": "US-0001",
         "observed_commit": COMMIT,
@@ -114,6 +115,7 @@ def handoff(**overrides: object) -> RoleHandoff:
         "from_role": MissionRole.ORCHESTRATOR,
         "to_role": MissionRole.TESTER,
         "mission_id": "P2.6",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "objective": "Try to falsify the assigned implementation.",
         "observed_commit": COMMIT,
@@ -173,6 +175,7 @@ def verification(
 def result(**overrides: object) -> TesterResult:
     values: dict[str, object] = {
         "mission_id": "P2.6",
+        "workflow_generation": 0,
         "subject": "US-0001",
         "user_story_id": "US-0001",
         "observed_commit": COMMIT,
@@ -288,9 +291,12 @@ def test_ready_for_review_nominal_covers_adversarial_cases_and_schema() -> None:
     assert {case.type for case in candidate.test_cases} == set(TestCaseType)
 
 
-@pytest.mark.parametrize("field", ["mission_id", "subject", "user_story_id", "observed_commit"])
+@pytest.mark.parametrize(
+    "field",
+    ["mission_id", "workflow_generation", "subject", "user_story_id", "observed_commit"],
+)
 def test_result_context_must_match_tester_input(field: str) -> None:
-    value = "0" * 40 if field == "observed_commit" else "US-9999" if field == "user_story_id" else "different"
+    value = 1 if field == "workflow_generation" else "0" * 40 if field == "observed_commit" else "US-9999" if field == "user_story_id" else "different"
 
     validation = validate(mapping(**{field: value}))
 

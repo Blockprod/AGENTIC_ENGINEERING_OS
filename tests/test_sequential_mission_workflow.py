@@ -41,6 +41,7 @@ from agentic_engineering_os.application import (
     StateTransitionService,
     TestCaseType,
     TesterAcceptanceResult,
+    TesterInputError as WorkflowTesterInputError,
     TesterPlan,
     TesterResult,
     TesterTestCase,
@@ -107,6 +108,7 @@ def proposed_story(*, human_required: bool = False) -> UserStory:
 def architect_result(*, human_required: bool = False) -> ArchitectResult:
     return ArchitectResult(
         mission_id="P2.9",
+        workflow_generation=0,
         subject="US-0001",
         observed_commit=COMMIT,
         summary="One minimal User Story is specified.",
@@ -120,9 +122,12 @@ def architect_result(*, human_required: bool = False) -> ArchitectResult:
     )
 
 
-def implementer_result(*, version: int = 1) -> ImplementerResult:
+def implementer_result(
+    *, version: int = 1, workflow_generation: int = 0
+) -> ImplementerResult:
     return ImplementerResult(
         mission_id="P2.9",
+        workflow_generation=workflow_generation,
         subject="US-0001",
         user_story_id="US-0001",
         observed_commit=COMMIT,
@@ -179,7 +184,12 @@ def _test_cases(*, failed: bool = False) -> tuple[TesterTestCase, ...]:
     return tuple(cases)
 
 
-def make_tester_result(*, failed: bool = False, blocked: bool = False) -> TesterResult:
+def make_tester_result(
+    *,
+    failed: bool = False,
+    blocked: bool = False,
+    workflow_generation: int = 0,
+) -> TesterResult:
     if blocked:
         acceptance = GateResult.UNKNOWN
         cases = (
@@ -219,6 +229,7 @@ def make_tester_result(*, failed: bool = False, blocked: bool = False) -> Tester
     exit_code = 1 if failed else 0 if executed else None
     return TesterResult(
         mission_id="P2.9",
+        workflow_generation=workflow_generation,
         subject="US-0001",
         user_story_id="US-0001",
         observed_commit=COMMIT,
@@ -254,7 +265,12 @@ def make_tester_result(*, failed: bool = False, blocked: bool = False) -> Tester
     )
 
 
-def reviewer_result(*, remediation: bool = False, blocked: bool = False) -> ReviewerResult:
+def reviewer_result(
+    *,
+    remediation: bool = False,
+    blocked: bool = False,
+    workflow_generation: int = 0,
+) -> ReviewerResult:
     if remediation:
         findings = (
             ReviewFinding(
@@ -282,6 +298,7 @@ def reviewer_result(*, remediation: bool = False, blocked: bool = False) -> Revi
         next_role = MissionRole.CERTIFIER
     return ReviewerResult(
         mission_id="P2.9",
+        workflow_generation=workflow_generation,
         subject="US-0001",
         user_story_id="US-0001",
         observed_commit=COMMIT,
@@ -299,6 +316,7 @@ def certifier_result(
     *,
     not_applicable: bool = False,
     human: bool = False,
+    workflow_generation: int = 0,
 ) -> CertifierResult:
     gate_result = GateResult.NOT_APPLICABLE if not_applicable else GateResult.PASS
     gate_refs = () if not_applicable else ("EV-GATE",)
@@ -309,6 +327,7 @@ def certifier_result(
         evidence_refs.append("EV-HUMAN")
     return CertifierResult(
         mission_id="P2.9",
+        workflow_generation=workflow_generation,
         subject="US-0001",
         user_story_id="US-0001",
         observed_commit=COMMIT,
@@ -399,6 +418,7 @@ def mission() -> MissionState:
     return MissionState(
         schema_version="1.0",
         mission_id="P2.9",
+        workflow_generation=0,
         status=MissionStatus.ACTIVE,
         role=MissionRole.ORCHESTRATOR,
         objective="Execute one sequential agentic mission.",
@@ -579,7 +599,11 @@ def finish(
     )
     result = workflow.submit_control_plane(
         handoff or route(workflow),
-        certifier_result(not_applicable=not_applicable, human=human),
+        certifier_result(
+            not_applicable=not_applicable,
+            human=human,
+            workflow_generation=review.workflow_generation,
+        ),
         architect_result=architecture,
         implementer_result=implementation,
         tester_result=testing,
@@ -764,6 +788,7 @@ def test_tester_remediation_requires_implementer_and_retest(tmp_path: Path) -> N
     )
 
     assert remediated.current_step is OperatingStep.ACT
+    assert remediated.workflow_generation == 1
     assert ProjectStateStore(tmp_path).load().user_stories[0].status is UserStoryStatus.IN_PROGRESS
     implementer_handoff = route(workflow)
     with pytest.raises(SequentialMissionWorkflowError):
@@ -775,13 +800,13 @@ def test_tester_remediation_requires_implementer_and_retest(tmp_path: Path) -> N
             updated_at=NOW,
         )
 
-    implementation_v2 = implementer_result(version=2)
+    implementation_v2 = implementer_result(version=2, workflow_generation=1)
     workflow.accept_implementer(
         implementer_handoff,
         implementation_v2,
         updated_at=NOW,
     )
-    passed = make_tester_result()
+    passed = make_tester_result(workflow_generation=1)
     workflow.accept_tester(
         route(workflow),
         passed,
@@ -789,7 +814,7 @@ def test_tester_remediation_requires_implementer_and_retest(tmp_path: Path) -> N
         updated_at=NOW,
     )
     record_acceptance(workflow, passed, result=True)
-    review = reviewer_result()
+    review = reviewer_result(workflow_generation=1)
     workflow.accept_reviewer(
         route(workflow),
         review,
@@ -824,15 +849,16 @@ def test_reviewer_remediation_requires_implementer_retest_and_rereview(
         updated_at=NOW,
     )
     assert remediation.current_step is OperatingStep.ACT
+    assert remediation.workflow_generation == 1
 
-    implementation_v2 = implementer_result(version=2)
+    implementation_v2 = implementer_result(version=2, workflow_generation=1)
     workflow.accept_implementer(route(workflow), implementation_v2, updated_at=NOW)
-    testing_v2 = make_tester_result()
+    testing_v2 = make_tester_result(workflow_generation=1)
     tester_handoff = route(workflow)
     with pytest.raises(SequentialMissionWorkflowError):
         workflow.accept_reviewer(
             tester_handoff,
-            reviewer_result(),
+            reviewer_result(workflow_generation=1),
             implementer_result=implementation_v2,
             tester_result=testing_v2,
             updated_at=NOW,
@@ -844,7 +870,7 @@ def test_reviewer_remediation_requires_implementer_retest_and_rereview(
         updated_at=NOW,
     )
     record_acceptance(workflow, testing_v2, result=True)
-    clean_review = reviewer_result()
+    clean_review = reviewer_result(workflow_generation=1)
     workflow.accept_reviewer(
         route(workflow),
         clean_review,
@@ -854,6 +880,220 @@ def test_reviewer_remediation_requires_implementer_retest_and_rereview(
     )
     record_gate(workflow)
     finish(workflow, (architecture, implementation_v2, testing_v2, clean_review))
+
+
+def test_tester_remediation_rejects_stale_future_mixed_and_wrong_commit_results(
+    tmp_path: Path,
+) -> None:
+    workflow = make_workflow(tmp_path)
+    architecture = architect_result()
+    workflow.accept_architect(route(workflow), architecture, updated_at=NOW)
+    stale_handoff = route(workflow)
+    implementation_v0 = implementer_result()
+    workflow.accept_implementer(stale_handoff, implementation_v0, updated_at=NOW)
+    testing_v0 = make_tester_result(failed=True)
+    workflow.accept_tester(
+        route(workflow),
+        testing_v0,
+        implementer_result=implementation_v0,
+        updated_at=NOW,
+    )
+
+    persisted = MissionStateStore(tmp_path).load()
+    assert persisted.workflow_generation == 1
+    with pytest.raises(SequentialMissionWorkflowError) as stale_handoff_error:
+        workflow.accept_implementer(stale_handoff, implementation_v0, updated_at=NOW)
+    assert stale_handoff_error.value.code == "ROLE_CHAIN_VIOLATION"
+
+    generation_1_handoff = route(workflow)
+    for inadmissible in (
+        implementation_v0,
+        implementer_result(workflow_generation=2),
+        replace(
+            implementer_result(workflow_generation=1),
+            observed_commit=OTHER_COMMIT,
+        ),
+    ):
+        with pytest.raises(SequentialMissionWorkflowError) as error:
+            workflow.accept_implementer(
+                generation_1_handoff,
+                inadmissible,
+                updated_at=NOW,
+            )
+        assert error.value.code == "INVALID_IMPLEMENTER_RESULT"
+
+    implementation_v1 = implementer_result(version=2, workflow_generation=1)
+    workflow.accept_implementer(
+        generation_1_handoff,
+        implementation_v1,
+        updated_at=NOW,
+    )
+    tester_handoff = route(workflow)
+    for inadmissible in (
+        make_tester_result(),
+        make_tester_result(workflow_generation=2),
+        replace(
+            make_tester_result(workflow_generation=1),
+            observed_commit=OTHER_COMMIT,
+        ),
+    ):
+        with pytest.raises(SequentialMissionWorkflowError) as error:
+            workflow.accept_tester(
+                tester_handoff,
+                inadmissible,
+                implementer_result=implementation_v1,
+                updated_at=NOW,
+            )
+        assert error.value.code == "INVALID_TESTER_RESULT"
+
+    with pytest.raises(WorkflowTesterInputError):
+        workflow.accept_tester(
+            tester_handoff,
+            make_tester_result(workflow_generation=1),
+            implementer_result=implementation_v0,
+            updated_at=NOW,
+        )
+    assert ProjectStateStore(tmp_path).load().user_stories[0].status is UserStoryStatus.TESTING
+
+
+def test_reviewer_and_certifier_results_from_previous_generation_are_stale(
+    tmp_path: Path,
+) -> None:
+    workflow = make_workflow(tmp_path)
+    architecture, implementation_v0 = advance_to_tester(workflow)
+    testing_v0 = make_tester_result()
+    workflow.accept_tester(
+        route(workflow),
+        testing_v0,
+        implementer_result=implementation_v0,
+        updated_at=NOW,
+    )
+    stale_positive_review = reviewer_result()
+    stale_certifier = certifier_result()
+    workflow.accept_reviewer(
+        route(workflow),
+        reviewer_result(remediation=True),
+        implementer_result=implementation_v0,
+        tester_result=testing_v0,
+        updated_at=NOW,
+    )
+
+    implementation_v1 = implementer_result(version=2, workflow_generation=1)
+    workflow.accept_implementer(route(workflow), implementation_v1, updated_at=NOW)
+    testing_v1 = make_tester_result(workflow_generation=1)
+    workflow.accept_tester(
+        route(workflow),
+        testing_v1,
+        implementer_result=implementation_v1,
+        updated_at=NOW,
+    )
+    reviewer_handoff = route(workflow)
+    with pytest.raises(SequentialMissionWorkflowError) as stale_reviewer:
+        workflow.accept_reviewer(
+            reviewer_handoff,
+            stale_positive_review,
+            implementer_result=implementation_v1,
+            tester_result=testing_v1,
+            updated_at=NOW,
+        )
+    assert stale_reviewer.value.code == "INVALID_REVIEWER_RESULT"
+
+    review_v1 = reviewer_result(workflow_generation=1)
+    workflow.accept_reviewer(
+        reviewer_handoff,
+        review_v1,
+        implementer_result=implementation_v1,
+        tester_result=testing_v1,
+        updated_at=NOW,
+    )
+    with pytest.raises(SequentialMissionWorkflowError) as stale_certifier_error:
+        workflow.submit_control_plane(
+            route(workflow),
+            stale_certifier,
+            architect_result=architecture,
+            implementer_result=implementation_v1,
+            tester_result=testing_v1,
+            reviewer_result=review_v1,
+            acceptance_results=(),
+            certification_context=CertificationContext(),
+            certifier="Codex/Certifier",
+            current_commit=COMMIT,
+            updated_at=NOW,
+        )
+    assert stale_certifier_error.value.code == "INVALID_CERTIFIER_RESULT"
+
+
+def test_multiple_remediations_increment_generation_monotonically(
+    tmp_path: Path,
+) -> None:
+    workflow = make_workflow(tmp_path)
+    _, implementation_v0 = advance_to_tester(workflow)
+    workflow.accept_tester(
+        route(workflow),
+        make_tester_result(failed=True),
+        implementer_result=implementation_v0,
+        updated_at=NOW,
+    )
+    assert MissionStateStore(tmp_path).load().workflow_generation == 1
+
+    implementation_v1 = implementer_result(version=2, workflow_generation=1)
+    workflow.accept_implementer(route(workflow), implementation_v1, updated_at=NOW)
+    workflow.accept_tester(
+        route(workflow),
+        make_tester_result(failed=True, workflow_generation=1),
+        implementer_result=implementation_v1,
+        updated_at=NOW,
+    )
+    assert MissionStateStore(tmp_path).load().workflow_generation == 2
+    assert route(workflow).workflow_generation == 2
+
+
+def test_restart_after_remediation_preserves_generation_and_rejects_history(
+    tmp_path: Path,
+) -> None:
+    first = make_workflow(tmp_path)
+    architecture, implementation_v0 = advance_to_tester(first)
+    failed_v0 = make_tester_result(failed=True)
+    record_acceptance(first, failed_v0, result=False, evidence_id="EV-AC-FAIL")
+    first.accept_tester(
+        route(first),
+        failed_v0,
+        implementer_result=implementation_v0,
+        updated_at=NOW,
+    )
+
+    resumed = make_workflow(tmp_path, initialize=False)
+    assert MissionStateStore(tmp_path).load().workflow_generation == 1
+    implementer_handoff = route(resumed)
+    assert implementer_handoff.workflow_generation == 1
+    with pytest.raises(SequentialMissionWorkflowError) as stale:
+        resumed.accept_implementer(
+            implementer_handoff,
+            implementation_v0,
+            updated_at=NOW,
+        )
+    assert stale.value.code == "INVALID_IMPLEMENTER_RESULT"
+
+    implementation_v1 = implementer_result(version=2, workflow_generation=1)
+    resumed.accept_implementer(implementer_handoff, implementation_v1, updated_at=NOW)
+    testing_v1 = make_tester_result(workflow_generation=1)
+    resumed.accept_tester(
+        route(resumed),
+        testing_v1,
+        implementer_result=implementation_v1,
+        updated_at=NOW,
+    )
+    record_acceptance(resumed, testing_v1, result=True)
+    review_v1 = reviewer_result(workflow_generation=1)
+    resumed.accept_reviewer(
+        route(resumed),
+        review_v1,
+        implementer_result=implementation_v1,
+        tester_result=testing_v1,
+        updated_at=NOW,
+    )
+    record_gate(resumed)
+    finish(resumed, (architecture, implementation_v1, testing_v1, review_v1))
 
 
 def test_human_required_blocks_then_applies_persisted_decision_and_resumes(
@@ -1102,6 +1342,7 @@ def test_certifier_remediation_never_submits_and_returns_to_implementer(
 
     state = ProjectStateStore(tmp_path).load()
     assert result.current_step is OperatingStep.ACT
+    assert result.workflow_generation == 1
     assert state.certifications == []
     assert state.user_stories[0].status is UserStoryStatus.IN_PROGRESS
 

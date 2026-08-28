@@ -2,6 +2,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from agentic_engineering_os.application import ContractValidator
 from agentic_engineering_os.domain import (
     MissionRole,
@@ -21,6 +23,7 @@ def mission_state(**overrides: object) -> MissionState:
     values: dict[str, object] = {
         "schema_version": "1.0",
         "mission_id": "P2.2",
+        "workflow_generation": 0,
         "status": MissionStatus.ACTIVE,
         "role": MissionRole.IMPLEMENTER,
         "objective": "Persister la mémoire opérationnelle de mission.",
@@ -103,10 +106,19 @@ def test_operational_fields_round_trip_to_json_values() -> None:
     serialized = to_dict(candidate)
 
     assert serialized["next_action"] == "Demander une décision."
+    assert serialized["workflow_generation"] == 0
     assert serialized["observed_commit"] == COMMIT
     assert serialized["updated_at"] == UPDATED_AT.isoformat()
     assert serialized["blockers"] == ["Attendre une décision humaine"]
     json.dumps(serialized, ensure_ascii=False)
+
+
+@pytest.mark.parametrize("value", [-1, True, None, "1"])
+def test_workflow_generation_must_be_a_non_negative_integer(value: object) -> None:
+    candidate = to_dict(mission_state())
+    candidate["workflow_generation"] = value
+
+    assert not ContractValidator().validate("mission-state", candidate).is_valid
 
 
 def test_schema_refuses_unexpected_properties() -> None:

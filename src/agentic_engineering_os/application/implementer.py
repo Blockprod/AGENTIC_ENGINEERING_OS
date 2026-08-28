@@ -58,6 +58,7 @@ class ImplementerInput:
     """Validated implementation assignment derived from an explicit handoff."""
 
     mission_id: str
+    workflow_generation: int
     user_story: UserStory
     observed_commit: str
     objective: str
@@ -91,6 +92,14 @@ class ImplementerInput:
             raise ImplementerInputError("handoff text fields must be non-empty")
         if not _COMMIT_PATTERN.fullmatch(handoff.observed_commit):
             raise ImplementerInputError("observed_commit must be a full Git SHA")
+        if (
+            not isinstance(handoff.workflow_generation, int)
+            or isinstance(handoff.workflow_generation, bool)
+            or handoff.workflow_generation < 0
+        ):
+            raise ImplementerInputError(
+                "workflow_generation must be a non-negative integer"
+            )
         if not isinstance(handoff.blockers, tuple) or not all(
             isinstance(blocker, str) and blocker.strip() for blocker in handoff.blockers
         ):
@@ -108,6 +117,7 @@ class ImplementerInput:
         )
         result = cls(
             mission_id=handoff.mission_id,
+            workflow_generation=handoff.workflow_generation,
             user_story=deepcopy(user_story),
             observed_commit=handoff.observed_commit,
             objective=handoff.objective,
@@ -123,6 +133,7 @@ class ImplementerResult:
     """Structured report; it is neither Evidence nor Certification."""
 
     mission_id: str
+    workflow_generation: int
     role: MissionRole = field(default=MissionRole.IMPLEMENTER, init=False)
     subject: str
     user_story_id: str
@@ -188,12 +199,14 @@ class ImplementerResultValidator:
         issues: list[ValidationIssue] = []
         expected = {
             "mission_id": implementer_input.mission_id,
+            "workflow_generation": implementer_input.workflow_generation,
             "subject": story.id,
             "user_story_id": story.id,
             "observed_commit": implementer_input.observed_commit.casefold(),
         }
         actual = {
             "mission_id": serialized["mission_id"],
+            "workflow_generation": serialized["workflow_generation"],
             "subject": serialized["subject"],
             "user_story_id": serialized["user_story_id"],
             "observed_commit": cast(str, serialized["observed_commit"]).casefold(),
@@ -405,6 +418,7 @@ def _input_snapshot(value: ImplementerInput) -> str:
     return json.dumps(
         {
             "mission_id": value.mission_id,
+            "workflow_generation": value.workflow_generation,
             "user_story": to_dict(value.user_story),
             "observed_commit": value.observed_commit,
             "objective": value.objective,

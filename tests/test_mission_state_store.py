@@ -23,6 +23,7 @@ def mission_state(**overrides: object) -> MissionState:
     values: dict[str, object] = {
         "schema_version": "1.0",
         "mission_id": "P2.2",
+        "workflow_generation": 0,
         "status": MissionStatus.ACTIVE,
         "role": MissionRole.IMPLEMENTER,
         "objective": "Persist operational mission memory.",
@@ -173,6 +174,33 @@ def test_missing_required_field_is_refused(tmp_path: Path) -> None:
     store = MissionStateStore(tmp_path)
     candidate = to_dict(mission_state())
     del candidate["next_action"]
+    write_candidate(store, candidate)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.load()
+
+    assert captured.value.code == "INVALID_SCHEMA"
+
+
+def test_missing_workflow_generation_is_not_silently_migrated(tmp_path: Path) -> None:
+    store = MissionStateStore(tmp_path)
+    candidate = to_dict(mission_state())
+    del candidate["workflow_generation"]
+    write_candidate(store, candidate)
+
+    with pytest.raises(PersistenceError) as captured:
+        store.load()
+
+    assert captured.value.code == "INVALID_SCHEMA"
+
+
+@pytest.mark.parametrize("value", [-1, True])
+def test_invalid_workflow_generation_fails_closed_on_load(
+    tmp_path: Path, value: object
+) -> None:
+    store = MissionStateStore(tmp_path)
+    candidate = to_dict(mission_state())
+    candidate["workflow_generation"] = value
     write_candidate(store, candidate)
 
     with pytest.raises(PersistenceError) as captured:

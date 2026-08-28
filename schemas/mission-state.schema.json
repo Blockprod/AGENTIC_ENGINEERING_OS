@@ -7,6 +7,7 @@
   "required": [
     "schema_version",
     "mission_id",
+    "workflow_generation",
     "status",
     "role",
     "objective",
@@ -24,6 +25,10 @@
     "mission_id": {
       "type": "string",
       "minLength": 1
+    },
+    "workflow_generation": {
+      "type": "integer",
+      "minimum": 0
     },
     "status": {
       "type": "string",

@@ -381,6 +381,7 @@ def test_orchestrator_continues_after_authoritative_approval_and_reload(
         MissionState(
             schema_version="1.0",
             mission_id="P2.9-R2",
+            workflow_generation=0,
             status=MissionStatus.ACTIVE,
             role=MissionRole.ORCHESTRATOR,
             objective="Continue after attributable Human approval.",

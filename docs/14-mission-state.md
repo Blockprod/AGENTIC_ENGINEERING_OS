@@ -24,6 +24,8 @@ refusées :
 
 - `schema_version` : version du format, actuellement `1.0` ;
 - `mission_id` : identifiant non vide de la mission ;
+- `workflow_generation` : entier monotone non négatif identifiant le cycle de
+  travail actif, initialisé à `0` ;
 - `status` : `ACTIVE`, `BLOCKED`, `COMPLETED` ou `CANCELLED` ;
 - `role` : `ORCHESTRATOR`, `ARCHITECT`, `IMPLEMENTER`, `TESTER`, `REVIEWER` ou
   `CERTIFIER` ;
@@ -46,6 +48,11 @@ P2.2 ne leur associe aucun comportement spécialisé.
 une transition, ni certifier un résultat, ni représenter une approbation
 humaine. En cas de divergence, les fichiers réels, Git, les tests, les
 artefacts et le `ProjectState` prévalent toujours sur `mission.json`.
+
+La génération active est persistée dans `MissionState` et restaurée telle
+quelle au redémarrage. Elle n'est pas choisie depuis un RoleResult fourni par
+l'appelant : seul le workflow séquentiel l'incrémente lors d'une remediation
+validée.
 
 `observed_commit` est uniquement une observation fournie par l'appelant. Le
 store ne découvre pas Git et ne fournit aucun adaptateur Git. À la reprise,

@@ -36,6 +36,7 @@ def architect_handoff(**overrides: object) -> RoleHandoff:
         "from_role": MissionRole.ORCHESTRATOR,
         "to_role": MissionRole.ARCHITECT,
         "mission_id": "P2.4",
+        "workflow_generation": 0,
         "subject": "Architect role contract",
         "objective": "Define a bounded Architect role.",
         "observed_commit": COMMIT,
@@ -92,6 +93,7 @@ def user_story(
 def architect_result(**overrides: object) -> ArchitectResult:
     values: dict[str, object] = {
         "mission_id": "P2.4",
+        "workflow_generation": 0,
         "subject": "Architect role contract",
         "observed_commit": COMMIT,
         "summary": "Define a minimal contract and validation boundary.",
@@ -177,9 +179,15 @@ def test_architect_result_schema_and_serialization_are_deterministic() -> None:
     assert first["verdict"] == "READY"
 
 
-def test_result_context_must_match_architect_input() -> None:
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("subject", "A different subject"), ("workflow_generation", 1)],
+)
+def test_result_context_must_match_architect_input(
+    field: str, value: object
+) -> None:
     architect_input = ArchitectInput.from_handoff(architect_handoff())
-    candidate = architect_result(subject="A different subject")
+    candidate = architect_result(**{field: value})
 
     result = ArchitectResultValidator().validate(
         candidate, architect_input=architect_input
