@@ -26,6 +26,7 @@ _SCHEMA_FILES = {
     "project-state": "project-state.schema.json",
     "mission-state": "mission-state.schema.json",
     "architect-result": "architect-result.schema.json",
+    "implementer-result": "implementer-result.schema.json",
 }
 
 

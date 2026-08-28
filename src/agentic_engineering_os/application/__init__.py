@@ -45,6 +45,15 @@ from .gate_evaluator import (
     GateEvaluator,
     GateReason,
 )
+from .implementer import (
+    ImplementerInput,
+    ImplementerInputError,
+    ImplementerResult,
+    ImplementerResultValidator,
+    ImplementerVerdict,
+    VerificationOutcome,
+    VerificationResult,
+)
 from .orchestrator import (
     MissionStateStorePort,
     OrchestrationResult,
@@ -91,6 +100,11 @@ __all__ = [
     "GateEvaluationError",
     "GateEvaluator",
     "GateReason",
+    "ImplementerInput",
+    "ImplementerInputError",
+    "ImplementerResult",
+    "ImplementerResultValidator",
+    "ImplementerVerdict",
     "MissionStateStorePort",
     "OrchestrationResult",
     "Orchestrator",
@@ -109,4 +123,6 @@ __all__ = [
     "ValidationError",
     "ValidationIssue",
     "ValidationResult",
+    "VerificationOutcome",
+    "VerificationResult",
 ]

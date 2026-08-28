@@ -21,6 +21,7 @@ VALID_FIXTURES = [
     ("gate", "gate.json"),
     ("audit-event", "audit-event.json"),
     ("certification", "certification.json"),
+    ("implementer-result", "implementer-result.json"),
 ]
 
 INVALID_FIXTURES = [
@@ -29,6 +30,7 @@ INVALID_FIXTURES = [
     ("user-story", "user-story-duplicate-dependencies.json"),
     ("gate", "gate-unknown-result.json"),
     ("certification", "certification-unknown-verdict.json"),
+    ("implementer-result", "implementer-result-certified.json"),
 ]
 
 
