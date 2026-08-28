@@ -9,7 +9,7 @@ Principes fondamentaux : état réel comme source de vérité, responsabilités
 séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
-Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `IN PROGRESS — P3.5`
+Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `IN PROGRESS — P3.6`
 
 Documentation :
 
@@ -41,4 +41,5 @@ Documentation :
 - [Readiness Engine](docs/25-readiness-engine.md)
 - [Deterministic Wave Planner](docs/26-wave-planner.md)
 - [Execution Conflict Model](docs/27-execution-conflict-model.md)
+- [Git Worktree Isolation Contract](docs/28-git-worktree-contract.md)
 - [JSON Schemas V1](schemas/README.md)
