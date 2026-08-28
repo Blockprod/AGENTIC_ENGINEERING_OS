@@ -9,7 +9,7 @@ Principes fondamentaux : état réel comme source de vérité, responsabilités
 séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
-Phase 2 — `IN PROGRESS — P2.8`
+Phase 2 — `IN PROGRESS — P2.9`
 
 Documentation :
 
@@ -34,4 +34,5 @@ Documentation :
 - [Tester V1](docs/18-tester.md)
 - [Reviewer V1](docs/19-reviewer.md)
 - [Certifier V1](docs/20-certifier.md)
+- [Mission agentique séquentielle V1](docs/21-end-to-end-agentic-mission.md)
 - [JSON Schemas V1](schemas/README.md)

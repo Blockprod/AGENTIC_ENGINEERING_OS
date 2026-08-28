@@ -90,6 +90,11 @@ from .reviewer import (
     ReviewerResultValidator,
     ReviewerVerdict,
 )
+from .sequential_mission_workflow import (
+    SequentialMissionResult,
+    SequentialMissionWorkflow,
+    SequentialMissionWorkflowError,
+)
 from .state_transition_service import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATES,
@@ -176,6 +181,9 @@ __all__ = [
     "ReviewerResult",
     "ReviewerResultValidator",
     "ReviewerVerdict",
+    "SequentialMissionResult",
+    "SequentialMissionWorkflow",
+    "SequentialMissionWorkflowError",
     "StateTransitionService",
     "TERMINAL_STATES",
     "TestCaseType",
