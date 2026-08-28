@@ -72,6 +72,17 @@ from .implementer import (
     VerificationOutcome,
     VerificationResult,
 )
+from .integration_gate import (
+    IntegrationFinding,
+    IntegrationFindingCode,
+    IntegrationGate,
+    IntegrationGateClassification,
+    IntegrationGateContext,
+    IntegrationGateError,
+    IntegrationGateResult,
+    IntegrationMemberCommit,
+    IntegrationWorktreeManagerPort,
+)
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -186,6 +197,15 @@ __all__ = [
     "ImplementerResult",
     "ImplementerResultValidator",
     "ImplementerVerdict",
+    "IntegrationFinding",
+    "IntegrationFindingCode",
+    "IntegrationGate",
+    "IntegrationGateClassification",
+    "IntegrationGateContext",
+    "IntegrationGateError",
+    "IntegrationGateResult",
+    "IntegrationMemberCommit",
+    "IntegrationWorktreeManagerPort",
     "MissionStateStorePort",
     "OrchestrationResult",
     "Orchestrator",

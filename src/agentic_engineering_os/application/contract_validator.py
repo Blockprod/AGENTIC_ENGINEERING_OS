@@ -35,6 +35,7 @@ _SCHEMA_FILES = {
     "wave-plan": "wave-plan.schema.json",
     "conflict-analysis": "conflict-analysis.schema.json",
     "parallel-execution-plan": "parallel-execution-plan.schema.json",
+    "integration-gate-result": "integration-gate-result.schema.json",
     "worktree-assignment": "worktree-assignment.schema.json",
     "worktree-registry": "worktree-registry.schema.json",
 }

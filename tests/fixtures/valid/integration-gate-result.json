@@ -1,0 +1,18 @@
+{
+  "mission_id": "mission-parallel",
+  "workflow_generation": 2,
+  "wave_index": 0,
+  "group_index": 0,
+  "baseline_commit": "0123456789abcdef0123456789abcdef01234567",
+  "member_commits": [
+    {
+      "user_story_id": "US-0001",
+      "assignment_id": "wa-0123456789abcdef01234567",
+      "result_commit": "1123456789abcdef0123456789abcdef01234567",
+      "changed_files": ["src/a.py"]
+    }
+  ],
+  "result": "PASS",
+  "findings": [],
+  "integration_order": ["US-0001"]
+}

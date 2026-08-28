@@ -20,7 +20,14 @@ from ._worktree_identity import (
     derive_branch_name,
     validate_identity_inputs,
 )
-from .git_adapter import GitAdapter, GitOperationError, GitWorktree
+from .git_adapter import (
+    GitAdapter,
+    GitDiffEntry,
+    GitMergePreflight,
+    GitOperationError,
+    GitPrimaryState,
+    GitWorktree,
+)
 from .project_state_store import PersistenceError, STATE_DIRECTORY
 from .worktree_registry_store import (
     WORKTREE_REGISTRY_FILENAME,
@@ -138,6 +145,33 @@ class WorktreeManager:
         self._verify_repository()
         try:
             return self._git.current_head(self._repository_root)
+        except GitOperationError as error:
+            raise _git_error(error) from error
+
+    def inspect_primary(self) -> GitPrimaryState:
+        try:
+            return self._git.primary_state()
+        except GitOperationError as error:
+            raise _git_error(error) from error
+
+    def diff_name_status(
+        self, baseline_commit: str, result_commit: str
+    ) -> tuple[GitDiffEntry, ...]:
+        try:
+            return self._git.diff_name_status(baseline_commit, result_commit)
+        except GitOperationError as error:
+            raise _git_error(error) from error
+
+    def merge_preflight(
+        self,
+        baseline_commit: str,
+        left_commit: str,
+        right_commit: str,
+    ) -> GitMergePreflight:
+        try:
+            return self._git.merge_preflight(
+                baseline_commit, left_commit, right_commit
+            )
         except GitOperationError as error:
             raise _git_error(error) from error
 

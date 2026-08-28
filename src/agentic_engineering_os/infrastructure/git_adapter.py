@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,6 +36,24 @@ class GitWorktree:
     path: Path
     head_commit: str
     branch_name: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class GitPrimaryState:
+    branch_name: str
+    head_commit: str
+    clean: bool
+
+
+@dataclass(frozen=True, slots=True)
+class GitDiffEntry:
+    status: str
+    paths: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GitMergePreflight:
+    mergeable: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,6 +198,87 @@ class GitAdapter:
         )
         return result.returncode == 0
 
+    def primary_state(self) -> GitPrimaryState:
+        self.verify_repository()
+        return GitPrimaryState(
+            branch_name=self.current_branch(self._repository_root),
+            head_commit=self.current_head(self._repository_root),
+            clean=self.is_clean(self._repository_root, exclude_registry=True),
+        )
+
+    def diff_name_status(
+        self, baseline_commit: str, result_commit: str
+    ) -> tuple[GitDiffEntry, ...]:
+        output = self._run(
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            "--diff-filter=ACDMR",
+            f"{baseline_commit}..{result_commit}",
+        ).stdout
+        tokens = output.split("\0")
+        if tokens and tokens[-1] == "":
+            tokens.pop()
+        entries: list[GitDiffEntry] = []
+        index = 0
+        while index < len(tokens):
+            status_token = tokens[index]
+            index += 1
+            status = status_token[:1]
+            path_count = 2 if status in {"C", "R"} else 1
+            if status not in {"A", "C", "D", "M", "R"} or index + path_count > len(tokens):
+                raise GitOperationError(
+                    "INVALID_GIT_OUTPUT", "Git diff name-status output is malformed"
+                )
+            paths = tuple(tokens[index : index + path_count])
+            index += path_count
+            if any(not path for path in paths):
+                raise GitOperationError(
+                    "INVALID_GIT_OUTPUT", "Git diff returned an empty path"
+                )
+            entries.append(GitDiffEntry(status=status, paths=paths))
+        return tuple(entries)
+
+    def merge_preflight(
+        self,
+        baseline_commit: str,
+        left_commit: str,
+        right_commit: str,
+    ) -> GitMergePreflight:
+        common_dir_text = self._run(
+            "rev-parse", "--path-format=absolute", "--git-common-dir"
+        ).stdout.strip()
+        try:
+            common_objects = (Path(common_dir_text).resolve(strict=True) / "objects")
+        except OSError as error:
+            raise GitOperationError(
+                "INVALID_REPOSITORY", "Git common object directory is unavailable"
+            ) from error
+        if not common_objects.is_dir():
+            raise GitOperationError(
+                "INVALID_REPOSITORY", "Git common object directory is unavailable"
+            )
+        with tempfile.TemporaryDirectory(prefix="agentic-os-merge-tree-") as temporary:
+            temporary_objects = Path(temporary) / "objects"
+            temporary_objects.mkdir()
+            result = self._execute(
+                self._repository_root,
+                (0, 1),
+                "merge-tree",
+                "--write-tree",
+                "--quiet",
+                "--merge-base",
+                baseline_commit,
+                left_commit,
+                right_commit,
+                environment_overrides={
+                    "GIT_OBJECT_DIRECTORY": str(temporary_objects),
+                    "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(common_objects),
+                },
+            )
+        return GitMergePreflight(mergeable=result.returncode == 0)
+
     def _run(self, *arguments: str) -> _CommandResult:
         return self._run_allowed((0,), *arguments)
 
@@ -195,10 +295,13 @@ class GitAdapter:
         root: Path,
         allowed_codes: tuple[int, ...],
         *arguments: str,
+        environment_overrides: dict[str, str] | None = None,
     ) -> _CommandResult:
         command = ("git", "-C", str(root), *arguments)
         environment = os.environ.copy()
         environment["GIT_TERMINAL_PROMPT"] = "0"
+        if environment_overrides:
+            environment.update(environment_overrides)
         try:
             process = subprocess.run(
                 list(command),

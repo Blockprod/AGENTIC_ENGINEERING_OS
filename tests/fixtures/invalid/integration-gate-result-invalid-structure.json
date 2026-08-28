@@ -1,0 +1,11 @@
+{
+  "mission_id": "mission-parallel",
+  "workflow_generation": 2,
+  "wave_index": 0,
+  "group_index": 0,
+  "baseline_commit": "HEAD",
+  "member_commits": [],
+  "result": "CERTIFIED",
+  "findings": [],
+  "integration_order": []
+}

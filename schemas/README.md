@@ -28,6 +28,7 @@ La projection DAG de Phase 3 utilise également ce draft :
 - `worktree-assignment.schema.json`
 - `worktree-registry.schema.json`
 - `parallel-execution-plan.schema.json`
+- `integration-gate-result.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et
@@ -84,6 +85,12 @@ et un fingerprint de contexte. La compatibilité pairwise, le regroupement
 greedy, la fraîcheur et la complétude restent contrôlés applicativement par le
 `ParallelImplementerCoordinator`. Ce plan n'est pas persisté et n'accorde
 aucune autorité Git ou Control Plane.
+
+`integration-gate-result.schema.json` ferme l'artefact P3.9 distinct du modèle
+`Gate` du Control Plane. Il contraint le contexte d'intégration, les commits et
+fichiers observés par membre, l'ordre déterministe, les findings et le résultat
+`PASS`, `FAIL` ou `UNKNOWN`. La réalité Git, les scopes, collisions et
+preflights `merge-tree` restent vérifiés applicativement par `IntegrationGate`.
 
 ## Limites sémantiques
 

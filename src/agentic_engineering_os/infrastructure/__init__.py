@@ -1,7 +1,14 @@
 """Local infrastructure adapters."""
 
 from .mission_state_store import MissionStateStore
-from .git_adapter import GitAdapter, GitOperationError, GitWorktree
+from .git_adapter import (
+    GitAdapter,
+    GitDiffEntry,
+    GitMergePreflight,
+    GitOperationError,
+    GitPrimaryState,
+    GitWorktree,
+)
 from .project_state_store import PersistenceError, ProjectStateStore
 from .worktree_manager import (
     WorktreeInspection,
@@ -13,7 +20,10 @@ from .worktree_registry_store import WorktreeRegistryStore
 
 __all__ = [
     "GitAdapter",
+    "GitDiffEntry",
+    "GitMergePreflight",
     "GitOperationError",
+    "GitPrimaryState",
     "GitWorktree",
     "MissionStateStore",
     "PersistenceError",
