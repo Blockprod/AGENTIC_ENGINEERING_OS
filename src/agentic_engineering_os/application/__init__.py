@@ -62,6 +62,16 @@ from .orchestrator import (
     ProjectStateReaderPort,
     RoleHandoff,
 )
+from .reviewer import (
+    ReviewDimension,
+    ReviewFinding,
+    ReviewSeverity,
+    ReviewerInput,
+    ReviewerInputError,
+    ReviewerResult,
+    ReviewerResultValidator,
+    ReviewerVerdict,
+)
 from .state_transition_service import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATES,
@@ -126,6 +136,14 @@ __all__ = [
     "ProjectStateStorePort",
     "ProjectStateReaderPort",
     "RoleHandoff",
+    "ReviewDimension",
+    "ReviewFinding",
+    "ReviewSeverity",
+    "ReviewerInput",
+    "ReviewerInputError",
+    "ReviewerResult",
+    "ReviewerResultValidator",
+    "ReviewerVerdict",
     "StateTransitionService",
     "TERMINAL_STATES",
     "TestCaseType",

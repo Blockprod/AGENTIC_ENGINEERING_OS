@@ -16,6 +16,7 @@ Les contrats opérationnels de Phase 2 utilisent le même draft :
 - `architect-result.schema.json`
 - `implementer-result.schema.json`
 - `tester-result.schema.json`
+- `reviewer-result.schema.json`
 
 Ils valident la structure, les champs requis et les contraintes V1 exprimables
 de manière robuste. Les propriétés inattendues sont refusées à la racine et

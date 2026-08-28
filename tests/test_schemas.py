@@ -21,6 +21,7 @@ SCHEMA_FILES = {
     "architect-result": "architect-result.schema.json",
     "implementer-result": "implementer-result.schema.json",
     "tester-result": "tester-result.schema.json",
+    "reviewer-result": "reviewer-result.schema.json",
 }
 
 VALID_FIXTURES = [(name, f"{name}.json") for name in SCHEMA_FILES]

@@ -9,7 +9,7 @@ Principes fondamentaux : état réel comme source de vérité, responsabilités
 séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
-Phase 2 — `IN PROGRESS — P2.6`
+Phase 2 — `IN PROGRESS — P2.7`
 
 Documentation :
 
@@ -32,4 +32,5 @@ Documentation :
 - [Architect V1](docs/16-architect.md)
 - [Implementer V1](docs/17-implementer.md)
 - [Tester V1](docs/18-tester.md)
+- [Reviewer V1](docs/19-reviewer.md)
 - [JSON Schemas V1](schemas/README.md)

@@ -1,0 +1,17 @@
+{
+  "mission_id": "P2.7",
+  "role": "REVIEWER",
+  "subject": "US-0001",
+  "user_story_id": "US-0001",
+  "observed_commit": "1a8e19e516bf9637aa4eed5945172e162e35d9d7",
+  "summary": "Independent engineering-quality review completed.",
+  "dimensions_reviewed": ["SCOPE", "ARCHITECTURE", "MAINTAINABILITY", "COMPLEXITY", "DUPLICATION", "TEST_QUALITY", "CONTRACT_COMPLIANCE", "AUTHORITY_SAFETY"],
+  "reviewed_paths": ["src/feature.py", "tests/test_feature.py"],
+  "findings": [
+    {"id": "RF-001", "dimension": "MAINTAINABILITY", "severity": "INFO", "summary": "Implementation is intentionally small.", "evidence": ["The reviewed module has one bounded responsibility."], "affected_paths": ["src/feature.py"], "blocking": false},
+    {"id": "RF-002", "dimension": "TEST_QUALITY", "severity": "MINOR", "summary": "Test naming can be more explicit later.", "evidence": ["The current name omits the tested boundary."], "affected_paths": ["tests/test_feature.py"], "blocking": false}
+  ],
+  "blockers": [],
+  "recommended_next_role": "CERTIFIER",
+  "verdict": "READY_FOR_CERTIFICATION"
+}
