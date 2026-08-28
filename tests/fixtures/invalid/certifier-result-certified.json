@@ -1,0 +1,8 @@
+{
+  "mission_id": "P2.8", "role": "CERTIFIER", "subject": "US-0001",
+  "user_story_id": "US-0001", "observed_commit": "b390426f356e6fe8a9f638c9b04e807f75ae5ced",
+  "summary": "Invalid self-certification.", "artifact_checks": [],
+  "acceptance_checks": [], "gate_checks": [], "evidence_refs": [],
+  "human_approval_check": {"required": false, "present": false, "valid": true, "evidence_ref": null, "notes": "Not required."},
+  "findings": [], "blockers": [], "recommended_action": "SUBMIT_TO_CONTROL_PLANE", "verdict": "CERTIFIED"
+}

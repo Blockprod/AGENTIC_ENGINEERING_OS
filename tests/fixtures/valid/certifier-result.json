@@ -1,0 +1,16 @@
+{
+  "mission_id": "P2.8", "role": "CERTIFIER", "subject": "US-0001",
+  "user_story_id": "US-0001", "observed_commit": "b390426f356e6fe8a9f638c9b04e807f75ae5ced",
+  "summary": "Dossier ready for deterministic submission.",
+  "artifact_checks": [
+    {"artifact_role": "ARCHITECT", "present": true, "coherent": true, "notes": "Present."},
+    {"artifact_role": "IMPLEMENTER", "present": true, "coherent": true, "notes": "Present."},
+    {"artifact_role": "TESTER", "present": true, "coherent": true, "notes": "Present."},
+    {"artifact_role": "REVIEWER", "present": true, "coherent": true, "notes": "Present."}
+  ],
+  "acceptance_checks": [{"acceptance_criterion_id": "AC-001", "mandatory": true, "result": "PASS", "evidence_refs": ["EV-AC"], "notes": "Supported."}],
+  "gate_checks": [{"gate_id": "GATE-TESTS", "present": true, "subject_matches": true, "result": "PASS", "evidence_refs": ["EV-GATE"], "commit_matches": true, "not_applicable_authorized": false, "notes": "Supported."}],
+  "evidence_refs": ["EV-AC", "EV-GATE"],
+  "human_approval_check": {"required": false, "present": false, "valid": true, "evidence_ref": null, "notes": "Not required."},
+  "findings": [], "blockers": [], "recommended_action": "SUBMIT_TO_CONTROL_PLANE", "verdict": "READY_FOR_CONTROL_PLANE"
+}

@@ -22,6 +22,7 @@ SCHEMA_FILES = {
     "implementer-result": "implementer-result.schema.json",
     "tester-result": "tester-result.schema.json",
     "reviewer-result": "reviewer-result.schema.json",
+    "certifier-result": "certifier-result.schema.json",
 }
 
 VALID_FIXTURES = [(name, f"{name}.json") for name in SCHEMA_FILES]
@@ -33,6 +34,7 @@ INVALID_FIXTURES = [
     ("gate", "gate-unknown-result.json", ["result"]),
     ("certification", "certification-unknown-verdict.json", ["result"]),
     ("project-state", "project-state-unknown-version.json", ["schema_version"]),
+    ("certifier-result", "certifier-result-certified.json", ["verdict"]),
 ]
 
 

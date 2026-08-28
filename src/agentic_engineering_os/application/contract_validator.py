@@ -29,6 +29,7 @@ _SCHEMA_FILES = {
     "implementer-result": "implementer-result.schema.json",
     "tester-result": "tester-result.schema.json",
     "reviewer-result": "reviewer-result.schema.json",
+    "certifier-result": "certifier-result.schema.json",
 }
 
 

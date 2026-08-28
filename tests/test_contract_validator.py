@@ -24,6 +24,7 @@ VALID_FIXTURES = [
     ("implementer-result", "implementer-result.json"),
     ("tester-result", "tester-result.json"),
     ("reviewer-result", "reviewer-result.json"),
+    ("certifier-result", "certifier-result.json"),
 ]
 
 INVALID_FIXTURES = [
@@ -35,6 +36,7 @@ INVALID_FIXTURES = [
     ("implementer-result", "implementer-result-certified.json"),
     ("tester-result", "tester-result-ready-with-fail.json"),
     ("reviewer-result", "reviewer-result-wrong-role.json"),
+    ("certifier-result", "certifier-result-certified.json"),
 ]
 
 
