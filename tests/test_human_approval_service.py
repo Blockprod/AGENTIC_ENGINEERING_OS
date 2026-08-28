@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from agentic_engineering_os._authoritative_write import _issue_authoritative_write
 from agentic_engineering_os.application import (
     CertificationService,
     ContractValidator,
@@ -112,10 +113,18 @@ def loop(store: object) -> ControlLoop:
 
 def initialize(tmp_path: Path) -> tuple[ProjectStateStore, ControlLoop]:
     store = ProjectStateStore(tmp_path)
-    store.initialize()
+    current = store.initialize()
     state = store.load()
     state.user_stories.append(story())
-    store.save(state)
+    operation = "TEST_SETUP_PROJECT_STATE"
+    authorization = _issue_authoritative_write(
+        store_kind="PROJECT_STATE",
+        store=store,
+        before_state=current,
+        candidate_state=state,
+        operation=operation,
+    )
+    store.save(state, authorization=authorization, operation=operation)
     return store, loop(store)
 
 
@@ -298,9 +307,18 @@ def test_control_loop_refuses_unpersisted_and_other_story_evidence(
     tmp_path: Path,
 ) -> None:
     store, control_loop = initialize(tmp_path)
+    current = store.load()
     state = store.load()
     state.evidence.append(human_evidence(evidence_id="EV-OTHER", subject="US-0002"))
-    store.save(state)
+    operation = "TEST_SETUP_OTHER_STORY_EVIDENCE"
+    authorization = _issue_authoritative_write(
+        store_kind="PROJECT_STATE",
+        store=store,
+        before_state=current,
+        candidate_state=state,
+        operation=operation,
+    )
+    store.save(state, authorization=authorization, operation=operation)
 
     with pytest.raises(ControlLoopError) as absent:
         control_loop.apply_human_approval(
@@ -344,7 +362,7 @@ class FailingStore:
     def load(self) -> ProjectState:
         return self.state
 
-    def save(self, state: ProjectState) -> Path:
+    def save(self, state: ProjectState, **_: object) -> Path:
         raise OSError("simulated persistence failure")
 
 

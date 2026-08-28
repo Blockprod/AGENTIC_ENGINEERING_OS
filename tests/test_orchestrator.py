@@ -311,7 +311,7 @@ class InMemoryMissionStore:
     def load(self) -> MissionState:
         return self.mission  # type: ignore[return-value]
 
-    def save(self, state: MissionState) -> Path:
+    def save(self, state: MissionState, **_: object) -> Path:
         self.save_attempts.append(state)
         if self.fail_save:
             raise PersistenceError("WRITE_FAILED", "simulated failure")

@@ -33,6 +33,14 @@ Story candidate passe par validation puis `ProjectStateStore`; les Evidence,
 Gates et Certifications passent respectivement par `EvidenceRecorder`,
 `GateEvaluator` et `CertificationService` via `ControlLoop`.
 
+Les stores sont des frontières de persistance, pas des sources d'autorité
+métier : `snapshot valide != mutation autorisée`. `ControlLoop` émet les
+capabilities privées ProjectState après les services spécialisés ;
+`Orchestrator` et `SequentialMissionWorkflow` font de même pour leurs mutations
+MissionState déterministes. Chaque capability est limitée au store, à
+l'opération et au couple exact avant/après, avec la génération de mission. Elle
+n'est jamais un trust root persistant.
+
 Le bridge d'Acceptance exige une Evidence explicite
 `ACCEPTANCE_CRITERION_CHECK` dont le payload booléen correspond exactement au
 résultat Tester : `PASS → true` et `FAIL → false`. Aucune chaîne ou coercition

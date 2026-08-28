@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import agentic_engineering_os.infrastructure.mission_state_store as store_module
+from agentic_engineering_os._authoritative_write import _issue_authoritative_write
 from agentic_engineering_os.domain import (
     MissionRole,
     MissionState,
@@ -40,6 +41,23 @@ def mission_state(**overrides: object) -> MissionState:
 def write_candidate(store: MissionStateStore, candidate: object) -> None:
     store.mission_path.parent.mkdir()
     store.mission_path.write_text(json.dumps(candidate), encoding="utf-8")
+
+
+def authorized_save(
+    store: MissionStateStore,
+    candidate: MissionState,
+    *,
+    operation: str = "TEST_MISSION_STATE_WRITE",
+) -> None:
+    current = store.load()
+    authorization = _issue_authoritative_write(
+        store_kind="MISSION_STATE",
+        store=store,
+        before_state=current,
+        candidate_state=candidate,
+        operation=operation,
+    )
+    store.save(candidate, authorization=authorization, operation=operation)
 
 
 def test_initialize_creates_only_explicit_mission_state(tmp_path: Path) -> None:
@@ -90,7 +108,7 @@ def test_save_updates_state_atomically_in_the_same_directory(
     monkeypatch.setattr(store_module.os, "replace", observe_replace)
     updated = mission_state(operating_step=OperatingStep.VERIFY)
 
-    store.save(updated)
+    authorized_save(store, updated)
 
     assert observed["source"].parent == store.mission_path.parent
     assert observed["destination"] == store.mission_path
@@ -249,7 +267,9 @@ def test_write_failure_preserves_previous_mission_state(
     monkeypatch.setattr(store_module, "_write_temporary", fail_write)
 
     with pytest.raises(PersistenceError) as captured:
-        store.save(mission_state(operating_step=OperatingStep.VERIFY))
+        authorized_save(
+            store, mission_state(operating_step=OperatingStep.VERIFY)
+        )
 
     assert captured.value.code == "WRITE_FAILED"
     assert store.mission_path.read_bytes() == before
@@ -268,7 +288,9 @@ def test_replace_failure_preserves_state_and_cleans_temporary_file(
     monkeypatch.setattr(store_module.os, "replace", fail_replace)
 
     with pytest.raises(PersistenceError) as captured:
-        store.save(mission_state(operating_step=OperatingStep.VERIFY))
+        authorized_save(
+            store, mission_state(operating_step=OperatingStep.VERIFY)
+        )
 
     assert captured.value.code == "WRITE_FAILED"
     assert store.mission_path.read_bytes() == before

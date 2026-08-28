@@ -64,9 +64,10 @@ crée pas de rôle Human et ne décide jamais à sa place.
 ## Persistance et fail-closed
 
 La mise à jour passe exclusivement par `MissionStateStore.save`. L'état chargé
-n'est jamais muté : une copie candidate est créée avant la sauvegarde. Un échec
-de routing ou de persistance ne laisse donc aucune mutation partielle et ne
-modifie jamais `ProjectState`.
+n'est jamais muté : une copie candidate est créée, validée, puis une capability
+interne liée à cette mutation exacte autorise la sauvegarde. Elle n'est jamais
+exposée à l'appelant. Un échec de routing, d'autorisation ou de persistance ne
+laisse donc aucune mutation partielle et ne modifie jamais `ProjectState`.
 
 Mission absente ou invalide, `ProjectState` indisponible, commit ou horodatage
 invalide, rôle/statut/étape inconnu, blocker actif, décision Human requise,

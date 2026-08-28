@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from agentic_engineering_os._authoritative_write import _issue_authoritative_write
 from agentic_engineering_os.domain import (
     Certification,
     CertificationResult,
@@ -45,7 +46,13 @@ class ProjectStateStorePort(Protocol):
 
     def load(self) -> ProjectState: ...
 
-    def save(self, state: ProjectState) -> Path: ...
+    def save(
+        self,
+        state: ProjectState,
+        *,
+        authorization: object | None = None,
+        operation: str | None = None,
+    ) -> Path: ...
 
 
 EvidenceRecorderFactory = Callable[[list[Evidence]], EvidenceRecorder]
@@ -88,7 +95,8 @@ class ControlLoop:
         expected_commit: str,
     ) -> HumanApprovalResult:
         """Apply one already-persisted Human Evidence to a copied User Story."""
-        candidate = _candidate_state(self.load_state())
+        current_state = self.load_state()
+        candidate = _candidate_state(current_state)
         index, current = _require_unique_story(candidate, user_story_id)
         matches = [
             item for item in candidate.evidence if item.evidence_id == evidence_id
@@ -105,7 +113,11 @@ class ControlLoop:
             matches[0],
             expected_commit=expected_commit,
         )
-        self._state_store.save(candidate)
+        self._save_candidate(
+            current_state,
+            candidate,
+            operation="APPLY_HUMAN_APPROVAL",
+        )
         return result
 
     def load_state(self) -> ProjectState:
@@ -122,7 +134,8 @@ class ControlLoop:
     ) -> Evidence:
         """Record validated Evidence in a candidate state, then persist it."""
 
-        candidate = _candidate_state(self.load_state())
+        current_state = self.load_state()
+        candidate = _candidate_state(current_state)
         recorder = self._evidence_recorder_factory(candidate.evidence)
         evidence = recorder.record(
             observation,
@@ -143,7 +156,7 @@ class ControlLoop:
                 "INVALID_SERVICE_RESULT",
                 "EvidenceRecorder did not append exactly its validated Evidence",
             )
-        self._state_store.save(candidate)
+        self._save_candidate(current_state, candidate, operation="RECORD_EVIDENCE")
         return evidence
 
     def evaluate_gate(
@@ -155,7 +168,8 @@ class ControlLoop:
     ) -> GateEvaluation:
         """Evaluate a Gate from persisted Evidence and persist the valid result."""
 
-        candidate = _candidate_state(self.load_state())
+        current_state = self.load_state()
+        candidate = _candidate_state(current_state)
         evaluation = self._gate_evaluator.evaluate(
             contract,
             candidate.evidence,
@@ -174,7 +188,7 @@ class ControlLoop:
             )
         _require_new_id(candidate.gates, "gate_id", evaluation.gate.gate_id, "Gate")
         candidate.gates.append(evaluation.gate)
-        self._state_store.save(candidate)
+        self._save_candidate(current_state, candidate, operation="EVALUATE_GATE")
         return evaluation
 
     def certify_user_story(
@@ -190,7 +204,8 @@ class ControlLoop:
     ) -> Certification:
         """Produce and persist a verdict without changing UserStory.status."""
 
-        candidate = _candidate_state(self.load_state())
+        current_state = self.load_state()
+        candidate = _candidate_state(current_state)
         _, story = _require_unique_story(candidate, user_story_id)
         certification = self._certification_service.certify(
             story,
@@ -220,8 +235,31 @@ class ControlLoop:
             "Certification",
         )
         candidate.certifications.append(certification)
-        self._state_store.save(candidate)
+        self._save_candidate(
+            current_state,
+            candidate,
+            operation="PERSIST_CERTIFICATION",
+        )
         return certification
+
+    def add_user_story(self, user_story: UserStory) -> UserStory:
+        """Persist one validated initial User Story through Project authority."""
+
+        if not isinstance(user_story, UserStory):
+            raise ControlLoopError(
+                "INVALID_USER_STORY", "add_user_story requires a UserStory"
+            )
+        if user_story.status is not UserStoryStatus.PROPOSED:
+            raise ControlLoopError(
+                "INVALID_INITIAL_USER_STORY_STATUS",
+                "new User Stories must enter ProjectState as PROPOSED",
+            )
+        current_state = self.load_state()
+        candidate = _candidate_state(current_state)
+        _require_new_id(candidate.user_stories, "id", user_story.id, "User Story")
+        candidate.user_stories.append(_candidate_story(user_story))
+        self._save_candidate(current_state, candidate, operation="ADD_USER_STORY")
+        return user_story
 
     def transition_user_story(
         self,
@@ -232,7 +270,8 @@ class ControlLoop:
     ) -> TransitionResult:
         """Apply one service-authorized transition to a copied User Story."""
 
-        candidate = _candidate_state(self.load_state())
+        current_state = self.load_state()
+        candidate = _candidate_state(current_state)
         story_index, current_story = _require_unique_story(candidate, user_story_id)
         candidate_story = _candidate_story(current_story)
         candidate.user_stories[story_index] = candidate_story
@@ -275,8 +314,32 @@ class ControlLoop:
                 "INVALID_SERVICE_RESULT",
                 "StateTransitionService did not apply its allowed transition",
             )
-        self._state_store.save(candidate)
+        self._save_candidate(
+            current_state,
+            candidate,
+            operation="TRANSITION_USER_STORY",
+        )
         return result
+
+    def _save_candidate(
+        self,
+        current_state: ProjectState,
+        candidate: ProjectState,
+        *,
+        operation: str,
+    ) -> None:
+        authorization = _issue_authoritative_write(
+            store_kind="PROJECT_STATE",
+            store=self._state_store,
+            before_state=current_state,
+            candidate_state=candidate,
+            operation=operation,
+        )
+        self._state_store.save(
+            candidate,
+            authorization=authorization,
+            operation=operation,
+        )
 
 
 def _candidate_state(current: ProjectState) -> ProjectState:

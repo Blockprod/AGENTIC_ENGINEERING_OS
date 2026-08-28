@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from agentic_engineering_os._authoritative_write import _issue_authoritative_write
 from agentic_engineering_os.domain import (
     Certification,
     CertificationResult,
@@ -65,13 +66,17 @@ from .tester import (
 class MissionStateStorePort(Protocol):
     def load(self) -> MissionState: ...
 
-    def save(self, state: MissionState) -> Path: ...
+    def save(
+        self,
+        state: MissionState,
+        *,
+        authorization: object | None = None,
+        operation: str | None = None,
+    ) -> Path: ...
 
 
 class ProjectStateStorePort(Protocol):
     def load(self) -> ProjectState: ...
-
-    def save(self, state: ProjectState) -> Path: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,9 +201,7 @@ class SequentialMissionWorkflow:
             raise SequentialMissionWorkflowError(
                 "USER_STORY_ALREADY_EXISTS", "Architect cannot replace a User Story"
             )
-        next_state = deepcopy(state)
-        next_state.user_stories.append(deepcopy(matching[0]))
-        self._project_store.save(next_state)
+        self._control_loop.add_user_story(deepcopy(matching[0]))
         self._transition(handoff.subject, UserStoryStatus.PLANNED)
         self._transition(handoff.subject, UserStoryStatus.READY)
         persisted = self._story(handoff.subject)
@@ -270,7 +273,7 @@ class SequentialMissionWorkflow:
             observed_commit=current_commit,
             updated_at=updated_at,
         )
-        self._mission_store.save(resumed)
+        self._save_mission(mission, resumed, operation="RESUME_AFTER_HUMAN")
         return self._result(resumed, last_validated_role=MissionRole.ARCHITECT)
 
     def accept_implementer(
@@ -603,7 +606,7 @@ class SequentialMissionWorkflow:
                 observed_commit=current_commit,
                 updated_at=updated_at,
             )
-            self._mission_store.save(completed)
+            self._save_mission(mission, completed, operation="COMPLETE_MISSION")
             return self._result(
                 completed,
                 last_validated_role=MissionRole.CERTIFIER,
@@ -635,13 +638,11 @@ class SequentialMissionWorkflow:
         self._transition(subject, UserStoryStatus.READY)
         self._transition(subject, UserStoryStatus.IN_PROGRESS)
         advanced = self._advance(
-            replace(
-                mission,
-                workflow_generation=mission.workflow_generation + 1,
-            ),
+            mission,
             OperatingStep.ACT,
             "Route the explicit remediation to Implementer, then re-test.",
             updated_at,
+            workflow_generation=mission.workflow_generation + 1,
         )
         return self._result(advanced, last_validated_role=role)
 
@@ -695,9 +696,16 @@ class SequentialMissionWorkflow:
         step: OperatingStep,
         next_action: str,
         updated_at: datetime,
+        *,
+        workflow_generation: int | None = None,
     ) -> MissionState:
         candidate = replace(
             mission,
+            workflow_generation=(
+                mission.workflow_generation
+                if workflow_generation is None
+                else workflow_generation
+            ),
             status=MissionStatus.ACTIVE,
             role=MissionRole.ORCHESTRATOR,
             operating_step=step,
@@ -705,7 +713,7 @@ class SequentialMissionWorkflow:
             next_action=next_action,
             updated_at=updated_at,
         )
-        self._mission_store.save(candidate)
+        self._save_mission(mission, candidate, operation="ADVANCE_MISSION")
         return candidate
 
     def _block(
@@ -727,8 +735,28 @@ class SequentialMissionWorkflow:
             next_action=next_action,
             updated_at=updated_at,
         )
-        self._mission_store.save(candidate)
+        self._save_mission(mission, candidate, operation="BLOCK_MISSION")
         return candidate
+
+    def _save_mission(
+        self,
+        current: MissionState,
+        candidate: MissionState,
+        *,
+        operation: str,
+    ) -> None:
+        authorization = _issue_authoritative_write(
+            store_kind="MISSION_STATE",
+            store=self._mission_store,
+            before_state=current,
+            candidate_state=candidate,
+            operation=operation,
+        )
+        self._mission_store.save(
+            candidate,
+            authorization=authorization,
+            operation=operation,
+        )
 
     def _story(self, subject: str) -> UserStory:
         return self._unique_story(self._project_store.load(), subject)

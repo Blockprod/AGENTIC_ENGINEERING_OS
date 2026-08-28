@@ -1409,7 +1409,7 @@ def test_mission_persistence_failure_prevents_stage_advance(tmp_path: Path) -> N
     _, implementation = advance_to_tester(workflow)
     handoff = route(workflow)
     original_save = workflow._mission_store.save
-    workflow._mission_store.save = lambda _: (_ for _ in ()).throw(OSError("disk full"))
+    workflow._mission_store.save = lambda _, **__: (_ for _ in ()).throw(OSError("disk full"))
 
     with pytest.raises(OSError, match="disk full"):
         workflow.accept_tester(
@@ -1428,7 +1428,7 @@ def test_mission_persistence_failure_prevents_stage_advance(tmp_path: Path) -> N
 def test_project_persistence_failure_stops_before_mission_progress(tmp_path: Path) -> None:
     workflow = make_workflow(tmp_path)
     original_save = workflow._project_store.save
-    workflow._project_store.save = lambda _: (_ for _ in ()).throw(OSError("disk full"))
+    workflow._project_store.save = lambda _, **__: (_ for _ in ()).throw(OSError("disk full"))
     handoff = route(workflow)
 
     with pytest.raises(OSError, match="disk full"):

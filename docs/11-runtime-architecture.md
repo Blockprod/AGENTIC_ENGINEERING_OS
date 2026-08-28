@@ -248,17 +248,34 @@ aucun wrapper décoratif n'est requis.
 
 ### ProjectStateStore
 
-- **Input** : chemin racine autorisé et `ProjectState` validé pour une écriture,
-  ou demande de chargement.
+- **Input** : chemin racine autorisé et `ProjectState` validé accompagné, pour
+  toute mutation, d'une capability interne liée au changement exact, ou demande
+  de chargement.
 - **Output** : état chargé ou confirmation explicite d'une écriture atomique.
 - **Responsabilité** : fournir la frontière de persistance, contrôler la
-  version du format et préserver l'historique append-oriented.
+  version du format, vérifier l'autorité de mutation et préserver l'historique
+  append-oriented. Un candidat valide n'est pas, à lui seul, une mutation
+  autorisée.
 - **Fail-closed** : fichier absent lorsqu'il est requis, JSON invalide, version
   inconnue, écriture partielle, erreur disque ou dossier `CERTIFIED` portant un
   Gate requis `NOT_APPLICABLE` sans autorité persistée sont des échecs
   explicites.
 - **Ne doit pas** : décider une transition, évaluer un Gate, certifier, réparer
   silencieusement ou dépendre de Codex.
+
+Pour un store initialisé, `save` n'accepte un état différent que si une
+capability privée émise par le chemin applicatif contrôlé correspond au type et
+à l'instance du store, à l'opération et aux empreintes exactes des états avant
+et après. Les empreintes SHA-256 du JSON canonique empêchent la réutilisation
+d'une capability `A → B` pour `A → C` ; elles ne constituent pas l'autorité,
+qui provient de la capability interne elle-même. Cette capability n'est ni
+exportée par l'API publique, ni persistée. Un `save` strictement identique reste
+permis sans capability comme no-op, sans écriture disque.
+
+Cette frontière protège contre l'usage normal des APIs publiques et les
+snapshots forgés. Elle ne prétend pas résister à un processus Python hostile
+qui introspecte volontairement les modules privés ou modifie directement le
+filesystem.
 
 ## Stratégie d'erreurs
 

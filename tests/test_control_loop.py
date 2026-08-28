@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import agentic_engineering_os.application.control_loop as control_loop_module
+from agentic_engineering_os._authoritative_write import _issue_authoritative_write
 from agentic_engineering_os.application import (
     AcceptanceResult,
     CertificationContext,
@@ -129,11 +130,32 @@ def make_loop(store: object) -> ControlLoop:
 
 def initialized_loop(tmp_path: Path) -> tuple[ProjectStateStore, ControlLoop]:
     store = ProjectStateStore(tmp_path)
-    store.initialize()
-    state = store.load()
-    state.user_stories.append(story())
-    store.save(state)
-    return store, make_loop(store)
+    current = store.initialize()
+    candidate = replace(current, user_stories=(story(),))
+    operation = "TEST_SETUP_PROJECT_STATE"
+    authorization = _issue_authoritative_write(
+        store_kind="PROJECT_STATE",
+        store=store,
+        before_state=current,
+        candidate_state=candidate,
+        operation=operation,
+    )
+    store.save(candidate, authorization=authorization, operation=operation)
+    loop = make_loop(store)
+    return store, loop
+
+
+def trusted_test_save(store: ProjectStateStore, candidate: ProjectState) -> None:
+    current = store.load()
+    operation = "TEST_SETUP_PROJECT_STATE"
+    authorization = _issue_authoritative_write(
+        store_kind="PROJECT_STATE",
+        store=store,
+        before_state=current,
+        candidate_state=candidate,
+        operation=operation,
+    )
+    store.save(candidate, authorization=authorization, operation=operation)
 
 
 def pass_contract(
@@ -422,7 +444,7 @@ def test_unknown_and_ambiguous_user_story_ids_are_explicit_refusals(
         def load(self) -> ProjectState:
             return ProjectState(user_stories=[story(), story()], schema_version="1.0")
 
-        def save(self, state: ProjectState) -> Path:
+        def save(self, state: ProjectState, **_: object) -> Path:
             raise AssertionError("ambiguous state must not be saved")
 
     with pytest.raises(ControlLoopError, match="AMBIGUOUS_USER_STORY"):
@@ -733,7 +755,7 @@ def test_not_applicable_gate_without_persisted_authority_cannot_promote(
         def load(self) -> ProjectState:
             return state
 
-        def save(self, candidate: ProjectState) -> Path:
+        def save(self, candidate: ProjectState, **_: object) -> Path:
             raise AssertionError("unauthorized dossier must not be persisted")
 
     with pytest.raises(ControlLoopError) as transition_error:
@@ -767,7 +789,7 @@ def test_control_loop_rejects_unvalidated_certification_from_store() -> None:
         def load(self) -> ProjectState:
             return forged
 
-        def save(self, state: ProjectState) -> Path:
+        def save(self, state: ProjectState, **_: object) -> Path:
             raise AssertionError("invalid dossier must not be persisted")
 
     with pytest.raises(ControlLoopError) as captured:
@@ -800,7 +822,7 @@ def test_non_certified_verdict_cannot_authorize_promotion(
             result=result,
         )
     )
-    store.save(state)
+    trusted_test_save(store, state)
 
     assert_certified_promotion_refused(
         store,
@@ -843,7 +865,7 @@ def test_certification_for_another_story_cannot_authorize_promotion(
             evidence_refs=("EV-OTHER-AC",),
         )
     )
-    store.save(state)
+    trusted_test_save(store, state)
 
     assert_certified_promotion_refused(
         store,
@@ -882,7 +904,7 @@ def test_multiple_applicable_certifications_are_ambiguous(
     state.certifications.append(
         replace(first, certification_id="CERT-TWO")
     )
-    store.save(state)
+    trusted_test_save(store, state)
 
     assert_certified_promotion_refused(
         store,
@@ -906,7 +928,7 @@ def test_persistence_failure_returns_no_success_and_preserves_prior_state(
         def load(self) -> ProjectState:
             return store.load()
 
-        def save(self, state: ProjectState) -> Path:
+        def save(self, state: ProjectState, **_: object) -> Path:
             raise PersistenceError("WRITE_FAILED", "injected save failure")
 
     loop = make_loop(FailingSaveStore())
@@ -935,7 +957,7 @@ def test_candidate_copy_prevents_partial_mutation_of_shared_loaded_state(
         def load(self) -> ProjectState:
             return authoritative
 
-        def save(self, state: ProjectState) -> Path:
+        def save(self, state: ProjectState, **_: object) -> Path:
             raise PersistenceError("WRITE_FAILED", "injected save failure")
 
     with pytest.raises(PersistenceError):

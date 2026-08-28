@@ -10,6 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
+from agentic_engineering_os._authoritative_write import (
+    _matches_authoritative_write,
+)
 from agentic_engineering_os.application import ContractValidator
 from agentic_engineering_os.domain import (
     MissionRole,
@@ -79,7 +82,17 @@ class MissionStateStore:
                 "MISSION_ALREADY_EXISTS",
                 f"mission state already exists: {self._mission_path}",
             )
-        self.save(state)
+        if (
+            not isinstance(state, MissionState)
+            or state.workflow_generation != 0
+            or state.status in {MissionStatus.COMPLETED, MissionStatus.CANCELLED}
+        ):
+            raise PersistenceError(
+                "INVALID_INITIAL_STATE",
+                "new missions require generation 0 and a non-terminal status",
+            )
+        serialized = self._validate_state(state)
+        self._write_serialized(serialized)
         return state
 
     def load(self) -> MissionState:
@@ -126,11 +139,41 @@ class MissionStateStore:
         self._validate_state(state)
         return state
 
-    def save(self, state: MissionState) -> Path:
-        """Validate and atomically replace mission.json, preserving prior state."""
+    def save(
+        self,
+        state: MissionState,
+        *,
+        authorization: object | None = None,
+        operation: str | None = None,
+    ) -> Path:
+        """Replace initialized mission only for one exact authorized mutation."""
 
         self._assert_safe_paths(for_write=True)
         serialized = self._validate_state(state)
+        if not self._mission_path.exists():
+            raise PersistenceError(
+                "INITIALIZATION_REQUIRED",
+                "mission state must be created through initialize()",
+            )
+        current = self.load()
+        current_serialized = self._validate_state(current)
+        if current_serialized == serialized:
+            return self._mission_path
+        if not isinstance(operation, str) or not _matches_authoritative_write(
+            authorization,
+            store_kind="MISSION_STATE",
+            store=self,
+            before_state=current,
+            candidate_state=state,
+            operation=operation,
+        ):
+            raise PersistenceError(
+                "WRITE_NOT_AUTHORIZED",
+                "valid MissionState candidate lacks exact mutation authority",
+            )
+        return self._write_serialized(serialized)
+
+    def _write_serialized(self, serialized: dict[str, object]) -> Path:
         text = _canonical_json(serialized)
 
         try:

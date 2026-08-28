@@ -64,9 +64,15 @@ réparée ou interprétée automatiquement.
 
 `MissionStateStore` reçoit une racine de repository explicite et ne fait aucune
 découverte. `initialize` exige un `MissionState` complet et refuse d'écraser un
-document existant. `load` ne crée rien : absence et corruption sont des erreurs
-distinctes. `save` valide avant d'écrire un fichier temporaire dans le même
-dossier, force son contenu sur disque puis le remplace atomiquement.
+document existant ; l'état initial doit être non terminal et de génération `0`.
+`load` ne crée rien : absence et corruption sont des erreurs distinctes. Pour
+un document existant, `save` distingue la validité du snapshot de l'autorité de
+mutation : tout changement exige une capability privée émise par
+`Orchestrator` ou `SequentialMissionWorkflow` et liée au store, à l'opération,
+aux états exacts avant/après, au `mission_id` et à la
+`workflow_generation`. Une capability antérieure à une remediation ne peut
+donc pas être rejouée après l'incrément de génération. Un état identique est un
+no-op autorisé sans capability. Toute écriture effective reste atomique.
 
 JSON invalide, clé dupliquée, champ absent, valeur canonique inconnue,
 horodatage invalide, identité de mission vide, chemin non sûr ou échec

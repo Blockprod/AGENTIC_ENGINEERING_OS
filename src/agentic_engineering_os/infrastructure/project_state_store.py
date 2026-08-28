@@ -11,6 +11,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, NoReturn, cast
 
+from agentic_engineering_os._authoritative_write import (
+    _matches_authoritative_write,
+)
 from agentic_engineering_os.application import ContractValidator
 from agentic_engineering_os.application.certification_integrity import (
     certified_dossier_issues,
@@ -110,7 +113,8 @@ class ProjectStateStore:
                 f"authoritative state already exists: {self._state_path}",
             )
         state = ProjectState(schema_version=schema_version)
-        self.save(state)
+        serialized = self._validate_state(state)
+        self._write_serialized(serialized)
         return state
 
     def load(self) -> ProjectState:
@@ -156,11 +160,41 @@ class ProjectStateStore:
         self._validate_state(state)
         return state
 
-    def save(self, state: ProjectState) -> Path:
-        """Validate and atomically replace state.json, preserving prior state."""
+    def save(
+        self,
+        state: ProjectState,
+        *,
+        authorization: object | None = None,
+        operation: str | None = None,
+    ) -> Path:
+        """Replace initialized state only for one exact authorized mutation."""
 
         self._assert_safe_paths(for_write=True)
         serialized = self._validate_state(state)
+        if not self._state_path.exists():
+            raise PersistenceError(
+                "INITIALIZATION_REQUIRED",
+                "authoritative state must be created through initialize()",
+            )
+        current = self.load()
+        current_serialized = self._validate_state(current)
+        if current_serialized == serialized:
+            return self._state_path
+        if not isinstance(operation, str) or not _matches_authoritative_write(
+            authorization,
+            store_kind="PROJECT_STATE",
+            store=self,
+            before_state=current,
+            candidate_state=state,
+            operation=operation,
+        ):
+            raise PersistenceError(
+                "WRITE_NOT_AUTHORIZED",
+                "valid ProjectState candidate lacks exact mutation authority",
+            )
+        return self._write_serialized(serialized)
+
+    def _write_serialized(self, serialized: dict[str, object]) -> Path:
         text = _canonical_json(serialized)
 
         try:

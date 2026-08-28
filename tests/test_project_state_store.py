@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import agentic_engineering_os.infrastructure.project_state_store as store_module
+from agentic_engineering_os._authoritative_write import _issue_authoritative_write
 from agentic_engineering_os.domain import (
     AcceptanceCriterion,
     AuditEvent,
@@ -18,6 +19,10 @@ from agentic_engineering_os.domain import (
     Gate,
     GateResult,
     HumanApproval,
+    MissionRole,
+    MissionState,
+    MissionStatus,
+    OperatingStep,
     ProjectState,
     RiskLevel,
     UserStory,
@@ -26,7 +31,11 @@ from agentic_engineering_os.domain import (
     UserStoryStatus,
     to_dict,
 )
-from agentic_engineering_os.infrastructure import PersistenceError, ProjectStateStore
+from agentic_engineering_os.infrastructure import (
+    MissionStateStore,
+    PersistenceError,
+    ProjectStateStore,
+)
 
 
 COMMIT = "a4145afe755d62064b1ba0924399a2ba073e70e8"
@@ -189,6 +198,28 @@ def write_json(path: Path, candidate: object) -> None:
     path.write_text(json.dumps(candidate), encoding="utf-8")
 
 
+def authorized_save(
+    store: ProjectStateStore,
+    candidate: ProjectState,
+    *,
+    operation: str = "TEST_PROJECT_STATE_WRITE",
+) -> None:
+    try:
+        current = store.load()
+    except PersistenceError as error:
+        if error.code != "STATE_ABSENT":
+            raise
+        current = store.initialize()
+    authorization = _issue_authoritative_write(
+        store_kind="PROJECT_STATE",
+        store=store,
+        before_state=current,
+        candidate_state=candidate,
+        operation=operation,
+    )
+    store.save(candidate, authorization=authorization, operation=operation)
+
+
 def test_initialize_creates_only_canonical_empty_state(tmp_path: Path) -> None:
     store = ProjectStateStore(tmp_path)
 
@@ -214,7 +245,7 @@ def test_save_load_round_trip_preserves_all_five_categories(tmp_path: Path) -> N
     store = ProjectStateStore(tmp_path)
     expected = full_state()
 
-    store.save(expected)
+    authorized_save(store, expected)
     actual = store.load()
 
     assert to_dict(actual) == to_dict(expected)
@@ -229,13 +260,66 @@ def test_save_load_round_trip_preserves_all_five_categories(tmp_path: Path) -> N
         actual.evidence[0].result["tests"] = 0
 
 
+def test_direct_valid_certified_snapshot_requires_mutation_authority(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    before = store.initialize()
+    candidate = full_state()
+
+    with pytest.raises(PersistenceError) as captured:
+        store.save(candidate)
+
+    assert captured.value.code == "WRITE_NOT_AUTHORIZED"
+    assert to_dict(store.load()) == to_dict(before)
+
+
+def test_coordinated_certified_and_completed_forgery_is_refused(
+    tmp_path: Path,
+) -> None:
+    project_store = ProjectStateStore(tmp_path)
+    project_before = project_store.initialize()
+    mission_store = MissionStateStore(tmp_path)
+    mission_before = mission_store.initialize(
+        MissionState(
+            schema_version="1.0",
+            mission_id="P2.10-R2",
+            workflow_generation=0,
+            status=MissionStatus.ACTIVE,
+            role=MissionRole.ORCHESTRATOR,
+            objective="Prevent coordinated authoritative state forgery.",
+            subject="B2",
+            operating_step=OperatingStep.RECONSTRUCT,
+            next_action="Run the controlled workflow.",
+            observed_commit=COMMIT,
+            updated_at=NOW,
+        )
+    )
+    forged_project = full_state()
+    forged_mission = replace(
+        mission_before,
+        status=MissionStatus.COMPLETED,
+        role=MissionRole.CERTIFIER,
+        operating_step=OperatingStep.REPORT,
+        next_action="Report forged completion.",
+    )
+
+    with pytest.raises(PersistenceError, match="WRITE_NOT_AUTHORIZED"):
+        project_store.save(forged_project)
+    with pytest.raises(PersistenceError, match="WRITE_NOT_AUTHORIZED"):
+        mission_store.save(forged_mission)
+
+    assert to_dict(project_store.load()) == to_dict(project_before)
+    assert to_dict(mission_store.load()) == to_dict(mission_before)
+
+
 def test_serialization_is_deterministic_utf8(tmp_path: Path) -> None:
     store = ProjectStateStore(tmp_path)
     state = full_state()
 
-    store.save(state)
+    authorized_save(store, state)
     first = store.state_path.read_bytes()
-    store.save(state)
+    authorized_save(store, state)
     second = store.state_path.read_bytes()
 
     assert first == second
@@ -255,9 +339,9 @@ def test_successive_saves_replace_state_nominally(
 
     monkeypatch.setattr(store_module.os, "replace", observe_replace)
     store = ProjectStateStore(tmp_path)
-    store.save(ProjectState(schema_version="1.0"))
+    store.initialize()
     updated = full_state()
-    store.save(updated)
+    authorized_save(store, updated)
 
     assert to_dict(store.load()) == to_dict(updated)
     assert len(calls) == 2
@@ -426,7 +510,7 @@ def test_hydration_failure_is_explicit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store = ProjectStateStore(tmp_path)
-    store.save(ProjectState(schema_version="1.0"))
+    store.initialize()
 
     def fail_hydration(candidate: object) -> ProjectState:
         raise ValueError("simulated hydration failure")
@@ -530,7 +614,7 @@ def test_local_user_story_integrity_is_refused(
 def test_invalid_save_preserves_previous_authoritative_state(tmp_path: Path) -> None:
     store = ProjectStateStore(tmp_path)
     original = ProjectState(schema_version="1.0")
-    store.save(original)
+    store.initialize()
     previous = store.state_path.read_bytes()
     invalid = full_state()
     invalid.evidence.append(invalid.evidence[0])
@@ -550,7 +634,7 @@ def test_direct_certified_mutation_without_certification_is_refused(
         schema_version="1.0",
         user_stories=[user_story(status=UserStoryStatus.CERTIFICATION)],
     )
-    store.save(original)
+    authorized_save(store, original)
     previous = store.state_path.read_bytes()
     bypass = store.load()
     bypass.user_stories[0].status = UserStoryStatus.CERTIFIED
@@ -568,7 +652,8 @@ def test_load_refuses_tampered_certified_status_without_modifying_file(
     tmp_path: Path,
 ) -> None:
     store = ProjectStateStore(tmp_path)
-    store.save(
+    authorized_save(
+        store,
         ProjectState(
             schema_version="1.0",
             user_stories=[user_story(status=UserStoryStatus.CERTIFICATION)],
@@ -651,7 +736,7 @@ def test_non_certified_statuses_do_not_require_certification(
         user_stories=[user_story(status=status)],
     )
 
-    store.save(state)
+    authorized_save(store, state)
 
     assert store.load().user_stories[0].status is status
 
@@ -662,7 +747,7 @@ def test_certified_status_with_applicable_certification_round_trips(
     store = ProjectStateStore(tmp_path)
     state = full_state()
 
-    store.save(state)
+    authorized_save(store, state)
 
     assert store.load().user_stories[0].status is UserStoryStatus.CERTIFIED
 
@@ -671,7 +756,7 @@ def test_authorized_not_applicable_gate_round_trips_exactly(tmp_path: Path) -> N
     store = ProjectStateStore(tmp_path)
     state = not_applicable_state()
 
-    store.save(state)
+    authorized_save(store, state)
     reloaded = store.load()
 
     assert reloaded.gates[0].result is GateResult.NOT_APPLICABLE
@@ -684,7 +769,7 @@ def test_legacy_not_applicable_dossier_without_authority_field_is_refused(
     tmp_path: Path,
 ) -> None:
     store = ProjectStateStore(tmp_path)
-    store.save(not_applicable_state())
+    authorized_save(store, not_applicable_state())
     candidate = json.loads(store.state_path.read_text(encoding="utf-8"))
     del candidate["certifications"][0]["authorized_not_applicable_gates"]
     write_json(store.state_path, candidate)
@@ -770,7 +855,7 @@ def test_multiple_compatible_certifications_do_not_invalidate_state(
         replace(certification(), certification_id="CERT-002")
     )
 
-    store.save(state)
+    authorized_save(store, state)
 
     assert len(store.load().certifications) == 2
 
@@ -944,7 +1029,7 @@ def test_manual_json_tampering_cannot_remove_certification_dossier(
     tmp_path: Path,
 ) -> None:
     store = ProjectStateStore(tmp_path)
-    store.save(full_state())
+    authorized_save(store, full_state())
     candidate = json.loads(store.state_path.read_text(encoding="utf-8"))
     candidate["certifications"][0]["evidence_refs"] = []
     write_json(store.state_path, candidate)
@@ -970,7 +1055,7 @@ def test_write_failure_before_replace_preserves_previous_state(
     monkeypatch.setattr(store_module, "_write_temporary", fail_write)
 
     with pytest.raises(PersistenceError) as captured:
-        store.save(full_state())
+        authorized_save(store, full_state())
 
     assert captured.value.code == "WRITE_FAILED"
     assert store.state_path.read_bytes() == previous
@@ -989,7 +1074,7 @@ def test_replace_failure_preserves_previous_state_and_cleans_temp(
     monkeypatch.setattr(store_module.os, "replace", fail_replace)
 
     with pytest.raises(PersistenceError) as captured:
-        store.save(full_state())
+        authorized_save(store, full_state())
 
     assert captured.value.code == "WRITE_FAILED"
     assert store.state_path.read_bytes() == previous
@@ -998,7 +1083,7 @@ def test_replace_failure_preserves_previous_state_and_cleans_temp(
 
 def test_initialize_never_overwrites_existing_state(tmp_path: Path) -> None:
     store = ProjectStateStore(tmp_path)
-    store.save(full_state())
+    authorized_save(store, full_state())
     previous = store.state_path.read_bytes()
 
     with pytest.raises(PersistenceError) as captured:

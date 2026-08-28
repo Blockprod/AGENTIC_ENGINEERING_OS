@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from agentic_engineering_os._authoritative_write import _issue_authoritative_write
 from agentic_engineering_os.domain import (
     MissionRole,
     MissionState,
@@ -50,7 +51,13 @@ _STEP_INSTRUCTIONS: dict[OperatingStep, str] = {
 class MissionStateStorePort(Protocol):
     def load(self) -> MissionState: ...
 
-    def save(self, state: MissionState) -> Path: ...
+    def save(
+        self,
+        state: MissionState,
+        *,
+        authorization: object | None = None,
+        operation: str | None = None,
+    ) -> Path: ...
 
 
 class ProjectStateReaderPort(Protocol):
@@ -204,7 +211,18 @@ class Orchestrator:
             blockers=list(blockers),
         )
         try:
-            self._mission_store.save(candidate)
+            authorization = _issue_authoritative_write(
+                store_kind="MISSION_STATE",
+                store=self._mission_store,
+                before_state=mission,
+                candidate_state=candidate,
+                operation="ORCHESTRATE_MISSION",
+            )
+            self._mission_store.save(
+                candidate,
+                authorization=authorization,
+                operation="ORCHESTRATE_MISSION",
+            )
         except Exception as error:
             return _failure(
                 reason=_unavailable_reason("MISSION_PERSISTENCE", error),
