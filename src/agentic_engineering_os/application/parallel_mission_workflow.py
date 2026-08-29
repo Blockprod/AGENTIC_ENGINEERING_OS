@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
@@ -29,6 +29,7 @@ from agentic_engineering_os.domain import (
 )
 from agentic_engineering_os.infrastructure._negative_outcome_store import (
     _NegativeOutcomeStore,
+    _fingerprint,
 )
 from agentic_engineering_os.infrastructure.project_state_store import PersistenceError
 from agentic_engineering_os.infrastructure.worktree_manager import WorktreeManager
@@ -41,7 +42,7 @@ from .certifier import (
     CertifierResultValidator,
     CertifierVerdict,
 )
-from .control_loop import ControlLoop
+from .control_loop import ControlLoop, _candidate_state, _candidate_story
 from .dag_validator import DAGValidator
 from .evidence_recorder import EvidenceObservation
 from .execution_conflict_analyzer import ExecutionConflictAnalyzer
@@ -105,6 +106,14 @@ class MissionStateStorePort(Protocol):
 
 class ProjectStateStorePort(Protocol):
     def load(self) -> ProjectState: ...
+
+    def save(
+        self,
+        state: ProjectState,
+        *,
+        authorization: object | None = None,
+        operation: str | None = None,
+    ) -> Path: ...
 
 
 class ParallelStoryStage(str, Enum):
@@ -269,6 +278,7 @@ class ParallelMissionWorkflow:
         self._certifier_validator = certifier_validator or CertifierResultValidator()
 
     def plan_current(self) -> ParallelMissionPlan:
+        self._require_no_pending_transaction()
         mission, state = self._authoritative_context()
         primary = self._manager.inspect_primary()
         if not primary.clean or primary.head_commit != mission.observed_commit.casefold():
@@ -306,6 +316,7 @@ class ParallelMissionWorkflow:
     def prepare_group(
         self, plan: ParallelMissionPlan, group_index: int
     ) -> PreparedParallelGroup:
+        self._require_no_pending_transaction()
         if not self._is_exact_active_group(plan, group_index):
             self._require_current_plan(plan)
         else:
@@ -337,6 +348,7 @@ class ParallelMissionWorkflow:
         *,
         implementer_input: ImplementerInput,
     ) -> ParallelMemberResult:
+        self._require_no_pending_transaction()
         return self._parallel.submit_result(
             prepared_group,
             assignment_id,
@@ -350,11 +362,13 @@ class ParallelMissionWorkflow:
         prepared_group: PreparedParallelGroup,
         member_results: tuple[ParallelMemberResult, ...],
     ) -> ParallelGroupResult:
+        self._require_no_pending_transaction()
         return self._parallel.complete_group(prepared_group, member_results)
 
     def fail_member(
         self, prepared_group: PreparedParallelGroup, assignment_id: str
     ) -> ParallelGroupResult:
+        self._require_no_pending_transaction()
         result = self._parallel.fail_member(
             prepared_group,
             assignment_id,
@@ -457,6 +471,12 @@ class ParallelMissionWorkflow:
             group_ids,
             preserved,
             updated_at,
+            authority={
+                "kind": "IMPLEMENTER_GROUP_FAILURE",
+                "plan": to_dict(plan),
+                "result": to_dict(group_result),
+            },
+            consume_outcome=False,
         )
 
     def remediate_integration(
@@ -536,14 +556,21 @@ class ParallelMissionWorkflow:
                 }
             )
         )
-        if stage is ParallelRemediationStage.MERGE:
-            self._consume_negative_merge_outcome(attempt)
         return self._start_remediation(
             stage,
             affected,
             group_ids,
             preserved,
             updated_at,
+            authority=(
+                to_dict(attempt.merge_result)
+                if stage is ParallelRemediationStage.MERGE
+                else {
+                    "kind": "INTEGRATION_GATE_FAILURE",
+                    "gate": to_dict(attempt.gate_result),
+                }
+            ),
+            consume_outcome=stage is ParallelRemediationStage.MERGE,
         )
 
     def remediate_dossier(
@@ -599,13 +626,14 @@ class ParallelMissionWorkflow:
                 else ()
             ),
         )
-        self._consume_authoritative_negative_dossier(dossier)
         return self._start_remediation(
             stage,
             (dossier.user_story_id,),
             (dossier.user_story_id,),
             tuple(sorted(preserved)),
             updated_at,
+            authority=to_dict(dossier),
+            consume_outcome=True,
         )
 
     def block_for_recovery(
@@ -637,18 +665,28 @@ class ParallelMissionWorkflow:
                 "RECOVERY_NOT_REQUIRED", "attempt does not prove UNKNOWN or BLOCKED"
             )
         reason = "INTEGRATION_GATE_UNKNOWN" if gate_unknown else "MERGE_BLOCKED"
-        mission = self._mission_store.load()
-        candidate = replace(
-            mission,
-            status=MissionStatus.BLOCKED,
-            role=MissionRole.ORCHESTRATOR,
-            blockers=[reason],
-            next_action="Resolve the technical uncertainty, then explicitly resume recovery.",
-            updated_at=updated_at,
+        authority: Mapping[str, object] = (
+            to_dict(attempt.merge_result)
+            if merge_blocked
+            else {
+                "kind": "INTEGRATION_GATE_UNKNOWN",
+                "gate": to_dict(attempt.gate_result),
+            }
         )
-        if merge_blocked:
-            self._consume_negative_merge_outcome(attempt)
-        self._save_mission(mission, candidate, "BLOCK_PARALLEL_RECOVERY")
+        self._start_recovery_transaction(
+            stage=(
+                ParallelRemediationStage.MERGE
+                if merge_blocked
+                else ParallelRemediationStage.INTEGRATION_GATE
+            ),
+            affected=tuple(
+                item.user_story_id for item in attempt.group_result.member_results
+            ),
+            reason=reason,
+            updated_at=updated_at,
+            authority=authority,
+            consume_outcome=merge_blocked,
+        )
         return self.inspect_recovery()
 
     def inspect_recovery(self) -> ParallelRecoveryInspection:
@@ -675,6 +713,9 @@ class ParallelMissionWorkflow:
             )
         )
         anomalies = set(reconciliation.anomalies)
+        pending = self._pending_transaction()
+        if pending is not None:
+            anomalies.add("PENDING_REMEDIATION_TRANSACTION")
         if not primary.clean:
             anomalies.add("PRIMARY_DIRTY")
         if primary.head_commit != mission.observed_commit.casefold():
@@ -707,6 +748,10 @@ class ParallelMissionWorkflow:
     def resume_recovery(self, *, updated_at: datetime) -> ParallelRecoveryInspection:
         """Explicitly leave a technical block after physical state is coherent."""
 
+        pending = self._pending_transaction()
+        if pending is not None:
+            self._resume_pending_transaction(pending)
+            return self.inspect_recovery()
         mission = self._mission_store.load()
         inspection = self.inspect_recovery()
         if (
@@ -741,6 +786,7 @@ class ParallelMissionWorkflow:
         *,
         updated_at: datetime,
     ) -> ParallelIntegrationAttempt:
+        self._require_no_pending_transaction()
         self._require_plan_identity(plan)
         mission = self._mission_store.load()
         gate_context = IntegrationGateContext(
@@ -775,6 +821,7 @@ class ParallelMissionWorkflow:
         user_story_id: str,
         candidate: ImplementerResult,
     ) -> ParallelStoryDossier:
+        self._require_no_pending_transaction()
         integration_commit = self._prove_integration(attempt)
         member = self._member(attempt, user_story_id)
         story = self._story(user_story_id)
@@ -822,6 +869,7 @@ class ParallelMissionWorkflow:
     def accept_tester(
         self, dossier: ParallelStoryDossier, candidate: TesterResult
     ) -> ParallelStoryDossier:
+        self._require_no_pending_transaction()
         self._require_dossier(dossier, ParallelStoryStage.TESTING)
         story = self._story(dossier.user_story_id)
         handoff = self._dossier_handoff(dossier, MissionRole.TESTER, OperatingStep.VERIFY)
@@ -861,6 +909,7 @@ class ParallelMissionWorkflow:
     def accept_reviewer(
         self, dossier: ParallelStoryDossier, candidate: ReviewerResult
     ) -> ParallelStoryDossier:
+        self._require_no_pending_transaction()
         self._require_dossier(dossier, ParallelStoryStage.REVIEW)
         if dossier.tester_result is None:
             raise ParallelMissionWorkflowError(
@@ -919,6 +968,7 @@ class ParallelMissionWorkflow:
         certification_id: str | None = None,
         authorized_not_applicable_gate_ids: frozenset[str] = frozenset(),
     ) -> ParallelStoryDossier:
+        self._require_no_pending_transaction()
         self._require_dossier(dossier, ParallelStoryStage.CERTIFICATION)
         if dossier.tester_result is None or dossier.reviewer_result is None:
             raise ParallelMissionWorkflowError(
@@ -999,6 +1049,7 @@ class ParallelMissionWorkflow:
         evidence_id: str,
         timestamp: datetime,
     ):
+        self._require_no_pending_transaction()
         return self._control_loop.record_evidence(
             observation, evidence_id=evidence_id, timestamp=timestamp
         )
@@ -1010,6 +1061,7 @@ class ParallelMissionWorkflow:
         context: GateEvaluationContext,
         evaluated_at: datetime,
     ) -> GateEvaluation:
+        self._require_no_pending_transaction()
         return self._control_loop.evaluate_gate(
             contract, context=context, evaluated_at=evaluated_at
         )
@@ -1017,6 +1069,7 @@ class ParallelMissionWorkflow:
     def apply_human_approval(
         self, user_story_id: str, evidence_id: str, *, expected_commit: str
     ):
+        self._require_no_pending_transaction()
         return self._control_loop.apply_human_approval(
             user_story_id, evidence_id, expected_commit=expected_commit
         )
@@ -1053,6 +1106,7 @@ class ParallelMissionWorkflow:
         )
 
     def finalize(self, *, current_commit: str, updated_at: datetime) -> ParallelMissionResult:
+        self._require_no_pending_transaction()
         result = self.result()
         mission = self._mission_store.load()
         primary = self._manager.inspect_primary()
@@ -1157,7 +1211,11 @@ class ParallelMissionWorkflow:
         initial_reexecution: tuple[str, ...],
         preserved: tuple[str, ...],
         updated_at: datetime,
+        *,
+        authority: Mapping[str, object],
+        consume_outcome: bool,
     ) -> ParallelRemediationPlan:
+        self._require_no_pending_transaction()
         mission, state = self._authoritative_context()
         primary = self._manager.inspect_primary()
         if not primary.clean or primary.head_commit != mission.observed_commit.casefold():
@@ -1173,7 +1231,6 @@ class ParallelMissionWorkflow:
             and item.workflow_generation == mission.workflow_generation
             and item.status is not WorktreeStatus.CLEANED
         }
-        stories = {item.id: item for item in state.user_stories}
         requested = set(initial_reexecution) | assigned_current
         reexecution = tuple(
             item.id
@@ -1186,8 +1243,7 @@ class ParallelMissionWorkflow:
                 "REMEDIATION_TARGET_INVALID",
                 "affected stories must remain non-terminal and replayable",
             )
-        for story_id in reexecution:
-            self._ready_for_reexecution(story_id)
+        project_candidate = self._project_candidate_for_reexecution(state, reexecution)
         stale_assignments = tuple(
             sorted(
                 f"assignment:{item.assignment_id}"
@@ -1209,7 +1265,7 @@ class ParallelMissionWorkflow:
             *stale_assignments,
         )
         new_generation = mission.workflow_generation + 1
-        candidate = replace(
+        mission_candidate = replace(
             mission,
             workflow_generation=new_generation,
             status=MissionStatus.ACTIVE,
@@ -1223,7 +1279,23 @@ class ParallelMissionWorkflow:
             observed_commit=primary.head_commit,
             updated_at=updated_at,
         )
-        self._save_mission(mission, candidate, "BEGIN_PARALLEL_REMEDIATION")
+        self._validate_candidates(project_candidate, mission_candidate)
+        transaction = self._transaction_intent(
+            authority=authority,
+            consume_outcome=consume_outcome,
+            mission=mission,
+            mission_candidate=mission_candidate,
+            state=state,
+            project_candidate=project_candidate,
+            stage=stage,
+            affected=affected,
+            reexecution=reexecution,
+            baseline=primary.head_commit,
+            operation="BEGIN_PARALLEL_REMEDIATION",
+            updated_at=updated_at,
+        )
+        transaction_id = self._claim_transaction(transaction, authority)
+        self._apply_pending_transaction(transaction_id, transaction)
         return ParallelRemediationPlan(
             mission_id=mission.mission_id,
             previous_generation=mission.workflow_generation,
@@ -1240,42 +1312,370 @@ class ParallelMissionWorkflow:
             ),
         )
 
-    def _ready_for_reexecution(self, story_id: str) -> None:
-        status = self._story(story_id).status
+    def _start_recovery_transaction(
+        self,
+        *,
+        stage: ParallelRemediationStage,
+        affected: tuple[str, ...],
+        reason: str,
+        updated_at: datetime,
+        authority: Mapping[str, object],
+        consume_outcome: bool,
+    ) -> None:
+        self._require_no_pending_transaction()
+        mission, state = self._authoritative_context()
+        primary = self._manager.inspect_primary()
+        if not primary.clean or primary.head_commit != mission.observed_commit.casefold():
+            raise ParallelMissionWorkflowError(
+                "RECONSTRUCT_REQUIRED",
+                "recovery baseline must be the clean authoritative primary HEAD",
+            )
+        project_candidate = _candidate_state(state)
+        mission_candidate = replace(
+            mission,
+            status=MissionStatus.BLOCKED,
+            role=MissionRole.ORCHESTRATOR,
+            blockers=[reason],
+            next_action="Resolve the technical uncertainty, then explicitly resume recovery.",
+            updated_at=updated_at,
+        )
+        self._validate_candidates(project_candidate, mission_candidate)
+        transaction = self._transaction_intent(
+            authority=authority,
+            consume_outcome=consume_outcome,
+            mission=mission,
+            mission_candidate=mission_candidate,
+            state=state,
+            project_candidate=project_candidate,
+            stage=stage,
+            affected=affected,
+            reexecution=(),
+            baseline=primary.head_commit,
+            operation="BLOCK_PARALLEL_RECOVERY",
+            updated_at=updated_at,
+        )
+        transaction_id = self._claim_transaction(transaction, authority)
+        self._apply_pending_transaction(transaction_id, transaction)
+
+    def _project_candidate_for_reexecution(
+        self, state: ProjectState, reexecution: tuple[str, ...]
+    ) -> ProjectState:
+        candidate = _candidate_state(state)
+        for story_id in reexecution:
+            matches = [
+                (index, story)
+                for index, story in enumerate(candidate.user_stories)
+                if story.id == story_id
+            ]
+            if len(matches) != 1:
+                raise ParallelMissionWorkflowError(
+                    "STORY_MISSING_OR_AMBIGUOUS", "story must resolve exactly once"
+                )
+            index, story = matches[0]
+            candidate.user_stories[index] = _candidate_story(story)
+            self._ready_candidate_for_reexecution(candidate, story_id)
+        return candidate
+
+    def _ready_candidate_for_reexecution(
+        self, candidate: ProjectState, story_id: str
+    ) -> None:
+        story = self._unique_story(candidate, story_id)
+        status = story.status
         if status is UserStoryStatus.PLANNED:
-            self._transition(story_id, UserStoryStatus.READY)
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.READY)
             return
         if status is UserStoryStatus.READY:
             return
         if status is UserStoryStatus.BLOCKED:
-            self._transition(story_id, UserStoryStatus.READY)
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.READY)
             return
         if status is UserStoryStatus.IN_PROGRESS:
-            self._transition(story_id, UserStoryStatus.BLOCKED)
-            self._transition(story_id, UserStoryStatus.READY)
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.BLOCKED)
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.READY)
             return
         if status is UserStoryStatus.IMPLEMENTED:
-            self._transition(story_id, UserStoryStatus.TESTING)
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.TESTING)
             status = UserStoryStatus.TESTING
         if status in {
             UserStoryStatus.TESTING,
             UserStoryStatus.REVIEW,
             UserStoryStatus.CERTIFICATION,
         }:
-            self._transition(story_id, UserStoryStatus.REJECTED)
-            self._transition(story_id, UserStoryStatus.REMEDIATION_REQUIRED)
-            self._transition(story_id, UserStoryStatus.READY)
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.REJECTED)
+            self._apply_candidate_transition(
+                candidate, story, UserStoryStatus.REMEDIATION_REQUIRED
+            )
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.READY)
             return
         if status is UserStoryStatus.REJECTED:
-            self._transition(story_id, UserStoryStatus.REMEDIATION_REQUIRED)
-            self._transition(story_id, UserStoryStatus.READY)
+            self._apply_candidate_transition(
+                candidate, story, UserStoryStatus.REMEDIATION_REQUIRED
+            )
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.READY)
             return
         if status is UserStoryStatus.REMEDIATION_REQUIRED:
-            self._transition(story_id, UserStoryStatus.READY)
+            self._apply_candidate_transition(candidate, story, UserStoryStatus.READY)
             return
         raise ParallelMissionWorkflowError(
             "REMEDIATION_TARGET_INVALID",
             f"story {story_id} cannot enter remediation from {status.value}",
+        )
+
+    def _apply_candidate_transition(
+        self,
+        candidate: ProjectState,
+        story: UserStory,
+        target: UserStoryStatus,
+    ) -> None:
+        dependencies = {
+            dependency: self._unique_story(candidate, dependency).status
+            for dependency in story.depends_on
+        }
+        result = self._control_loop._transition_service.apply(
+            story,
+            target,
+            context=TransitionContext(
+                preconditions_proven=True,
+                dependency_statuses=dependencies,
+            ),
+        )
+        if not result.allowed or story.status is not target:
+            raise ParallelMissionWorkflowError(
+                "REMEDIATION_TARGET_INVALID",
+                f"story {story.id} cannot enter {target.value}",
+            )
+
+    def _transaction_intent(
+        self,
+        *,
+        authority: Mapping[str, object],
+        consume_outcome: bool,
+        mission: MissionState,
+        mission_candidate: MissionState,
+        state: ProjectState,
+        project_candidate: ProjectState,
+        stage: ParallelRemediationStage,
+        affected: tuple[str, ...],
+        reexecution: tuple[str, ...],
+        baseline: str,
+        operation: str,
+        updated_at: datetime,
+    ) -> dict[str, object]:
+        authority_fingerprint, _ = _fingerprint(authority)
+        return {
+            "authority_fingerprint": authority_fingerprint,
+            "consume_outcome": consume_outcome,
+            "mission_id": mission.mission_id,
+            "source_generation": mission.workflow_generation,
+            "target_generation": mission_candidate.workflow_generation,
+            "triggering_stage": stage.value,
+            "affected_user_story_ids": list(affected),
+            "reexecution_user_story_ids": list(reexecution),
+            "baseline_commit": baseline,
+            "operation": operation,
+            "updated_at": updated_at.isoformat(),
+            "project_before_fingerprint": self._state_fingerprint(state),
+            "project_after_fingerprint": self._state_fingerprint(project_candidate),
+            "mission_before_fingerprint": self._state_fingerprint(mission),
+            "mission_after_fingerprint": self._state_fingerprint(mission_candidate),
+        }
+
+    @staticmethod
+    def _state_fingerprint(state: ProjectState | MissionState) -> str:
+        fingerprint, _ = _fingerprint(to_dict(state))
+        return fingerprint
+
+    def _claim_transaction(
+        self,
+        transaction: Mapping[str, object],
+        authority: Mapping[str, object],
+    ) -> str:
+        try:
+            return self._negative_outcomes._claim(transaction, authority=authority)
+        except PersistenceError as error:
+            code = (
+                "RECOVERY_PENDING"
+                if error.code == "TRANSACTION_PENDING"
+                else "TRANSACTION_PERSISTENCE_FAILED"
+            )
+            raise ParallelMissionWorkflowError(code, error.message) from error
+
+    def _pending_transaction(self) -> dict[str, object] | None:
+        try:
+            return self._negative_outcomes._pending()
+        except PersistenceError as error:
+            raise ParallelMissionWorkflowError(
+                "TRANSACTION_AUTHORITY_UNAVAILABLE", error.message
+            ) from error
+
+    def _require_no_pending_transaction(self) -> None:
+        if self._pending_transaction() is not None:
+            raise ParallelMissionWorkflowError(
+                "RECOVERY_PENDING",
+                "pending remediation transaction must be resumed before progression",
+            )
+
+    def _resume_pending_transaction(self, record: Mapping[str, object]) -> None:
+        fingerprint = record.get("fingerprint")
+        transaction = record.get("intent")
+        if not isinstance(fingerprint, str) or not isinstance(transaction, Mapping):
+            raise ParallelMissionWorkflowError(
+                "BLOCKED_INCONSISTENT", "pending transaction is malformed"
+            )
+        self._apply_pending_transaction(fingerprint, transaction)
+
+    def _apply_pending_transaction(
+        self, fingerprint: str, transaction: Mapping[str, object]
+    ) -> None:
+        mission = self._mission_store.load()
+        state = self._project_store.load()
+        if mission.mission_id != transaction["mission_id"]:
+            raise ParallelMissionWorkflowError(
+                "BLOCKED_INCONSISTENT", "pending transaction mission does not match"
+            )
+        project_observed = self._state_fingerprint(state)
+        mission_observed = self._state_fingerprint(mission)
+        project_before = transaction["project_before_fingerprint"]
+        project_after = transaction["project_after_fingerprint"]
+        mission_before = transaction["mission_before_fingerprint"]
+        mission_after = transaction["mission_after_fingerprint"]
+        if project_observed not in {project_before, project_after} or mission_observed not in {
+            mission_before,
+            mission_after,
+        }:
+            raise ParallelMissionWorkflowError(
+                "BLOCKED_INCONSISTENT",
+                "business state differs from both transaction before and after snapshots",
+            )
+
+        project_candidate: ProjectState | None = None
+        mission_candidate: MissionState | None = None
+        if project_observed == project_before:
+            if transaction["operation"] == "BEGIN_PARALLEL_REMEDIATION":
+                project_candidate = self._project_candidate_for_reexecution(
+                    state,
+                    tuple(transaction["reexecution_user_story_ids"]),
+                )
+            else:
+                project_candidate = _candidate_state(state)
+            if self._state_fingerprint(project_candidate) != project_after:
+                raise ParallelMissionWorkflowError(
+                    "BLOCKED_INCONSISTENT",
+                    "reconstructed ProjectState does not match transaction intent",
+                )
+        if mission_observed == mission_before:
+            mission_candidate = self._mission_candidate_from_transaction(
+                mission, transaction
+            )
+            if self._state_fingerprint(mission_candidate) != mission_after:
+                raise ParallelMissionWorkflowError(
+                    "BLOCKED_INCONSISTENT",
+                    "reconstructed MissionState does not match transaction intent",
+                )
+        self._validate_candidates(
+            project_candidate or state,
+            mission_candidate or mission,
+        )
+
+        if project_candidate is not None and project_before != project_after:
+            self._save_project(state, project_candidate, str(transaction["operation"]))
+            if self._state_fingerprint(self._project_store.load()) != project_after:
+                raise ParallelMissionWorkflowError(
+                    "BLOCKED_INCONSISTENT", "ProjectState write was not durable"
+                )
+        if mission_candidate is not None and mission_before != mission_after:
+            self._save_mission(mission, mission_candidate, str(transaction["operation"]))
+            if self._state_fingerprint(self._mission_store.load()) != mission_after:
+                raise ParallelMissionWorkflowError(
+                    "BLOCKED_INCONSISTENT", "MissionState write was not durable"
+                )
+        observed_project = self._state_fingerprint(self._project_store.load())
+        observed_mission = self._state_fingerprint(self._mission_store.load())
+        if observed_project != project_after or observed_mission != mission_after:
+            raise ParallelMissionWorkflowError(
+                "BLOCKED_INCONSISTENT", "transaction business state is not coherent"
+            )
+        try:
+            self._negative_outcomes._finalize(fingerprint)
+        except PersistenceError as error:
+            raise ParallelMissionWorkflowError(
+                "TRANSACTION_FINALIZATION_FAILED", error.message
+            ) from error
+
+    def _mission_candidate_from_transaction(
+        self, mission: MissionState, transaction: Mapping[str, object]
+    ) -> MissionState:
+        updated_at = datetime.fromisoformat(
+            str(transaction["updated_at"]).replace("Z", "+00:00")
+        )
+        if transaction["operation"] == "BEGIN_PARALLEL_REMEDIATION":
+            target_generation = int(transaction["target_generation"])
+            affected = tuple(transaction["affected_user_story_ids"])
+            reexecution = tuple(transaction["reexecution_user_story_ids"])
+            return replace(
+                mission,
+                workflow_generation=target_generation,
+                status=MissionStatus.ACTIVE,
+                role=MissionRole.ORCHESTRATOR,
+                operating_step=OperatingStep.ACT,
+                blockers=[],
+                next_action=(
+                    f"Execute generation {target_generation} remediation from "
+                    f"{transaction['triggering_stage']} for {', '.join(affected)}; "
+                    f"replay {', '.join(reexecution)}."
+                ),
+                observed_commit=str(transaction["baseline_commit"]),
+                updated_at=updated_at,
+            )
+        reason = (
+            "MERGE_BLOCKED"
+            if transaction["triggering_stage"] == ParallelRemediationStage.MERGE.value
+            else "INTEGRATION_GATE_UNKNOWN"
+        )
+        return replace(
+            mission,
+            status=MissionStatus.BLOCKED,
+            role=MissionRole.ORCHESTRATOR,
+            blockers=[reason],
+            next_action="Resolve the technical uncertainty, then explicitly resume recovery.",
+            updated_at=updated_at,
+        )
+
+    def _validate_candidates(
+        self, state: ProjectState, mission: MissionState
+    ) -> None:
+        self._validate_store_candidate(self._project_store, state)
+        self._validate_store_candidate(self._mission_store, mission)
+
+    @staticmethod
+    def _validate_store_candidate(store: object, candidate: object) -> None:
+        current = store
+        for _ in range(3):
+            validator = getattr(current, "_validate_state", None)
+            if callable(validator):
+                validator(candidate)
+                return
+            current = getattr(current, "delegate", None)
+            if current is None:
+                break
+        raise ParallelMissionWorkflowError(
+            "INVALID_CONFIGURATION", "state store does not expose deterministic validation"
+        )
+
+    def _save_project(
+        self, current: ProjectState, candidate: ProjectState, operation: str
+    ) -> None:
+        authorization = _issue_authoritative_write(
+            store_kind="PROJECT_STATE",
+            store=self._project_store,
+            before_state=current,
+            candidate_state=candidate,
+            operation=operation,
+        )
+        self._project_store.save(
+            candidate,
+            authorization=authorization,
+            operation=operation,
         )
 
     def _require_remediation_dossier_fresh(

@@ -68,6 +68,43 @@ ancien MergeResult ne peut autoriser N+1. Les règles existantes de fraîcheur
 Evidence, Human Approval, `NOT_APPLICABLE` et CertificationIntegrity restent
 les seules autorités ; P3.12 ne les duplique pas.
 
+## Transaction de remédiation restart-safe
+
+P3.13-R2 corrige la perte d'autorité qui survenait lorsqu'un negative outcome
+était consommé, que ProjectState était persisté, puis que MissionState échouait.
+Le ledger privé R1 porte désormais une transaction liée à l'autorité
+déclenchante, la mission, la génération source et cible, la baseline, le stage,
+les stories affectées et les fingerprints exacts des états métier avant/après.
+Un fingerprint protège l'intégrité du contenu ; il ne crée jamais l'autorité.
+
+Le cycle est `ISSUED → PENDING → FINALIZED`. Le claim `PENDING` est écrit avant
+toute mutation métier. Les candidats ProjectState et MissionState sont tous
+deux construits et validés avant ce claim. ProjectState est ensuite persisté en
+une écriture autoritative, puis MissionState, puis le ledger finalise la
+transaction et consomme l'outcome lorsqu'il existe.
+
+Après restart, `inspect_recovery()` expose explicitement
+`PENDING_REMEDIATION_TRANSACTION`. `resume_recovery()` compare chaque store aux
+fingerprints before/after :
+
+- aucun état appliqué : appliquer ProjectState puis MissionState ;
+- ProjectState seul appliqué : appliquer uniquement MissionState ;
+- MissionState seul appliqué : appliquer uniquement le ProjectState attendu ;
+- deux états appliqués : finaliser uniquement ;
+- tout autre état : `BLOCKED_INCONSISTENT`, sans réparation automatique.
+
+Une panne du claim ne mute aucun store métier. Une panne ProjectState,
+MissionState ou de finalisation laisse la transaction pending et reconstructible.
+Les retries répètent uniquement l'étape absente : une génération déjà passée de
+N à N+1 ne peut donc pas passer à N+2 par replay. Une transaction pending bloque
+planning, préparation de worktree, Gate/Merge et completion. Une seconde
+remédiation de la même mission est refusée jusqu'à résolution de la première.
+
+Le même protocole couvre Implementer, Integration Gate, Merge et les outcomes
+Tester/Reviewer/Certifier. Un blocage technique Gate `UNKNOWN` ou Merge
+`BLOCKED` utilise une cible égale à la génération source ; il ne devient pas une
+remédiation N+1.
+
 ## Restart, Waves et défaillances croisées
 
 Après restart, `MissionState`, `ProjectState`, le registre et Git reconstruisent
@@ -77,17 +114,17 @@ persistée ; tout ancien plan prospectif devient stale. Une Wave dépendante
 reste bloquée jusqu'à la nouvelle Certification de ses dépendances. Une
 remédiation n'ajoute aucune edge au DAG d'une composante indépendante.
 
-Les écritures ProjectState et MissionState ne constituent pas une transaction
-distribuée. Les transitions ProjectState précèdent l'incrément MissionState :
-si elles échouent, N reste inchangée ; si la sauvegarde MissionState échoue, N
-reste autoritative et aucune ressource N+1 ne peut être créée. Une assignment
-terminale N face à une story rejouable N rend la divergence détectable et
-bloquante. Une mutation Git réussie suivie d'un échec de registre conserve la
+Les stores restent atomiques individuellement et ne forment pas une transaction
+distribuée. Le claim persistant fournit une reconciliation logique fail-closed
+entre eux. Une mutation Git réussie suivie d'un échec de registre conserve la
 politique P3.7 : divergence observable, aucun succès global.
 
 ## Limites V1
 
-P3.12 ne fournit aucun rollback/revert automatique, reset destructif, rebase,
+La V1 ne fournit aucun rollback/revert automatique, reset destructif, rebase,
 cleanup daemon, retry Codex, génération par story ou transaction distribuée.
-Une remédiation substantielle est toujours explicite et observable. P3.13
-reste hors scope.
+Le ledger n'apporte pas de garantie cryptographique contre un processus hostile
+contrôlant directement code et repository. Les anciens ledgers R1 version 1.0
+sont refusés explicitement et exigent une migration contrôlée ; ils ne sont pas
+réinterprétés silencieusement. Une remédiation substantielle reste explicite et
+observable.

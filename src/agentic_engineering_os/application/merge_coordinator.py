@@ -115,6 +115,18 @@ class MergeCoordinator:
     def merge(self, context: MergeContext) -> MergeResult:
         if not isinstance(context, MergeContext):
             raise MergeCoordinationError("INVALID_CONTEXT", "MergeContext is required")
+        try:
+            pending = self._outcomes._pending()
+        except PersistenceError as error:
+            raise MergeCoordinationError(
+                "TRANSACTION_AUTHORITY_UNAVAILABLE",
+                "pending remediation authority cannot be inspected",
+            ) from error
+        if pending is not None:
+            raise MergeCoordinationError(
+                "RECOVERY_PENDING",
+                "merge is blocked until the pending remediation transaction is resolved",
+            )
         gate = context.gate_result
         gate_context = context.gate_context
         if not isinstance(gate, IntegrationGateResult) or not isinstance(

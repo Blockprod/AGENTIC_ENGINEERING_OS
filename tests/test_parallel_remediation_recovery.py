@@ -543,7 +543,7 @@ def test_project_failure_leaves_old_generation_authoritative(
     def refuse_transition(*args, **kwargs):
         raise RuntimeError("project persistence unavailable")
 
-    monkeypatch.setattr(harness.control, "transition_user_story", refuse_transition)
+    monkeypatch.setattr(harness.project_store, "save", refuse_transition)
     with pytest.raises(RuntimeError, match="project persistence unavailable"):
         harness.workflow.remediate_failed_group(
             plan,
@@ -556,6 +556,7 @@ def test_project_failure_leaves_old_generation_authoritative(
         item.workflow_generation == 0
         for item in harness.manager.registry_store.load().assignments
     )
+    assert "PENDING_REMEDIATION_TRANSACTION" in harness.workflow.inspect_recovery().anomalies
 
 
 class _FailingMissionStore:
@@ -591,6 +592,5 @@ def test_mission_failure_never_authorizes_new_generation_resources(tmp_path: Pat
         item.workflow_generation == 1
         for item in harness.manager.registry_store.load().assignments
     )
-    old_plan = harness.workflow.plan_current()
-    with pytest.raises(Exception):
-        harness.workflow.prepare_group(old_plan, 0)
+    with pytest.raises(ParallelMissionWorkflowError, match="RECOVERY_PENDING"):
+        harness.workflow.plan_current()

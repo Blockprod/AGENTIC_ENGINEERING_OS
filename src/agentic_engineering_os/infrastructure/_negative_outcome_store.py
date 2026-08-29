@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,36 @@ from .project_state_store import PersistenceError, STATE_DIRECTORY
 
 
 _FILENAME = "negative-outcomes.json"
-_VERSION = "1.0"
+_VERSION = "2.0"
+_TRANSACTION_FIELDS = {
+    "authority_fingerprint",
+    "consume_outcome",
+    "mission_id",
+    "source_generation",
+    "target_generation",
+    "triggering_stage",
+    "affected_user_story_ids",
+    "reexecution_user_story_ids",
+    "baseline_commit",
+    "operation",
+    "updated_at",
+    "project_before_fingerprint",
+    "project_after_fingerprint",
+    "mission_before_fingerprint",
+    "mission_after_fingerprint",
+}
+_REMEDIATION_STAGES = {
+    "IMPLEMENTER",
+    "INTEGRATION_GATE",
+    "MERGE",
+    "TESTER",
+    "REVIEWER",
+    "CERTIFIER",
+}
+_TRANSACTION_OPERATIONS = {
+    "BEGIN_PARALLEL_REMEDIATION",
+    "BLOCK_PARALLEL_RECOVERY",
+}
 
 
 class _DuplicateJsonKeyError(ValueError):
@@ -67,6 +97,124 @@ class _NegativeOutcomeStore:
         outcomes.sort(key=lambda item: item["fingerprint"])
         self._write(document)
 
+    def _claim(
+        self,
+        transaction: Mapping[str, object],
+        *,
+        authority: Mapping[str, object],
+    ) -> str:
+        """Persist one exact pending transaction after authority was validated."""
+
+        normalized_transaction = _validate_transaction_intent(transaction)
+        fingerprint, normalized_transaction = _fingerprint(normalized_transaction)
+        authority_fingerprint, normalized_authority = _fingerprint(authority)
+        if normalized_transaction["authority_fingerprint"] != authority_fingerprint:
+            raise PersistenceError(
+                "TRANSACTION_AUTHORITY_MISMATCH",
+                "transaction is not bound to the supplied authority",
+            )
+        document = self._load()
+        transactions = document["transactions"]
+        assert isinstance(transactions, list)
+        pending = [
+            item
+            for item in transactions
+            if isinstance(item, dict)
+            and item.get("status") == "PENDING"
+        ]
+        if pending:
+            raise PersistenceError(
+                "TRANSACTION_PENDING",
+                "mission already has a pending remediation transaction",
+            )
+        if normalized_transaction["consume_outcome"]:
+            outcomes = document["outcomes"]
+            assert isinstance(outcomes, list)
+            matches = [
+                item
+                for item in outcomes
+                if isinstance(item, dict)
+                and item.get("fingerprint") == authority_fingerprint
+                and item.get("result") == normalized_authority
+                and item.get("consumed") is False
+            ]
+            if len(matches) != 1:
+                raise PersistenceError(
+                    "NEGATIVE_OUTCOME_NOT_AUTHORIZED",
+                    "transaction authority is absent, altered, or already consumed",
+                )
+        transactions.append(
+            {
+                "fingerprint": fingerprint,
+                "intent": normalized_transaction,
+                "status": "PENDING",
+            }
+        )
+        transactions.sort(key=lambda item: item["fingerprint"])
+        self._write(document)
+        return fingerprint
+
+    def _pending(self, mission_id: str | None = None) -> dict[str, object] | None:
+        document = self._load()
+        matches = [
+            item
+            for item in document["transactions"]
+            if isinstance(item, dict)
+            and item.get("status") == "PENDING"
+            and (
+                mission_id is None
+                or (
+                    isinstance(item.get("intent"), dict)
+                    and item["intent"].get("mission_id") == mission_id
+                )
+            )
+        ]
+        if len(matches) > 1:
+            raise PersistenceError(
+                "INVALID_DOMAIN_DATA",
+                "multiple pending transactions are not allowed",
+            )
+        return matches[0] if matches else None
+
+    def _finalize(self, fingerprint: str) -> None:
+        document = self._load()
+        transactions = document["transactions"]
+        assert isinstance(transactions, list)
+        matches = [
+            item
+            for item in transactions
+            if isinstance(item, dict)
+            and item.get("fingerprint") == fingerprint
+            and item.get("status") == "PENDING"
+        ]
+        if len(matches) != 1:
+            raise PersistenceError(
+                "TRANSACTION_NOT_PENDING",
+                "transaction is absent, altered, or already finalized",
+            )
+        transaction = matches[0]
+        intent = transaction["intent"]
+        assert isinstance(intent, dict)
+        if intent["consume_outcome"]:
+            authority_fingerprint = intent["authority_fingerprint"]
+            outcomes = document["outcomes"]
+            assert isinstance(outcomes, list)
+            outcome_matches = [
+                item
+                for item in outcomes
+                if isinstance(item, dict)
+                and item.get("fingerprint") == authority_fingerprint
+                and item.get("consumed") is False
+            ]
+            if len(outcome_matches) != 1:
+                raise PersistenceError(
+                    "NEGATIVE_OUTCOME_NOT_AUTHORIZED",
+                    "transaction outcome is absent, altered, or already consumed",
+                )
+            outcome_matches[0]["consumed"] = True
+        transaction["status"] = "FINALIZED"
+        self._write(document)
+
     def _contains_unconsumed(self, serialized_result: Mapping[str, object]) -> bool:
         fingerprint, normalized = _fingerprint(serialized_result)
         for item in self._load()["outcomes"]:
@@ -103,7 +251,7 @@ class _NegativeOutcomeStore:
     def _load(self) -> dict[str, object]:
         self._assert_safe_paths(for_write=False)
         if not self._path.exists():
-            return {"version": _VERSION, "outcomes": []}
+            return {"version": _VERSION, "outcomes": [], "transactions": []}
         if not self._path.is_file():
             raise PersistenceError(
                 "READ_FAILED", "negative outcome registry is not a regular file"
@@ -212,11 +360,22 @@ def _fingerprint(
 
 
 def _validate_document(candidate: object) -> dict[str, object]:
-    if not isinstance(candidate, Mapping) or set(candidate) != {"version", "outcomes"}:
+    if not isinstance(candidate, Mapping) or set(candidate) != {
+        "version",
+        "outcomes",
+        "transactions",
+    }:
         raise PersistenceError(
             "INVALID_DOMAIN_DATA", "negative outcome registry has unknown fields"
         )
-    if candidate["version"] != _VERSION or not isinstance(candidate["outcomes"], list):
+    if candidate["version"] != _VERSION:
+        raise PersistenceError(
+            "INCOMPATIBLE_VERSION",
+            "negative outcome registry requires explicit version 2.0 migration",
+        )
+    if not isinstance(candidate["outcomes"], list) or not isinstance(
+        candidate["transactions"], list
+    ):
         raise PersistenceError(
             "INVALID_DOMAIN_DATA", "negative outcome registry version or outcomes is invalid"
         )
@@ -257,5 +416,181 @@ def _validate_document(candidate: object) -> dict[str, object]:
                 "consumed": consumed,
             }
         )
+    normalized_transactions: list[dict[str, object]] = []
+    transaction_fingerprints: set[str] = set()
+    pending_seen = False
+    for item in candidate["transactions"]:
+        if not isinstance(item, Mapping) or set(item) != {
+            "fingerprint",
+            "intent",
+            "status",
+        }:
+            raise PersistenceError(
+                "INVALID_DOMAIN_DATA", "transaction record has unknown fields"
+            )
+        fingerprint = item["fingerprint"]
+        intent = _validate_transaction_intent(item["intent"])
+        status = item["status"]
+        expected, intent = _fingerprint(intent)
+        if (
+            not isinstance(fingerprint, str)
+            or fingerprint != expected
+            or fingerprint in transaction_fingerprints
+            or status not in {"PENDING", "FINALIZED"}
+        ):
+            raise PersistenceError(
+                "INVALID_DOMAIN_DATA", "transaction record is malformed"
+            )
+        mission_id = intent["mission_id"]
+        assert isinstance(mission_id, str)
+        if status == "PENDING" and pending_seen:
+            raise PersistenceError(
+                "INVALID_DOMAIN_DATA",
+                "multiple pending transactions are forbidden",
+            )
+        transaction_fingerprints.add(fingerprint)
+        if status == "PENDING":
+            pending_seen = True
+        normalized_transactions.append(
+            {"fingerprint": fingerprint, "intent": intent, "status": status}
+        )
+    outcomes_by_fingerprint = {
+        item["fingerprint"]: item for item in normalized_outcomes
+    }
+    for transaction in normalized_transactions:
+        intent = transaction["intent"]
+        assert isinstance(intent, dict)
+        if not intent["consume_outcome"]:
+            continue
+        outcome = outcomes_by_fingerprint.get(intent["authority_fingerprint"])
+        expected_consumed = transaction["status"] == "FINALIZED"
+        if outcome is None or outcome["consumed"] is not expected_consumed:
+            raise PersistenceError(
+                "INVALID_DOMAIN_DATA",
+                "transaction lifecycle conflicts with its authoritative outcome",
+            )
     normalized_outcomes.sort(key=lambda item: item["fingerprint"])
-    return {"version": _VERSION, "outcomes": normalized_outcomes}
+    normalized_transactions.sort(key=lambda item: item["fingerprint"])
+    return {
+        "version": _VERSION,
+        "outcomes": normalized_outcomes,
+        "transactions": normalized_transactions,
+    }
+
+
+def _validate_transaction_intent(candidate: object) -> dict[str, object]:
+    if not isinstance(candidate, Mapping) or set(candidate) != _TRANSACTION_FIELDS:
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction intent has unknown or missing fields"
+        )
+    strings = {
+        "authority_fingerprint",
+        "mission_id",
+        "triggering_stage",
+        "baseline_commit",
+        "operation",
+        "updated_at",
+        "project_before_fingerprint",
+        "project_after_fingerprint",
+        "mission_before_fingerprint",
+        "mission_after_fingerprint",
+    }
+    for field in strings:
+        value = candidate[field]
+        if not isinstance(value, str) or not value:
+            raise PersistenceError(
+                "INVALID_DOMAIN_DATA", f"transaction field {field} is invalid"
+            )
+    hash_fields = {
+        "authority_fingerprint",
+        "project_before_fingerprint",
+        "project_after_fingerprint",
+        "mission_before_fingerprint",
+        "mission_after_fingerprint",
+    }
+    if any(
+        len(candidate[field]) != 64
+        or any(character not in "0123456789abcdef" for character in candidate[field])
+        for field in hash_fields
+    ):
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction fingerprints are invalid"
+        )
+    source = candidate["source_generation"]
+    target = candidate["target_generation"]
+    if (
+        not isinstance(source, int)
+        or isinstance(source, bool)
+        or source < 0
+        or not isinstance(target, int)
+        or isinstance(target, bool)
+        or target not in {source, source + 1}
+    ):
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction generations are invalid"
+        )
+    stage = candidate["triggering_stage"]
+    operation = candidate["operation"]
+    if stage not in _REMEDIATION_STAGES or operation not in _TRANSACTION_OPERATIONS:
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction stage or operation is invalid"
+        )
+    if (
+        operation == "BEGIN_PARALLEL_REMEDIATION" and target != source + 1
+    ) or (
+        operation == "BLOCK_PARALLEL_RECOVERY"
+        and (target != source or stage not in {"INTEGRATION_GATE", "MERGE"})
+    ):
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction generation semantics are invalid"
+        )
+    if not isinstance(candidate["consume_outcome"], bool):
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "consume_outcome must be a strict boolean"
+        )
+    if candidate["consume_outcome"] is not (
+        stage in {"MERGE", "TESTER", "REVIEWER", "CERTIFIER"}
+    ):
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction outcome-consumption policy is invalid"
+        )
+    normalized: dict[str, object] = dict(candidate)
+    for field in ("affected_user_story_ids", "reexecution_user_story_ids"):
+        values = candidate[field]
+        if (
+            not isinstance(values, (list, tuple))
+            or any(not isinstance(value, str) or not value for value in values)
+            or len(set(values)) != len(values)
+        ):
+            raise PersistenceError(
+                "INVALID_DOMAIN_DATA", f"transaction field {field} is invalid"
+            )
+        normalized[field] = list(values)
+    if not normalized["affected_user_story_ids"] or (
+        operation == "BEGIN_PARALLEL_REMEDIATION"
+        and not normalized["reexecution_user_story_ids"]
+    ) or (
+        operation == "BLOCK_PARALLEL_RECOVERY"
+        and normalized["reexecution_user_story_ids"]
+    ):
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction story bindings are invalid"
+        )
+    baseline = candidate["baseline_commit"]
+    if len(baseline) != 40 or any(
+        character not in "0123456789abcdef" for character in baseline
+    ):
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction baseline commit is invalid"
+        )
+    try:
+        timestamp = datetime.fromisoformat(str(candidate["updated_at"]).replace("Z", "+00:00"))
+    except ValueError as error:
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction updated_at is invalid"
+        ) from error
+    if timestamp.tzinfo is None or timestamp.utcoffset() != timedelta(0):
+        raise PersistenceError(
+            "INVALID_DOMAIN_DATA", "transaction updated_at must be UTC"
+        )
+    return normalized
