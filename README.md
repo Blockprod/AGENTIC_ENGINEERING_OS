@@ -9,7 +9,7 @@ Principes fondamentaux : état réel comme source de vérité, responsabilités
 séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
-Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `IN PROGRESS — P3.12`
+Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED`
 
 Documentation :
 
@@ -48,4 +48,5 @@ Documentation :
 - [Merge Coordinator](docs/32-merge-coordinator.md)
 - [Mission parallèle end-to-end](docs/33-end-to-end-parallel-mission.md)
 - [Remédiation et recovery parallèles](docs/34-parallel-remediation-recovery.md)
+- [Certification Phase 3](docs/PHASE-3-CERTIFICATION.md)
 - [JSON Schemas V1](schemas/README.md)
