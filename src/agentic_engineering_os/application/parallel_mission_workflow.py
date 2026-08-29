@@ -25,7 +25,12 @@ from agentic_engineering_os.domain import (
     UserStoryStatus,
     WavePlan,
     WorktreeStatus,
+    to_dict,
 )
+from agentic_engineering_os.infrastructure._negative_outcome_store import (
+    _NegativeOutcomeStore,
+)
+from agentic_engineering_os.infrastructure.project_state_store import PersistenceError
 from agentic_engineering_os.infrastructure.worktree_manager import WorktreeManager
 
 from .architect import ArchitectResult
@@ -53,7 +58,13 @@ from .integration_gate import (
     IntegrationGateContext,
     IntegrationGateResult,
 )
-from .merge_coordinator import MergeContext, MergeCoordinator, MergeResult, MergeStatus
+from .merge_coordinator import (
+    MergeContext,
+    MergeCoordinationError,
+    MergeCoordinator,
+    MergeResult,
+    MergeStatus,
+)
 from .orchestrator import RoleHandoff
 from .parallel_implementer_coordinator import (
     ParallelCoordinationInput,
@@ -246,6 +257,9 @@ class ParallelMissionWorkflow:
         self._merge = merge_coordinator or MergeCoordinator(
             worktree_manager=worktree_manager,
             integration_gate=self._gate,
+        )
+        self._negative_outcomes = _NegativeOutcomeStore(
+            worktree_manager.repository_root
         )
         self._implementer_validator = (
             implementer_validator or ImplementerResultValidator()
@@ -459,16 +473,17 @@ class ParallelMissionWorkflow:
                 "INVALID_FAILURE_CONTEXT", "integration attempt is required"
             )
         self._require_plan_identity(attempt.plan)
-        self._require_replayed_gate(attempt)
         group_ids = tuple(
             item.user_story_id for item in attempt.group_result.member_results
         )
         if attempt.gate_result.result is IntegrationGateClassification.UNKNOWN:
+            self._require_replayed_gate(attempt)
             raise ParallelMissionWorkflowError(
                 "RECOVERY_REQUIRED",
                 "Integration Gate UNKNOWN requires explicit recovery, not remediation",
             )
         if attempt.gate_result.result is IntegrationGateClassification.FAIL:
+            self._require_replayed_gate(attempt)
             if attempt.merge_result is not None:
                 raise ParallelMissionWorkflowError(
                     "INVALID_FAILURE_CONTEXT", "Gate FAIL must not have a MergeResult"
@@ -485,6 +500,7 @@ class ParallelMissionWorkflow:
             and isinstance(attempt.merge_result, MergeResult)
             and attempt.merge_result.result is MergeStatus.FAILED
         ):
+            self._require_negative_merge_outcome(attempt)
             stage = ParallelRemediationStage.MERGE
             attributable = set(group_ids)
         elif (
@@ -520,6 +536,8 @@ class ParallelMissionWorkflow:
                 }
             )
         )
+        if stage is ParallelRemediationStage.MERGE:
+            self._consume_negative_merge_outcome(attempt)
         return self._start_remediation(
             stage,
             affected,
@@ -544,6 +562,7 @@ class ParallelMissionWorkflow:
                 "REMEDIATION_NOT_PROVEN", "remediation dossier is required"
             )
         self._require_remediation_dossier_fresh(dossier)
+        self._require_authoritative_negative_dossier(dossier)
         if (
             dossier.tester_result is not None
             and dossier.tester_result.verdict is TesterVerdict.REMEDIATION_REQUIRED
@@ -580,6 +599,7 @@ class ParallelMissionWorkflow:
                 else ()
             ),
         )
+        self._consume_authoritative_negative_dossier(dossier)
         return self._start_remediation(
             stage,
             (dossier.user_story_id,),
@@ -601,7 +621,6 @@ class ParallelMissionWorkflow:
                 "INVALID_FAILURE_CONTEXT", "integration attempt is required"
             )
         self._require_plan_identity(attempt.plan)
-        self._require_replayed_gate(attempt)
         gate_unknown = (
             attempt.gate_result.result is IntegrationGateClassification.UNKNOWN
         )
@@ -609,6 +628,10 @@ class ParallelMissionWorkflow:
             isinstance(attempt.merge_result, MergeResult)
             and attempt.merge_result.result is MergeStatus.BLOCKED
         )
+        if gate_unknown:
+            self._require_replayed_gate(attempt)
+        if merge_blocked:
+            self._require_negative_merge_outcome(attempt)
         if not gate_unknown and not merge_blocked:
             raise ParallelMissionWorkflowError(
                 "RECOVERY_NOT_REQUIRED", "attempt does not prove UNKNOWN or BLOCKED"
@@ -623,6 +646,8 @@ class ParallelMissionWorkflow:
             next_action="Resolve the technical uncertainty, then explicitly resume recovery.",
             updated_at=updated_at,
         )
+        if merge_blocked:
+            self._consume_negative_merge_outcome(attempt)
         self._save_mission(mission, candidate, "BLOCK_PARALLEL_RECOVERY")
         return self.inspect_recovery()
 
@@ -818,12 +843,14 @@ class ParallelMissionWorkflow:
             )
         if candidate.verdict is TesterVerdict.REMEDIATION_REQUIRED:
             self._mark_remediation(story.id)
-            return replace(
+            outcome = replace(
                 dossier,
                 stage=ParallelStoryStage.REMEDIATION_REQUIRED,
                 tester_result=candidate,
                 blockers=tuple(candidate.findings),
             )
+            self._record_negative_dossier(outcome)
+            return outcome
         return replace(
             dossier,
             stage=ParallelStoryStage.BLOCKED,
@@ -864,12 +891,14 @@ class ParallelMissionWorkflow:
             )
         if candidate.verdict is ReviewerVerdict.REMEDIATION_REQUIRED:
             self._mark_remediation(story.id)
-            return replace(
+            outcome = replace(
                 dossier,
                 stage=ParallelStoryStage.REMEDIATION_REQUIRED,
                 reviewer_result=candidate,
                 blockers=tuple(item.summary for item in candidate.findings if item.blocking),
             )
+            self._record_negative_dossier(outcome)
+            return outcome
         return replace(
             dossier,
             stage=ParallelStoryStage.BLOCKED,
@@ -920,12 +949,14 @@ class ParallelMissionWorkflow:
             )
         if candidate.verdict is CertifierVerdict.REMEDIATION_REQUIRED:
             self._mark_remediation(story.id)
-            return replace(
+            outcome = replace(
                 dossier,
                 stage=ParallelStoryStage.REMEDIATION_REQUIRED,
                 certifier_result=candidate,
                 blockers=tuple(item.summary for item in candidate.findings),
             )
+            self._record_negative_dossier(outcome)
+            return outcome
         if candidate.verdict is not CertifierVerdict.READY_FOR_CONTROL_PLANE:
             return replace(
                 dossier,
@@ -1271,6 +1302,75 @@ class ParallelMissionWorkflow:
                 "STALE_INTEGRATION_GATE",
                 "failure handling requires the exact currently reproducible Gate result",
             )
+
+    def _require_negative_merge_outcome(
+        self, attempt: ParallelIntegrationAttempt
+    ) -> None:
+        if not isinstance(attempt.merge_result, MergeResult):
+            raise ParallelMissionWorkflowError(
+                "UNTRUSTED_MERGE_OUTCOME", "negative MergeResult is required"
+            )
+        try:
+            self._merge._validate_negative_outcome(
+                MergeContext(
+                    gate_context=attempt.gate_context,
+                    gate_result=attempt.gate_result,
+                ),
+                attempt.merge_result,
+            )
+        except MergeCoordinationError as error:
+            raise ParallelMissionWorkflowError(error.code, error.message) from error
+
+    def _consume_negative_merge_outcome(
+        self, attempt: ParallelIntegrationAttempt
+    ) -> None:
+        assert isinstance(attempt.merge_result, MergeResult)
+        try:
+            self._merge._consume_negative_outcome(
+                MergeContext(
+                    gate_context=attempt.gate_context,
+                    gate_result=attempt.gate_result,
+                ),
+                attempt.merge_result,
+            )
+        except MergeCoordinationError as error:
+            raise ParallelMissionWorkflowError(error.code, error.message) from error
+
+    def _record_negative_dossier(self, dossier: ParallelStoryDossier) -> None:
+        try:
+            self._negative_outcomes._record(to_dict(dossier))
+        except PersistenceError as error:
+            raise ParallelMissionWorkflowError(
+                "OUTCOME_PERSISTENCE_FAILED",
+                "negative role outcome could not be recorded authoritatively",
+            ) from error
+
+    def _require_authoritative_negative_dossier(
+        self, dossier: ParallelStoryDossier
+    ) -> None:
+        try:
+            authorized = self._negative_outcomes._contains_unconsumed(to_dict(dossier))
+        except PersistenceError as error:
+            raise ParallelMissionWorkflowError(
+                "NEGATIVE_OUTCOME_AUTHORITY_UNAVAILABLE",
+                "negative role outcome authority cannot be read",
+            ) from error
+        if not authorized:
+            raise ParallelMissionWorkflowError(
+                "UNTRUSTED_NEGATIVE_OUTCOME",
+                "remediation dossier was not emitted by the authoritative role path",
+            )
+
+    def _consume_authoritative_negative_dossier(
+        self, dossier: ParallelStoryDossier
+    ) -> None:
+        try:
+            self._negative_outcomes._consume(to_dict(dossier))
+        except PersistenceError as error:
+            raise ParallelMissionWorkflowError(
+                "UNTRUSTED_NEGATIVE_OUTCOME",
+                "remediation dossier is absent, altered, or already consumed",
+            ) from error
 
     def _prove_integration(self, attempt: ParallelIntegrationAttempt) -> str:
         if (

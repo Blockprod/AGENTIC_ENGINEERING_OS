@@ -12,7 +12,8 @@ from agentic_engineering_os.application import (
     IntegrationGate,
     IntegrationGateClassification,
     IntegrationGateContext,
-    MergeResult,
+    MergeContext,
+    MergeCoordinator,
     MergeStatus,
     ParallelIntegrationAttempt,
     ParallelMissionWorkflow,
@@ -31,7 +32,7 @@ from agentic_engineering_os.application import (
     VerificationResult,
 )
 from agentic_engineering_os.domain import GateResult, MissionRole, MissionStatus, UserStoryStatus
-from agentic_engineering_os.infrastructure import WorktreeManagerError
+from agentic_engineering_os.infrastructure import GitMergeResult, WorktreeManagerError
 
 from test_parallel_mission_workflow import (
     COMMAND,
@@ -465,25 +466,24 @@ def _unmerged_pass_attempt(harness):
     return plan, group, gate_context, gate
 
 
-def test_merge_failed_remediates_but_merge_blocked_requires_recovery(tmp_path: Path) -> None:
+def test_merge_failed_remediates_but_merge_blocked_requires_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     failed_root = tmp_path / "failed"
     failed_root.mkdir()
     failed_harness = make_harness(failed_root, (make_story("US-0001"),))
     plan, group, context, gate = _unmerged_pass_attempt(failed_harness)
-    failed_merge = MergeResult(
-        mission_id=plan.mission_id,
-        workflow_generation=0,
-        wave_index=0,
-        group_index=0,
-        baseline_commit=plan.baseline_commit,
-        integration_order=gate.integration_order,
-        member_commits=tuple(item.result_commit for item in group.member_results),
-        integration_commit=None,
-        primary_before=plan.baseline_commit,
-        primary_after=plan.baseline_commit,
-        result=MergeStatus.FAILED,
-        findings=(),
+    failed_coordinator = MergeCoordinator(worktree_manager=failed_harness.manager)
+    failed_adapter = failed_harness.manager._integration_git_adapter
+
+    def fail_merge(path: Path, commit: str, *, message: str) -> GitMergeResult:
+        return GitMergeResult(False, failed_adapter.current_head(path))
+
+    monkeypatch.setattr(failed_adapter, "merge_no_ff", fail_merge)
+    failed_merge = failed_coordinator.merge(
+        MergeContext(gate_context=context, gate_result=gate)
     )
+    assert failed_merge.result is MergeStatus.FAILED
     failed_attempt = ParallelIntegrationAttempt(
         plan, group, context, gate, failed_merge
     )
@@ -499,13 +499,18 @@ def test_merge_failed_remediates_but_merge_blocked_requires_recovery(tmp_path: P
     blocked_root.mkdir()
     blocked_harness = make_harness(blocked_root, (make_story("US-0001"),))
     plan, group, context, gate = _unmerged_pass_attempt(blocked_harness)
-    blocked_merge = replace(
-        failed_merge,
-        baseline_commit=plan.baseline_commit,
-        primary_before=plan.baseline_commit,
-        primary_after=plan.baseline_commit,
-        result=MergeStatus.BLOCKED,
+    blocked_coordinator = MergeCoordinator(worktree_manager=blocked_harness.manager)
+
+    def block_resource(*args, **kwargs) -> None:
+        raise OSError("simulated unavailable integration resource")
+
+    monkeypatch.setattr(
+        blocked_coordinator, "_prepare_integration_resource", block_resource
     )
+    blocked_merge = blocked_coordinator.merge(
+        MergeContext(gate_context=context, gate_result=gate)
+    )
+    assert blocked_merge.result is MergeStatus.BLOCKED
     blocked_attempt = ParallelIntegrationAttempt(
         plan, group, context, gate, blocked_merge
     )

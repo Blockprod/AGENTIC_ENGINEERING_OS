@@ -10,6 +10,10 @@ from pathlib import Path
 
 from agentic_engineering_os.domain import WorktreeAssignment, WorktreeStatus, to_dict
 from agentic_engineering_os.infrastructure.git_adapter import GitOperationError
+from agentic_engineering_os.infrastructure._negative_outcome_store import (
+    _NegativeOutcomeStore,
+)
+from agentic_engineering_os.infrastructure.project_state_store import PersistenceError
 from agentic_engineering_os.infrastructure.worktree_manager import (
     WorktreeManager,
     WorktreeManagerError,
@@ -106,6 +110,7 @@ class MergeCoordinator:
             worktree_manager=worktree_manager
         )
         self._validator = contract_validator or ContractValidator()
+        self._outcomes = _NegativeOutcomeStore(worktree_manager.repository_root)
 
     def merge(self, context: MergeContext) -> MergeResult:
         if not isinstance(context, MergeContext):
@@ -338,6 +343,82 @@ class MergeCoordinator:
             MergeStatus.MERGED,
             integration_commit=integration_commit,
         )
+
+    def _validate_negative_outcome(
+        self, context: MergeContext, result: MergeResult
+    ) -> None:
+        """Prove that an exact negative DTO was emitted by a real merge attempt."""
+
+        if not isinstance(context, MergeContext) or not isinstance(result, MergeResult):
+            raise MergeCoordinationError(
+                "UNTRUSTED_MERGE_OUTCOME", "merge context and result are required"
+            )
+        self._validate_static_binding(context)
+        gate = context.gate_result
+        expected_members = tuple(item.result_commit for item in gate.member_commits)
+        if (
+            gate.result is not IntegrationGateClassification.PASS
+            or result.result not in {MergeStatus.FAILED, MergeStatus.BLOCKED}
+            or result.mission_id != gate.mission_id
+            or result.workflow_generation != gate.workflow_generation
+            or result.wave_index != gate.wave_index
+            or result.group_index != gate.group_index
+            or result.baseline_commit != gate.baseline_commit
+            or result.integration_order != gate.integration_order
+            or result.member_commits != expected_members
+        ):
+            raise MergeCoordinationError(
+                "UNTRUSTED_MERGE_OUTCOME",
+                "negative merge outcome is not exactly bound to its Gate context",
+            )
+        validation = self._validator.validate("merge-result", to_dict(result))
+        if not validation.is_valid:
+            raise MergeCoordinationError(
+                "UNTRUSTED_MERGE_OUTCOME", "negative merge outcome is structurally invalid"
+            )
+        self._assignments(gate)
+        if result.result is MergeStatus.FAILED:
+            try:
+                observed_gate = self._gate.evaluate(context.gate_context)
+            except (IntegrationGateError, WorktreeManagerError, GitOperationError) as error:
+                raise MergeCoordinationError(
+                    "MERGE_OUTCOME_AUTHORITY_UNAVAILABLE",
+                    "current Gate and Git reality cannot be revalidated",
+                ) from error
+            if observed_gate != gate:
+                raise MergeCoordinationError(
+                    "STALE_MERGE_OUTCOME",
+                    "current Gate and assignments differ from the failed merge attempt",
+                )
+        try:
+            current = self._manager.inspect_primary()
+            if current.head_commit != result.primary_after:
+                raise MergeCoordinationError(
+                    "STALE_MERGE_OUTCOME",
+                    "primary HEAD differs from the recorded negative merge outcome",
+                )
+            if not self._outcomes._contains_unconsumed(to_dict(result)):
+                raise MergeCoordinationError(
+                    "UNTRUSTED_MERGE_OUTCOME",
+                    "negative merge outcome was not emitted or was already consumed",
+                )
+        except PersistenceError as error:
+            raise MergeCoordinationError(
+                "MERGE_OUTCOME_AUTHORITY_UNAVAILABLE",
+                "negative merge outcome authority cannot be read",
+            ) from error
+
+    def _consume_negative_outcome(
+        self, context: MergeContext, result: MergeResult
+    ) -> None:
+        self._validate_negative_outcome(context, result)
+        try:
+            self._outcomes._consume(to_dict(result))
+        except PersistenceError as error:
+            raise MergeCoordinationError(
+                "UNTRUSTED_MERGE_OUTCOME",
+                "negative merge outcome cannot be consumed exactly once",
+            ) from error
 
     @staticmethod
     def _validate_static_binding(context: MergeContext) -> None:
@@ -667,6 +748,14 @@ class MergeCoordinator:
             raise MergeCoordinationError(
                 "INVALID_RESULT", "MergeResult violates its schema"
             )
+        if status in {MergeStatus.FAILED, MergeStatus.BLOCKED}:
+            try:
+                self._outcomes._record(to_dict(result))
+            except PersistenceError as error:
+                raise MergeCoordinationError(
+                    "OUTCOME_PERSISTENCE_FAILED",
+                    "negative merge outcome could not be recorded authoritatively",
+                ) from error
         return result
 
 

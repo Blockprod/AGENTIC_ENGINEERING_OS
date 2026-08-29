@@ -11,3 +11,5 @@ htmlcov/
 Thumbs.db
 .agentic-engineering-os/worktrees.json
 .agentic-engineering-os/.worktrees.*.tmp
+.agentic-engineering-os/negative-outcomes.json
+.agentic-engineering-os/.negative-outcomes.*.tmp
