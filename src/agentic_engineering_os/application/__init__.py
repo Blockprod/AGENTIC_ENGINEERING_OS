@@ -36,6 +36,17 @@ from .contract_validator import (
     ValidationIssue,
     ValidationResult,
 )
+from .context_builder import (
+    AuthoritativeContextEntry,
+    CodexExecutionRequest,
+    CognitiveCategory,
+    CognitiveContextEntry,
+    CognitiveSource,
+    ContextBuildError,
+    ContextBuilder,
+    ExecutionContext,
+    ExecutionScope,
+)
 from .control_loop import (
     ControlLoop,
     ControlLoopError,
@@ -170,6 +181,7 @@ from .wave_planner import WavePlanner, WavePlanningError
 
 __all__ = [
     "AcceptanceResult",
+    "AuthoritativeContextEntry",
     "ArchitectDecision",
     "ArchitectDecisionKind",
     "ArchitectInput",
@@ -180,6 +192,10 @@ __all__ = [
     "CertificationContext",
     "CertificationError",
     "CertificationService",
+    "CodexExecutionRequest",
+    "CognitiveCategory",
+    "CognitiveContextEntry",
+    "CognitiveSource",
     "AcceptanceCheck",
     "ArtifactCheck",
     "CertifierFinding",
@@ -190,6 +206,8 @@ __all__ = [
     "CertifierResultValidator",
     "CertifierVerdict",
     "ContractValidator",
+    "ContextBuildError",
+    "ContextBuilder",
     "ControlLoop",
     "ControlLoopError",
     "DAGValidationError",
@@ -202,6 +220,8 @@ __all__ = [
     "EvidenceRecordingError",
     "ExecutionConflictAnalyzer",
     "ExecutionConflictError",
+    "ExecutionContext",
+    "ExecutionScope",
     "GateCondition",
     "GateContract",
     "GateEvaluation",
