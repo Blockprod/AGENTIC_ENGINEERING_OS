@@ -109,6 +109,8 @@ class CodexExecutionRequest:
     observed_commit: str
     operating_step: OperatingStep
     scope: ExecutionScope
+    task: str
+    verification_requirements: tuple[str, ...]
     role_contract_ref: str
     expected_result_contract: str
     worktree_assignment_id: str | None = None
@@ -144,6 +146,12 @@ class CognitiveContextEntry:
 class ExecutionContext:
     request_id: str
     role: MissionRole
+    subject: str
+    operating_step: OperatingStep
+    scope: ExecutionScope
+    task: str
+    verification_requirements: tuple[str, ...]
+    expected_result_contract: str
     authoritative: tuple[AuthoritativeContextEntry, ...]
     cognitive: tuple[CognitiveContextEntry, ...]
 
@@ -268,7 +276,18 @@ class ContextBuilder:
             sorted(entries, key=lambda item: (_authority_rank(item.kind), item.identity))
         )
         cognitive = self._select_cognitive(root, request, story, cognitive_sources)
-        return ExecutionContext(request.request_id, request.role, authoritative, cognitive)
+        return ExecutionContext(
+            request_id=request.request_id,
+            role=request.role,
+            subject=request.subject,
+            operating_step=request.operating_step,
+            scope=request.scope,
+            task=request.task,
+            verification_requirements=request.verification_requirements,
+            expected_result_contract=request.expected_result_contract,
+            authoritative=authoritative,
+            cognitive=cognitive,
+        )
 
     @staticmethod
     def _require_request(request: CodexExecutionRequest) -> None:
@@ -279,6 +298,7 @@ class ContextBuilder:
             request.mission_id,
             request.subject,
             request.repository_root,
+            request.task,
         )
         if not all(isinstance(value, str) and value.strip() for value in text_values):
             raise ContextBuildError("INVALID_REQUEST", "request identity fields must be non-empty")
@@ -292,6 +312,20 @@ class ContextBuilder:
             raise ContextBuildError("INVALID_COMMIT", "observed commit must be a full lowercase SHA")
         if not isinstance(request.scope, ExecutionScope):
             raise ContextBuildError("INVALID_SCOPE", "scope must use ExecutionScope")
+        if (
+            not isinstance(request.verification_requirements, tuple)
+            or not request.verification_requirements
+            or not all(
+                isinstance(item, str) and item.strip()
+                for item in request.verification_requirements
+            )
+            or len(request.verification_requirements)
+            != len(set(request.verification_requirements))
+        ):
+            raise ContextBuildError(
+                "INVALID_VERIFICATION_REQUIREMENTS",
+                "verification requirements must be explicit and unique",
+            )
         if request.role_contract_ref != _ROLE_CONTRACTS[request.role][0]:
             raise ContextBuildError("ROLE_CONTRACT_MISMATCH", "role contract is not canonical")
         if request.expected_result_contract != _EXPECTED_RESULTS[request.role]:

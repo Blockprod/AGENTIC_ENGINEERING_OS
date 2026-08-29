@@ -140,6 +140,11 @@ from .parallel_mission_workflow import (
     ParallelStoryDossier,
     ParallelStoryStage,
 )
+from .prompt_compiler import (
+    CompiledPrompt,
+    PromptCompilationError,
+    PromptCompiler,
+)
 from .readiness_engine import ReadinessEngine, ReadinessEvaluationError
 from .reviewer import (
     ReviewDimension,
@@ -196,6 +201,7 @@ __all__ = [
     "CognitiveCategory",
     "CognitiveContextEntry",
     "CognitiveSource",
+    "CompiledPrompt",
     "AcceptanceCheck",
     "ArtifactCheck",
     "CertifierFinding",
@@ -282,6 +288,8 @@ __all__ = [
     "ProvenanceKind",
     "ProjectStateStorePort",
     "ProjectStateReaderPort",
+    "PromptCompilationError",
+    "PromptCompiler",
     "RoleHandoff",
     "ReviewDimension",
     "ReviewFinding",

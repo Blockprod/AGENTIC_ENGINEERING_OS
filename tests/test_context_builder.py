@@ -217,6 +217,8 @@ def _case(tmp_path: Path, role: MissionRole) -> tuple[ContextBuilder, CodexExecu
         scope=ExecutionScope((), ())
         if role is MissionRole.ARCHITECT
         else ExecutionScope(("src/component",), (".agentic-engineering-os",)),
+        task="Perform only the assigned role task.",
+        verification_requirements=("python -m pytest -q tests/test_feature.py",),
         role_contract_ref=f"roles/{role.value.casefold()}.md",
         expected_result_contract=f"{role.value.casefold()}-result@1.0",
         worktree_assignment_id=assignment_id,

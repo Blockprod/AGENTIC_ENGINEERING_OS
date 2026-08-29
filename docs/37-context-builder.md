@@ -21,7 +21,8 @@ vérité et tout problème de migration. Aucun schéma ni dépendance n'est ajou
 Le builder exige une correspondance exacte entre le request, `MissionState`,
 `ProjectState`, Git et, pour Implementer, `WorktreeRegistry` et l'inspection
 physique. Mission, génération, rôle, sujet/User Story, étape, repository,
-commit, scope, contrat de rôle et RoleResult attendu sont comparés. Un état
+commit, scope, tâche bornée, vérifications, contrat de rôle et RoleResult
+attendu sont comparés. Un état
 absent, stale, ambigu, bloqué, dirty ou cross-context est refusé.
 
 Les RoleResults upstream requis sont validés par les contrats déterministes
