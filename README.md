@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `IN PROGRESS — P4.6 — structured Codex result intake`
+Phase 4 — `IN PROGRESS — P4.7 — restart-safe Codex execution state`
 
 Documentation :
 
@@ -57,4 +57,5 @@ Documentation :
 - [Capacités runtime Codex](docs/39-codex-runtime-capabilities.md)
 - [Codex Runtime Adapter](docs/40-codex-runtime-adapter.md)
 - [Structured Codex Result Intake](docs/41-structured-result-intake.md)
+- [Codex Execution State & Restart Recovery](docs/42-codex-execution-recovery.md)
 - [JSON Schemas V1](schemas/README.md)

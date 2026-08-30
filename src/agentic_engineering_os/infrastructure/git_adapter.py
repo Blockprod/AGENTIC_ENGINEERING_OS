@@ -186,14 +186,30 @@ class GitAdapter:
             raise GitOperationError("INVALID_GIT_OUTPUT", "worktree HEAD is not a full SHA")
         return result
 
-    def is_clean(self, worktree_path: Path, *, exclude_registry: bool = False) -> bool:
+    def is_clean(
+        self,
+        worktree_path: Path,
+        *,
+        exclude_registry: bool = False,
+        exclude_execution_state: bool = False,
+    ) -> bool:
         arguments = ["status", "--porcelain=v1", "--untracked-files=all"]
-        if exclude_registry:
+        if exclude_registry or exclude_execution_state:
+            exclusions = []
+            if exclude_registry:
+                exclusions.append(":(exclude).agentic-engineering-os/worktrees.json")
+            if exclude_execution_state:
+                exclusions.extend(
+                    (
+                        ":(exclude).agentic-engineering-os/executions.json",
+                        ":(exclude).agentic-engineering-os/.executions.*.tmp",
+                    )
+                )
             arguments.extend(
                 [
                     "--",
                     ".",
-                    ":(exclude).agentic-engineering-os/worktrees.json",
+                    *exclusions,
                 ]
             )
         return not self._run_at(worktree_path, *arguments).stdout

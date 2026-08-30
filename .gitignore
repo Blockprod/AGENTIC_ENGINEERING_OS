@@ -13,3 +13,5 @@ Thumbs.db
 .agentic-engineering-os/.worktrees.*.tmp
 .agentic-engineering-os/negative-outcomes.json
 .agentic-engineering-os/.negative-outcomes.*.tmp
+.agentic-engineering-os/executions.json
+.agentic-engineering-os/.executions.*.tmp

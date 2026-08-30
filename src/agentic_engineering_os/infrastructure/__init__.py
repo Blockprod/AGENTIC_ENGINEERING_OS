@@ -4,6 +4,8 @@ from .codex_runtime_adapter import (
     CodexRuntimeAdapter,
     CodexRuntimeConfiguration,
 )
+from .execution_git_observer import ExecutionGitObserver
+from .execution_state_store import ExecutionStateStore
 from .mission_state_store import MissionStateStore
 from .git_adapter import (
     GitAdapter,
@@ -26,6 +28,8 @@ from .worktree_registry_store import WorktreeRegistryStore
 __all__ = [
     "CodexRuntimeAdapter",
     "CodexRuntimeConfiguration",
+    "ExecutionGitObserver",
+    "ExecutionStateStore",
     "GitAdapter",
     "GitDiffEntry",
     "GitMergePreflight",

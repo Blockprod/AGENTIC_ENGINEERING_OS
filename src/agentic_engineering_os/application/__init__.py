@@ -57,6 +57,16 @@ from .context_builder import (
     ExecutionContext,
     ExecutionScope,
 )
+from .execution_recovery import RestartSafeCodexExecutionService
+from .execution_state import (
+    CodexExecutionLedger,
+    CodexExecutionRecord,
+    CodexExecutionStatus,
+    ExecutionExecutableIdentity,
+    ExecutionStateError,
+    RestartDisposition,
+    RestartInspection,
+)
 from .control_loop import (
     ControlLoop,
     ControlLoopError,
@@ -253,6 +263,14 @@ __all__ = [
     "ExecutionConflictError",
     "ExecutionContext",
     "ExecutionScope",
+    "CodexExecutionLedger",
+    "CodexExecutionRecord",
+    "CodexExecutionStatus",
+    "ExecutionExecutableIdentity",
+    "ExecutionStateError",
+    "RestartDisposition",
+    "RestartInspection",
+    "RestartSafeCodexExecutionService",
     "GateCondition",
     "GateContract",
     "GateEvaluation",
