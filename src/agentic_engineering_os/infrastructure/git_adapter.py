@@ -214,6 +214,44 @@ class GitAdapter:
             )
         return not self._run_at(worktree_path, *arguments).stdout
 
+    def worktree_changed_paths(self, worktree_path: Path) -> tuple[str, ...]:
+        """Return every tracked or untracked path from strict porcelain output."""
+
+        output = self._run_at(
+            worktree_path,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        ).stdout
+        fields = output.split("\0")
+        paths: list[str] = []
+        index = 0
+        while index < len(fields):
+            field = fields[index]
+            index += 1
+            if not field:
+                continue
+            if len(field) < 4 or field[2] != " ":
+                raise GitOperationError(
+                    "INVALID_GIT_OUTPUT", "worktree status entry is malformed"
+                )
+            status = field[:2]
+            paths.append(field[3:].replace("\\", "/"))
+            if "R" in status or "C" in status:
+                if index >= len(fields) or not fields[index]:
+                    raise GitOperationError(
+                        "INVALID_GIT_OUTPUT", "rename/copy source path is absent"
+                    )
+                paths.append(fields[index].replace("\\", "/"))
+                index += 1
+        normalized = tuple(
+            sorted(set(paths), key=lambda value: (value.casefold(), value))
+        )
+        if any(not value or value.startswith("/") or ".." in Path(value).parts for value in normalized):
+            raise GitOperationError("INVALID_GIT_OUTPUT", "worktree path is unsafe")
+        return normalized
+
     def is_ancestor(self, ancestor: str, descendant: str) -> bool:
         result = self._run_allowed(
             (0, 1), "merge-base", "--is-ancestor", ancestor, descendant

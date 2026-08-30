@@ -324,8 +324,15 @@ def intake_case(tmp_path: Path, role: MissionRole) -> IntakeCase:
     event_json = json.dumps(event_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     event = CodexJsonlEvent(1, "item.completed", event_json, event_json)
     changed = role in {MissionRole.IMPLEMENTER, MissionRole.TESTER}
-    before = GitExecutionObservation(commit, True, None)
-    after = GitExecutionObservation(commit, not changed, None)
+    before = GitExecutionObservation(commit, True, None, ())
+    changed_paths = (
+        tuple(payload.get("files_changed", ()))
+        if role is MissionRole.IMPLEMENTER
+        else tuple(payload.get("test_files_changed", ()))
+        if role is MissionRole.TESTER
+        else ()
+    )
+    after = GitExecutionObservation(commit, not changed, None, changed_paths)
     observation = CodexExecutionObservation(
         "request-p4-6",
         "a" * 64,
@@ -552,14 +559,41 @@ def test_stderr_warning_does_not_hide_or_invent_role_validity(tmp_path: Path) ->
 def test_git_unknown_commit_drift_and_declared_changes_mismatch_fail_closed(tmp_path: Path) -> None:
     case = intake_case(tmp_path, MissionRole.IMPLEMENTER)
     unknown = replace(case.observation, git_after=GitExecutionObservation(None, None, "GIT_STATUS_FAILED"))
-    drift = replace(case.observation, git_after=GitExecutionObservation("0" * 40, False, None))
-    clean = replace(case.observation, git_after=GitExecutionObservation(case.compiled.observed_commit, True, None), issues=())
+    drift = replace(
+        case.observation,
+        git_after=GitExecutionObservation(
+            "0" * 40,
+            False,
+            None,
+            case.observation.git_after.changed_paths,
+        ),
+    )
+    clean = replace(
+        case.observation,
+        git_after=GitExecutionObservation(
+            case.compiled.observed_commit, True, None, ()
+        ),
+        issues=(),
+    )
 
     outcomes = [CodexResultIntake().process(case.compiled, item, case.context) for item in (unknown, drift, clean)]
 
     assert ResultIntakeRefusalCode.GIT_OBSERVATION_REQUIRED in codes(outcomes[0])
     assert ResultIntakeRefusalCode.GIT_COMMIT_MISMATCH in codes(outcomes[1])
     assert ResultIntakeRefusalCode.GIT_SIDE_EFFECT_MISMATCH in codes(outcomes[2])
+
+
+def test_declared_paths_must_exactly_match_observed_git_paths(tmp_path: Path) -> None:
+    case = intake_case(tmp_path, MissionRole.IMPLEMENTER)
+    observation = replace(
+        case.observation,
+        git_after=replace(case.observation.git_after, changed_paths=("src/feature.py",)),
+    )
+
+    outcome = CodexResultIntake().process(case.compiled, observation, case.context)
+
+    assert not outcome.accepted
+    assert ResultIntakeRefusalCode.GIT_SIDE_EFFECT_MISMATCH in codes(outcome)
 
 
 def test_forged_human_approval_and_certified_certifier_verdict_are_refused(tmp_path: Path) -> None:

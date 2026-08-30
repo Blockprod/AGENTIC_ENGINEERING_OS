@@ -568,6 +568,7 @@ def _observe_git(cwd: Path) -> GitExecutionObservation:
     adapter = GitAdapter(cwd)
     head: str | None = None
     clean: bool | None = None
+    changed_paths: tuple[str, ...] | None = None
     errors: list[str] = []
     try:
         head = adapter.current_head(cwd)
@@ -577,10 +578,15 @@ def _observe_git(cwd: Path) -> GitExecutionObservation:
         clean = adapter.is_clean(cwd)
     except GitOperationError as error:
         errors.append(error.code)
+    try:
+        changed_paths = adapter.worktree_changed_paths(cwd)
+    except GitOperationError as error:
+        errors.append(error.code)
     return GitExecutionObservation(
         head_commit=head,
         clean=clean,
         error=",".join(errors) if errors else None,
+        changed_paths=changed_paths,
     )
 
 

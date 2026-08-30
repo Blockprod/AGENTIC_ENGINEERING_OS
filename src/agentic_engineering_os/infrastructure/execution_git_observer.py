@@ -12,6 +12,7 @@ class ExecutionGitObserver:
         path = Path(cwd)
         head = None
         clean = None
+        changed_paths = None
         errors: list[str] = []
         try:
             adapter = GitAdapter(path)
@@ -23,4 +24,19 @@ class ExecutionGitObserver:
             clean = adapter.is_clean(path, exclude_execution_state=True)
         except (GitOperationError, OSError, ValueError) as error:
             errors.append(f"CLEAN: {type(error).__name__}: {error}")
-        return GitExecutionObservation(head, clean, "; ".join(errors) or None)
+        try:
+            adapter = GitAdapter(path)
+            changed_paths = tuple(
+                item
+                for item in adapter.worktree_changed_paths(path)
+                if item != ".agentic-engineering-os/executions.json"
+                and not (
+                    item.startswith(".agentic-engineering-os/.executions.")
+                    and item.endswith(".tmp")
+                )
+            )
+        except (GitOperationError, OSError, ValueError) as error:
+            errors.append(f"PATHS: {type(error).__name__}: {error}")
+        return GitExecutionObservation(
+            head, clean, "; ".join(errors) or None, changed_paths
+        )

@@ -215,7 +215,11 @@ def test_timeout_requires_new_request_or_recovery_according_to_git(tmp_path: Pat
         timed_out=True,
         interrupted=True,
         exit_code=None,
-        git_after=replace(case.observation.git_after, clean=not dirty),
+        git_after=replace(
+            case.observation.git_after,
+            clean=not dirty,
+            changed_paths=(("partial.txt",) if dirty else ()),
+        ),
     )
 
     service.execute(record.execution_id, case.compiled, binding(case))
@@ -269,6 +273,31 @@ def test_corrupt_truncated_duplicate_and_oversized_state_fail_closed(tmp_path: P
         path.write_text(payload, encoding="utf-8")
         with pytest.raises(PersistenceError):
             store.load()
+
+
+def test_legacy_ledger_without_changed_paths_is_refused_without_implicit_migration(
+    tmp_path: Path,
+) -> None:
+    _, store, _, _, _ = planned(harness(tmp_path))
+    data = json.loads(store.ledger_path.read_text(encoding="utf-8"))
+    data["schema_version"] = "1.0"
+    store.ledger_path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(PersistenceError, match="INVALID_LEDGER"):
+        store.load()
+
+
+def test_git_cleanliness_and_changed_paths_cannot_contradict_in_durable_state(
+    tmp_path: Path,
+) -> None:
+    _, store, _, _, _ = observed(harness(tmp_path))
+    data = json.loads(store.ledger_path.read_text(encoding="utf-8"))
+    data["records"][0]["observation"]["git_after"]["clean"] = False
+    data["records"][0]["observation"]["git_after"]["changed_paths"] = []
+    store.ledger_path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(PersistenceError, match="INVALID_RECORD"):
+        store.load()
 
 
 def test_forged_record_and_duplicate_semantic_record_fail_closed(tmp_path: Path) -> None:

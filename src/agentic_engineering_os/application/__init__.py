@@ -189,6 +189,12 @@ from .sequential_mission_workflow import (
     SequentialMissionWorkflow,
     SequentialMissionWorkflowError,
 )
+from .single_role_codex import (
+    SingleRoleArtifacts,
+    SingleRoleCodexExecutor,
+    SingleRoleExecutionError,
+    SingleRoleExecutionOutcome,
+)
 from .state_transition_service import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATES,
@@ -354,6 +360,10 @@ __all__ = [
     "SequentialMissionResult",
     "SequentialMissionWorkflow",
     "SequentialMissionWorkflowError",
+    "SingleRoleArtifacts",
+    "SingleRoleCodexExecutor",
+    "SingleRoleExecutionError",
+    "SingleRoleExecutionOutcome",
     "StateTransitionService",
     "TERMINAL_STATES",
     "TestCaseType",

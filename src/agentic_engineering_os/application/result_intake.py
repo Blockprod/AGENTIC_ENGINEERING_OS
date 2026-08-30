@@ -52,6 +52,7 @@ from .implementer import (
     ImplementerVerdict,
     VerificationOutcome,
     VerificationResult,
+    _normalize_path,
 )
 from .prompt_compiler import CompiledPrompt
 from .reviewer import (
@@ -445,7 +446,13 @@ def _validate_git_before(
     compiled: CompiledPrompt, observation: CodexExecutionObservation
 ) -> tuple[ResultIntakeRefusal, ...]:
     before = observation.git_before
-    if before is None or before.error is not None or before.clean is not True or before.head_commit is None:
+    if (
+        before is None
+        or before.error is not None
+        or before.clean is not True
+        or before.head_commit is None
+        or before.changed_paths != ()
+    ):
         return (
             _reason(
                 ResultIntakeRefusalCode.GIT_OBSERVATION_REQUIRED,
@@ -632,6 +639,7 @@ def _validate_git_consistency(
         or after.error is not None
         or after.head_commit is None
         or after.clean is None
+        or after.changed_paths is None
     ):
         return (
             _reason(
@@ -665,6 +673,39 @@ def _validate_git_consistency(
                 _reason(
                     ResultIntakeRefusalCode.GIT_SIDE_EFFECT_MISMATCH,
                     "declared file changes contradict observable Git cleanliness",
+                ),
+            )
+        try:
+            declared = tuple(
+                sorted(
+                    (
+                        _normalize_path(path, allow_directory=False)
+                        for path in declared_changes
+                    ),
+                    key=lambda value: (value.casefold(), value),
+                )
+            )
+            observed = tuple(
+                sorted(
+                    (
+                        _normalize_path(path, allow_directory=False)
+                        for path in after.changed_paths
+                    ),
+                    key=lambda value: (value.casefold(), value),
+                )
+            )
+        except ValueError:
+            return (
+                _reason(
+                    ResultIntakeRefusalCode.GIT_SIDE_EFFECT_MISMATCH,
+                    "observed Git paths are unsafe or non-canonical",
+                ),
+            )
+        if declared != observed:
+            return (
+                _reason(
+                    ResultIntakeRefusalCode.GIT_SIDE_EFFECT_MISMATCH,
+                    "declared file changes differ from observed Git paths",
                 ),
             )
     return ()

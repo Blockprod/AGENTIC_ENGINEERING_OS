@@ -13,6 +13,8 @@ from typing import Protocol, cast
 
 from agentic_engineering_os.domain import (
     CertificationResult,
+    Evidence,
+    Gate,
     MissionRole,
     MissionState,
     MissionStatus,
@@ -494,14 +496,7 @@ class ContextBuilder:
     ) -> tuple[AuthoritativeContextEntry, ...]:
         if role is not MissionRole.CERTIFIER:
             return ()
-        evidence = sorted(
-            (item for item in project.evidence if item.subject == story.id),
-            key=lambda item: item.evidence_id,
-        )
-        gates = sorted(
-            (item for item in project.gates if item.subject == story.id),
-            key=lambda item: item.gate_id,
-        )
+        evidence, gates = _relevant_control_items(project, story)
         return tuple(
             [
                 _model_entry("EVIDENCE", item.evidence_id, "project-store", item)
@@ -509,6 +504,7 @@ class ContextBuilder:
             ]
             + [_model_entry("GATE", item.gate_id, "project-store", item) for item in gates]
         )
+
 
     @staticmethod
     def _authority_paths(role: MissionRole) -> tuple[str, ...]:
@@ -578,6 +574,32 @@ class ContextBuilder:
                 key=lambda item: (item.category.value, item.relative_path.casefold()),
             )
         )
+
+
+def _relevant_control_items(
+    project: ProjectState, story: UserStory
+) -> tuple[tuple[Evidence, ...], tuple[Gate, ...]]:
+    """Select the bounded Certifier dossier closure, including AC Evidence."""
+
+    gates = tuple(
+        sorted(
+            (item for item in project.gates if item.subject == story.id),
+            key=lambda item: item.gate_id,
+        )
+    )
+    referenced = {reference for gate in gates for reference in gate.evidence_refs}
+    subjects = {story.id, *(item.id for item in story.acceptance_criteria)}
+    evidence = tuple(
+        sorted(
+            (
+                item
+                for item in project.evidence
+                if item.subject in subjects or item.evidence_id in referenced
+            ),
+            key=lambda item: item.evidence_id,
+        )
+    )
+    return evidence, gates
 
 
 def _safe_document(root: Path, relative_path: str) -> Path:

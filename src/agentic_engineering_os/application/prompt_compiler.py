@@ -414,14 +414,28 @@ def _validate_bindings(
     if context.role is MissionRole.CERTIFIER:
         if story is None or not isinstance(story.get("human_approval"), dict):
             raise PromptCompilationError("MISSING_BINDING", "Human context is absent")
-        for kind in ("EVIDENCE", "GATE"):
-            if any(
-                payload.get("subject") != context.subject
-                for _, payload in by_kind.get(kind, [])
-            ):
-                raise PromptCompilationError(
-                    "CONTROL_DOSSIER_MISMATCH", "control dossier is cross-subject"
-                )
+        criteria = story.get("acceptance_criteria")
+        if not isinstance(criteria, list) or any(
+            not isinstance(item, dict) or not isinstance(item.get("id"), str)
+            for item in criteria
+        ):
+            raise PromptCompilationError(
+                "MISSING_BINDING", "Acceptance Criteria context is absent"
+            )
+        evidence_subjects = {
+            context.subject,
+            *(cast(str, item["id"]) for item in criteria),
+        }
+        if any(
+            payload.get("subject") not in evidence_subjects
+            for _, payload in by_kind.get("EVIDENCE", [])
+        ) or any(
+            payload.get("subject") != context.subject
+            for _, payload in by_kind.get("GATE", [])
+        ):
+            raise PromptCompilationError(
+                "CONTROL_DOSSIER_MISMATCH", "control dossier is cross-subject"
+            )
 
 
 def _validate_cognitive(

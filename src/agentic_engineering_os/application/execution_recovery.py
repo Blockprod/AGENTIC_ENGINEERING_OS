@@ -161,6 +161,47 @@ class RestartSafeCodexExecutionService:
             raise ExecutionStateError("INTAKE_PERSISTENCE_FAILED", "intake outcome could not be durably recorded") from error
         return outcome
 
+    def revalidate_completed(
+        self,
+        execution_id: str,
+        compiled: CompiledPrompt,
+        validation_context: ResultIntakeValidationContext,
+    ) -> ResultIntakeOutcome:
+        """Rehydrate a completed result through P4.6 without mutating or rerunning."""
+
+        ledger = self._store.load()
+        record = _find(ledger, execution_id)
+        _require_compiled(record, compiled)
+        if (
+            record.status is not CodexExecutionStatus.VALIDATED
+            or record.observation is None
+            or record.validated_result_json is None
+            or record.validated_result_fingerprint is None
+        ):
+            raise ExecutionStateError(
+                "COMPLETED_REVALIDATION_FORBIDDEN",
+                "only a complete VALIDATED execution can be revalidated",
+            )
+        outcome = self._intake.process(
+            compiled, record.observation, validation_context
+        )
+        if not outcome.accepted or outcome.validated_result is None:
+            raise ExecutionStateError(
+                "COMPLETED_RESULT_STALE",
+                "persisted completed result no longer passes deterministic intake",
+            )
+        canonical = canonical_result_json(to_dict(outcome.validated_result))
+        if (
+            canonical != record.validated_result_json
+            or result_json_fingerprint(canonical)
+            != record.validated_result_fingerprint
+        ):
+            raise ExecutionStateError(
+                "COMPLETED_RESULT_STALE",
+                "persisted completed result differs from its revalidated form",
+            )
+        return outcome
+
     def inspect_restart(
         self,
         execution_id: str,
@@ -192,11 +233,13 @@ class RestartSafeCodexExecutionService:
         if record.status is CodexExecutionStatus.VALIDATED:
             if validation_context is None or record.observation is None:
                 return _inspection(record, current_git, RestartDisposition.STALE_OR_INCONSISTENT, ("validated replay context is absent",))
-            replay = self._intake.process(compiled, record.observation, validation_context)
-            if not replay.accepted or replay.validated_result is None:
+            try:
+                self.revalidate_completed(
+                    execution_id, compiled, validation_context
+                )
+            except ExecutionStateError:
                 return _inspection(record, current_git, RestartDisposition.STALE_OR_INCONSISTENT, ("persisted validated result no longer passes deterministic intake",))
-            canonical = canonical_result_json(to_dict(replay.validated_result))
-            valid = result_json_fingerprint(canonical) == record.validated_result_fingerprint and canonical == record.validated_result_json and _git_same(current_git, record.observation.git_after)
+            valid = _git_same(current_git, record.observation.git_after)
             disposition = RestartDisposition.VALIDATED_NO_RERUN if valid else RestartDisposition.STALE_OR_INCONSISTENT
             return _inspection(record, current_git, disposition, (() if valid else ("validated record or current Git is inconsistent",)))
         clean_after = record.observation is not None and _git_same(current_git, record.observation.git_after) and baseline_clean
@@ -275,11 +318,25 @@ def _find(ledger: CodexExecutionLedger, execution_id: str) -> CodexExecutionReco
 
 
 def _git_exact(actual: GitExecutionObservation, expected: str) -> bool:
-    return actual.error is None and actual.head_commit == expected.casefold() and actual.clean is True
+    return (
+        actual.error is None
+        and actual.head_commit == expected.casefold()
+        and actual.clean is True
+        and actual.changed_paths == ()
+    )
 
 
 def _git_same(actual: GitExecutionObservation, expected: GitExecutionObservation | None) -> bool:
-    return expected is not None and actual.error is None and expected.error is None and actual.head_commit == expected.head_commit and actual.clean == expected.clean and actual.clean is not None
+    return (
+        expected is not None
+        and actual.error is None
+        and expected.error is None
+        and actual.head_commit == expected.head_commit
+        and actual.clean == expected.clean
+        and actual.clean is not None
+        and actual.changed_paths == expected.changed_paths
+        and actual.changed_paths is not None
+    )
 
 
 def _inspection(record: CodexExecutionRecord, git: GitExecutionObservation, disposition: RestartDisposition, reasons: tuple[str, ...], *, can_execute: bool = False, can_replay: bool = False, operator: bool = False) -> RestartInspection:

@@ -24,7 +24,7 @@ from .codex_runtime import (
 from .prompt_compiler import CompiledPrompt
 
 
-EXECUTION_LEDGER_VERSION = "1.0"
+EXECUTION_LEDGER_VERSION = "1.1"
 _SHA40 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -544,6 +544,44 @@ def _validate_observation(
     _validate_utc(observation.ended_at, "observation.ended_at")
     if observation.started_at is not None:
         _validate_utc(observation.started_at, "observation.started_at")
+    for label, git in (
+        ("git_before", observation.git_before),
+        ("git_after", observation.git_after),
+    ):
+        if git is None:
+            continue
+        paths = git.changed_paths
+        if git.error is None and paths is None:
+            raise ExecutionStateError(
+                "INVALID_RECORD", f"{label}.changed_paths must be observed"
+            )
+        if paths is not None:
+            if (
+                not isinstance(paths, tuple)
+                or any(
+                    not isinstance(path, str)
+                    or not path
+                    or "\\" in path
+                    or path.startswith("/")
+                    or ".." in Path(path).parts
+                    for path in paths
+                )
+                or paths
+                != tuple(
+                    sorted(set(paths), key=lambda value: (value.casefold(), value))
+                )
+            ):
+                raise ExecutionStateError(
+                    "INVALID_RECORD", f"{label}.changed_paths is not canonical"
+                )
+            if (
+                git.error is None
+                and git.clean is not None
+                and git.clean != (paths == ())
+            ):
+                raise ExecutionStateError(
+                    "INVALID_RECORD", f"{label} cleanliness contradicts changed paths"
+                )
 
 
 def _validate_executable(executable: ExecutionExecutableIdentity) -> None:
@@ -580,13 +618,24 @@ def _invalid_line_from_data(data: object) -> InvalidJsonlLine:
 def _git_to_data(value: GitExecutionObservation | None) -> dict[str, object] | None:
     if value is None:
         return None
-    return {"head_commit": value.head_commit, "clean": value.clean, "error": value.error}
+    return {
+        "head_commit": value.head_commit,
+        "clean": value.clean,
+        "error": value.error,
+        "changed_paths": (
+            list(value.changed_paths) if value.changed_paths is not None else None
+        ),
+    }
 
 
 def _git_from_data(value: object) -> GitExecutionObservation | None:
     if value is None:
         return None
-    item = _exact_mapping(value, {"head_commit", "clean", "error"}, "Git observation")
+    item = _exact_mapping(
+        value,
+        {"head_commit", "clean", "error", "changed_paths"},
+        "Git observation",
+    )
     clean = item["clean"]
     if clean is not None:
         clean = _boolean(clean)
@@ -594,6 +643,11 @@ def _git_from_data(value: object) -> GitExecutionObservation | None:
         _optional_string(item["head_commit"]),
         cast(bool | None, clean),
         _optional_string(item["error"]),
+        (
+            _string_tuple(item["changed_paths"])
+            if item["changed_paths"] is not None
+            else None
+        ),
     )
 
 

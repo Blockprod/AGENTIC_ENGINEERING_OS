@@ -31,13 +31,16 @@ fabriquer de succès.
 
 ## Store et ordre d'écriture
 
-Le ledger versionné `1.0` est
+Le ledger versionné `1.1` est
 `.agentic-engineering-os/executions.json`. Il utilise JSON strict, refuse les
 clés dupliquées et constantes non JSON, hydrate sans fallback implicite,
 valide les identités et écrit atomiquement dans le même répertoire. Les records
 sont triés canoniquement. Il n'expose aucun `save(snapshot)` public : chaque
 mutation doit correspondre exactement à une capacité interne et à une
 transition nommée.
+
+La version `1.1` ajoute les chemins Git observés nécessaires à P4.8 ; un ledger
+`1.0` est refusé explicitement plutôt que réinterprété silencieusement.
 
 L'ordre durable est : persist `PLANNED`, persist `RUNNING`, lancer le runtime,
 persist l'observation, exécuter P4.6, puis persist le résultat. Un échec

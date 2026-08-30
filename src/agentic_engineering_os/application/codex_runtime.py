@@ -66,6 +66,7 @@ class GitExecutionObservation:
     head_commit: str | None
     clean: bool | None
     error: str | None
+    changed_paths: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)

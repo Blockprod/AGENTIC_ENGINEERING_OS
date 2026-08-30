@@ -301,6 +301,7 @@ def test_nonzero_and_process_failure_after_side_effect_preserve_git_state(
     assert "PROCESS_EXIT_NON_ZERO" in nonzero.issues
     assert failed.exit_code == 9
     assert failed.git_after is not None and failed.git_after.clean is False
+    assert failed.git_after.changed_paths == ("failed.txt",)
     assert "GIT_CHANGED_AFTER_PROCESS_FAILURE" in failed.issues
     assert "GIT_CHANGED_WITHOUT_FINAL_OUTPUT" in failed.issues
     assert (root / "failed.txt").exists()
@@ -318,6 +319,7 @@ def test_timeout_keeps_partial_side_effect_observable_without_retry(tmp_path: Pa
     assert observation.timed_out
     assert observation.exit_code is not None and observation.exit_code != 0
     assert observation.git_after is not None and observation.git_after.clean is False
+    assert observation.git_after.changed_paths == ("partial.txt",)
     assert "PROCESS_TIMED_OUT" in observation.issues
     assert "GIT_CHANGED_WITHOUT_FINAL_OUTPUT" in observation.issues
     assert (root / "partial.txt").exists()
@@ -356,9 +358,11 @@ def test_git_drift_before_launch_blocks_and_after_launch_is_observed(tmp_path: P
 
     assert before.process_id is None
     assert before.git_before is not None and before.git_before.clean is False
+    assert before.git_before.changed_paths == ("dirty-before.txt",)
     assert before.issues == ("GIT_NOT_CLEAN_BEFORE",)
     assert after.process_id is not None
     assert after.git_after is not None and after.git_after.clean is False
+    assert after.git_after.changed_paths == ("drift.txt",)
     assert "GIT_STATE_CHANGED" in after.issues
 
 
