@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.1`
+Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.2`
 
 Documentation :
 
@@ -64,4 +64,5 @@ Documentation :
 - [Certification Phase 4](docs/PHASE-4-CERTIFICATION.md)
 - [Architecture de déploiement](docs/46-deployment-architecture.md)
 - [Roadmap Phase 5](docs/47-phase-5-roadmap.md)
+- [Contrat de configuration projet](docs/48-project-configuration.md)
 - [JSON Schemas V1](schemas/README.md)

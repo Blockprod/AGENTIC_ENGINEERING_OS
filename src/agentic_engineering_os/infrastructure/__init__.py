@@ -17,6 +17,14 @@ from .git_adapter import (
     GitWorktree,
 )
 from .project_state_store import PersistenceError, ProjectStateStore
+from .project_configuration import (
+    CONFIG_DIRECTORY,
+    CONFIG_FILENAME,
+    CONFIG_VERSION,
+    ProjectConfigurationError,
+    ProjectConfigurationLoader,
+    ProjectConfigurationValidator,
+)
 from .worktree_manager import (
     WorktreeInspection,
     WorktreeManager,
@@ -39,6 +47,12 @@ __all__ = [
     "GitWorktree",
     "MissionStateStore",
     "PersistenceError",
+    "CONFIG_DIRECTORY",
+    "CONFIG_FILENAME",
+    "CONFIG_VERSION",
+    "ProjectConfigurationError",
+    "ProjectConfigurationLoader",
+    "ProjectConfigurationValidator",
     "ProjectStateStore",
     "WorktreeInspection",
     "WorktreeManager",

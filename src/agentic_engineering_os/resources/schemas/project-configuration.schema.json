@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:project-configuration",
+  "title": "Repository-local Project Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "config_version",
+    "project_id",
+    "repository_root_policy",
+    "toolchains",
+    "verification_commands",
+    "path_policy",
+    "context_sources",
+    "codex_constraints",
+    "mission_state_git_policy"
+  ],
+  "properties": {
+    "config_version": {"const": "1.0"},
+    "project_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "repository_root_policy": {"const": "CONFIG_PARENT_GIT_ROOT"},
+    "toolchains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["identity", "version_constraint"],
+        "properties": {
+          "identity": {"type": "string", "minLength": 1, "maxLength": 64},
+          "version_constraint": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "verification_commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command_id",
+          "kind",
+          "executable",
+          "args",
+          "cwd",
+          "cwd_policy",
+          "required"
+        ],
+        "properties": {
+          "command_id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "kind": {
+            "enum": ["TEST", "BUILD", "LINT", "TYPECHECK", "OTHER"]
+          },
+          "executable": {"type": "string", "minLength": 1, "maxLength": 128},
+          "args": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {"type": "string", "maxLength": 4096}
+          },
+          "cwd": {"type": "string", "minLength": 1, "maxLength": 1024},
+          "cwd_policy": {"const": "REPOSITORY_RELATIVE"},
+          "required": {"type": "boolean"}
+        }
+      }
+    },
+    "path_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_paths", "protected_paths", "forbidden_paths"],
+      "properties": {
+        "allowed_paths": {"$ref": "#/$defs/pathList"},
+        "protected_paths": {"$ref": "#/$defs/pathList"},
+        "forbidden_paths": {"$ref": "#/$defs/pathList"}
+      }
+    },
+    "context_sources": {"$ref": "#/$defs/pathList"},
+    "codex_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximum_sandbox",
+        "approval_policy",
+        "require_clean_git",
+        "maximum_parallel_executions"
+      ],
+      "properties": {
+        "maximum_sandbox": {"enum": ["read-only", "workspace-write"]},
+        "approval_policy": {"const": "never"},
+        "require_clean_git": {"const": true},
+        "maximum_parallel_executions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        }
+      }
+    },
+    "mission_state_git_policy": {"enum": ["TRACKED", "IGNORED"]}
+  },
+  "$defs": {
+    "pathList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 1024}
+    }
+  }
+}

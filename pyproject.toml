@@ -13,5 +13,8 @@ dependencies = ["jsonschema==4.25.1"]
 [project.optional-dependencies]
 dev = ["pytest==8.4.2"]
 
+[tool.setuptools.package-data]
+"agentic_engineering_os.resources" = ["schemas/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

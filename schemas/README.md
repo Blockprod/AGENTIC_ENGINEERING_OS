@@ -128,3 +128,9 @@ validation sémantique fail-closed effectuée par le runtime.
 
 Ces limites ne réduisent pas les contrats normatifs. Une règle sémantique non
 vérifiée reste `UNKNOWN` et doit être traitée selon la politique fail-closed.
+
+Le contrat P5.2 `project-configuration` appartient au produit installé. Son
+schéma canonique est embarqué sous
+`agentic_engineering_os/resources/schemas/project-configuration.schema.json`
+afin que sa validation ne dépende pas du checkout source. Il reste distinct du
+`ProjectState` et des observations de reconnaissance.
