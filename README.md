@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.3`
+Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.4`
 
 Documentation :
 
@@ -66,4 +66,5 @@ Documentation :
 - [Roadmap Phase 5](docs/47-phase-5-roadmap.md)
 - [Contrat de configuration projet](docs/48-project-configuration.md)
 - [Reconnaissance déterministe du repository](docs/49-repository-reconnaissance.md)
+- [Initialization Planner déterministe](docs/50-initialization-planner.md)
 - [JSON Schemas V1](schemas/README.md)

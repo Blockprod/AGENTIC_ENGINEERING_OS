@@ -37,6 +37,47 @@ class DocumentStatus(str, Enum):
     VERSION_OBSERVED = "VERSION_OBSERVED"
 
 
+AGENTS_SECTION_START = "<!-- BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION v1 -->"
+AGENTS_SECTION_END = "<!-- END AGENTIC_ENGINEERING_OS MANAGED SECTION v1 -->"
+AGENTS_MANAGED_SECTION = "\n".join(
+    (
+        AGENTS_SECTION_START,
+        "## Agentic Engineering OS",
+        "",
+        "Follow the installed AGENTIC_ENGINEERING_OS operating contract.",
+        "Repository facts and Control Plane decisions prevail over agent declarations.",
+        AGENTS_SECTION_END,
+        "",
+    )
+)
+
+GITIGNORE_SECTION_START = "# BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION v1"
+GITIGNORE_SECTION_END = "# END AGENTIC_ENGINEERING_OS MANAGED SECTION v1"
+GITIGNORE_MANAGED_SECTION = "\n".join(
+    (
+        GITIGNORE_SECTION_START,
+        ".agentic-engineering-os/worktrees.json",
+        ".agentic-engineering-os/.worktrees.*.tmp",
+        ".agentic-engineering-os/negative-outcomes.json",
+        ".agentic-engineering-os/.negative-outcomes.*.tmp",
+        ".agentic-engineering-os/executions.json",
+        ".agentic-engineering-os/.executions.*.tmp",
+        GITIGNORE_SECTION_END,
+        "",
+    )
+)
+
+
+class ManagedSectionStatus(str, Enum):
+    FILE_ABSENT = "FILE_ABSENT"
+    SECTION_ABSENT = "SECTION_ABSENT"
+    CURRENT = "CURRENT"
+    TAMPERED = "TAMPERED"
+    AMBIGUOUS = "AMBIGUOUS"
+    UNSAFE = "UNSAFE"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True, slots=True)
 class ObservedValue:
     classification: ObservationClassification
@@ -118,6 +159,15 @@ class RuntimeFileObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class ManagedSectionObservation:
+    relative_path: str
+    status: ManagedSectionStatus
+    content_fingerprint: str | None
+    source: str
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
 class AgenticOsStateObservation:
     state: AgenticOsInitializationState
     classification: ObservationClassification
@@ -125,6 +175,9 @@ class AgenticOsStateObservation:
     config_version: str | None
     agents_reference: ObservedValue
     gitignore_rules: tuple[str, ...]
+    agents_managed_section: ManagedSectionObservation
+    gitignore_managed_section: ManagedSectionObservation
+    config_semantic_fingerprint: str | None
     runtime_files: tuple[RuntimeFileObservation, ...]
     detail: str
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import configparser
+import hashlib
 import json
 import os
 import re
@@ -13,6 +14,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from agentic_engineering_os.domain import (
+    AGENTS_MANAGED_SECTION,
+    AGENTS_SECTION_END,
+    AGENTS_SECTION_START,
     AgenticOsInitializationState,
     AgenticOsStateObservation,
     CandidateCommandObservation,
@@ -20,6 +24,8 @@ from agentic_engineering_os.domain import (
     GitRepositoryObservation,
     GitWorktreeObservation,
     ManifestObservation,
+    ManagedSectionObservation,
+    ManagedSectionStatus,
     ObservationClassification,
     ObservedValue,
     PathObservation,
@@ -30,6 +36,9 @@ from agentic_engineering_os.domain import (
     SymlinkObservation,
     ToolchainObservation,
     VerificationKind,
+    GITIGNORE_MANAGED_SECTION,
+    GITIGNORE_SECTION_END,
+    GITIGNORE_SECTION_START,
 )
 
 from .git_adapter import GitAdapter, GitOperationError, GitReadOnlyState
@@ -39,6 +48,7 @@ from .project_configuration import (
     CONFIG_VERSION,
     ProjectConfigurationError,
     ProjectConfigurationLoader,
+    ProjectConfigurationValidator,
 )
 
 
@@ -632,9 +642,23 @@ class RepositoryReconnaissance:
         root: Path,
         issues: list[ReconnaissanceIssue],
     ) -> AgenticOsStateObservation:
-        config_status, config_version = self._config_status(root)
+        config_status, config_version, config_fingerprint = self._config_status(root)
         agents_reference = self._agents_reference(root)
         gitignore_rules = self._gitignore_rules(root)
+        agents_managed = self._managed_section(
+            root,
+            "AGENTS.md",
+            AGENTS_SECTION_START,
+            AGENTS_SECTION_END,
+            AGENTS_MANAGED_SECTION,
+        )
+        gitignore_managed = self._managed_section(
+            root,
+            ".gitignore",
+            GITIGNORE_SECTION_START,
+            GITIGNORE_SECTION_END,
+            GITIGNORE_MANAGED_SECTION,
+        )
         runtime_files = tuple(
             self._runtime_file(root, filename)
             for filename in sorted(_RUNTIME_FORMATS, key=_sort_key)
@@ -652,7 +676,9 @@ class RepositoryReconnaissance:
             item.status is DocumentStatus.UNKNOWN_VERSION for item in runtime_files
         )
         integration_complete = (
-            agents_reference.value is True
+            agents_managed.status is ManagedSectionStatus.CURRENT
+            and gitignore_managed.status is ManagedSectionStatus.CURRENT
+            and agents_reference.value is True
             and _REQUIRED_GITIGNORE_RULES.issubset(gitignore_rules)
         )
         agentic_dir = root / CONFIG_DIRECTORY
@@ -693,27 +719,89 @@ class RepositoryReconnaissance:
             config_version=config_version,
             agents_reference=agents_reference,
             gitignore_rules=gitignore_rules,
+            agents_managed_section=agents_managed,
+            gitignore_managed_section=gitignore_managed,
+            config_semantic_fingerprint=config_fingerprint,
             runtime_files=runtime_files,
             detail=detail,
         )
 
-    def _config_status(self, root: Path) -> tuple[DocumentStatus, str | None]:
+    def _config_status(
+        self, root: Path
+    ) -> tuple[DocumentStatus, str | None, str | None]:
         path = root / CONFIG_DIRECTORY / CONFIG_FILENAME
         if path.is_symlink() or path.parent.is_symlink():
-            return DocumentStatus.UNSAFE, None
+            return DocumentStatus.UNSAFE, None, None
         if not path.exists():
-            return DocumentStatus.ABSENT, None
+            return DocumentStatus.ABSENT, None, None
         if not path.is_file() or not _safe_size(path, self._max_configuration_bytes):
-            return DocumentStatus.TOO_LARGE, None
+            return DocumentStatus.TOO_LARGE, None, None
         try:
             config = ProjectConfigurationLoader(root).load()
-            return DocumentStatus.VALID, config.config_version
+            canonical = ProjectConfigurationValidator().serialize(config)
+            return (
+                DocumentStatus.VALID,
+                config.config_version,
+                _sha256_text(canonical),
+            )
         except ProjectConfigurationError as error:
             if error.code == "UNKNOWN_CONFIG_VERSION":
-                return DocumentStatus.UNKNOWN_VERSION, _json_schema_version(path, "config_version")
+                return (
+                    DocumentStatus.UNKNOWN_VERSION,
+                    _json_schema_version(path, "config_version"),
+                    None,
+                )
             if error.code == "UNSAFE_PATH":
-                return DocumentStatus.UNSAFE, None
-            return DocumentStatus.INVALID, _json_schema_version(path, "config_version")
+                return DocumentStatus.UNSAFE, None, None
+            return (
+                DocumentStatus.INVALID,
+                _json_schema_version(path, "config_version"),
+                None,
+            )
+
+    def _managed_section(
+        self,
+        root: Path,
+        relative: str,
+        start_marker: str,
+        end_marker: str,
+        canonical_section: str,
+    ) -> ManagedSectionObservation:
+        status, text = self._read_bounded_file(root, relative)
+        if status is DocumentStatus.ABSENT:
+            return ManagedSectionObservation(
+                relative,
+                ManagedSectionStatus.FILE_ABSENT,
+                None,
+                "filesystem:lstat",
+                "target file is absent",
+            )
+        if status is DocumentStatus.UNSAFE:
+            return ManagedSectionObservation(
+                relative,
+                ManagedSectionStatus.UNSAFE,
+                None,
+                "filesystem:lstat",
+                "target file is a symlink or otherwise unsafe",
+            )
+        if status is not DocumentStatus.VALID or text is None:
+            return ManagedSectionObservation(
+                relative,
+                ManagedSectionStatus.UNKNOWN,
+                None,
+                relative,
+                "target file is not readable bounded UTF-8 text",
+            )
+        section_status = _managed_section_status(
+            text, start_marker, end_marker, canonical_section
+        )
+        return ManagedSectionObservation(
+            relative,
+            section_status,
+            _sha256_text(text),
+            relative,
+            "managed markers and canonical section were inspected without retaining user content",
+        )
 
     def _agents_reference(self, root: Path) -> ObservedValue:
         path = root / "AGENTS.md"
@@ -888,6 +976,37 @@ def _is_root_context_name(name: str) -> bool:
     )
 
 
+def _managed_section_status(
+    text: str,
+    start_marker: str,
+    end_marker: str,
+    canonical_section: str,
+) -> ManagedSectionStatus:
+    start_count = text.count(start_marker)
+    end_count = text.count(end_marker)
+    if start_count == 0 and end_count == 0:
+        return ManagedSectionStatus.SECTION_ABSENT
+    if start_count != 1 or end_count != 1:
+        return ManagedSectionStatus.AMBIGUOUS
+    start = text.index(start_marker)
+    end = text.index(end_marker)
+    end_after = end + len(end_marker)
+    if (
+        start >= end
+        or (start > 0 and text[start - 1] != "\n")
+        or (start + len(start_marker) < len(text) and text[start + len(start_marker)] != "\n")
+        or (end > 0 and text[end - 1] != "\n")
+        or (end_after < len(text) and text[end_after] != "\n")
+    ):
+        return ManagedSectionStatus.AMBIGUOUS
+    observed = text[start:end_after]
+    return (
+        ManagedSectionStatus.CURRENT
+        if observed == canonical_section.rstrip("\n")
+        else ManagedSectionStatus.TAMPERED
+    )
+
+
 def _is_sensitive_name(relative: str) -> bool:
     parts = tuple(part.casefold() for part in relative.replace("\\", "/").split("/"))
     return any(
@@ -964,3 +1083,7 @@ def _path_key(path: Path) -> str:
 
 def _raise_invalid_constant(value: str) -> None:
     raise ValueError(f"invalid JSON constant: {value}")
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()

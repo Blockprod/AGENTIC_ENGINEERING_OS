@@ -101,16 +101,19 @@ La reconnaissance observe séparément :
 - la présence et version déclarée de `state.json`, `mission.json`,
   `worktrees.json`, `negative-outcomes.json` et `executions.json` ;
 - la présence littérale d'une référence Agentic OS dans `AGENTS.md`, sans
-  prétendre valider la conformité d'une section gérée ;
+  en faire une autorité ;
+- le statut borné des sections gérées versionnées dans `AGENTS.md` et
+  `.gitignore`, ainsi que l'empreinte de leur fichier sans conserver le contenu
+  utilisateur ;
 - les seules règles `.gitignore` Agentic OS connues.
 
 La classification dérivée signifie :
 
 - `UNINITIALIZED` : aucun footprint observé ;
 - `INITIALIZED` : configuration P5.2 valide, référence Agentic OS dans
-  `AGENTS.md`, règles d'ignore runtime minimales et aucune contradiction de
-  version observée ; ce terme n'implique ni conformité d'une section gérée,
-  ni readiness P4 ;
+  `AGENTS.md`, sections gérées canoniques, règles d'ignore runtime minimales et
+  aucune contradiction de version observée ; ce terme n'implique pas la
+  readiness P4 ;
 - `PARTIAL_OR_INCONSISTENT` : footprint partiel, config invalide, document
   runtime illisible/unsafe ou contradiction structurelle observable ;
 - `UPGRADE_REQUIRED` : version de config ou de runtime non supportée.

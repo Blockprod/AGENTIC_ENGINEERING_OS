@@ -5,8 +5,11 @@ from pathlib import Path
 import pytest
 
 from agentic_engineering_os.domain import (
+    AGENTS_MANAGED_SECTION,
+    GITIGNORE_MANAGED_SECTION,
     AgenticOsInitializationState,
     DocumentStatus,
+    ManagedSectionStatus,
     ObservationClassification,
     RepositorySupportStatus,
     VerificationKind,
@@ -180,27 +183,15 @@ def test_valid_p52_configuration_is_observed_but_not_treated_as_complete_init(
     assert profile.agentic_os.state is AgenticOsInitializationState.PARTIAL_OR_INCONSISTENT
     assert profile.agentic_os.config_status is DocumentStatus.VALID
     assert profile.agentic_os.config_version == "1.0"
+    assert len(profile.agentic_os.config_semantic_fingerprint or "") == 64
     assert config_path.exists()
     assert not (config_path.parent / "state.json").exists()
     assert not (config_path.parent / "mission.json").exists()
 
 
 def write_minimum_integration(root: Path) -> None:
-    (root / "AGENTS.md").write_text("Use AGENTIC_ENGINEERING_OS.\n", encoding="utf-8")
-    (root / ".gitignore").write_text(
-        "\n".join(
-            (
-                ".agentic-engineering-os/worktrees.json",
-                ".agentic-engineering-os/.worktrees.*.tmp",
-                ".agentic-engineering-os/negative-outcomes.json",
-                ".agentic-engineering-os/.negative-outcomes.*.tmp",
-                ".agentic-engineering-os/executions.json",
-                ".agentic-engineering-os/.executions.*.tmp",
-            )
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    (root / "AGENTS.md").write_text(AGENTS_MANAGED_SECTION, encoding="utf-8")
+    (root / ".gitignore").write_text(GITIGNORE_MANAGED_SECTION, encoding="utf-8")
 
 
 def test_repository_with_valid_config_and_minimum_integration_is_initialized(
@@ -213,6 +204,14 @@ def test_repository_with_valid_config_and_minimum_integration_is_initialized(
     profile = RepositoryReconnaissance().inspect(root)
 
     assert profile.agentic_os.state is AgenticOsInitializationState.INITIALIZED
+    assert (
+        profile.agentic_os.agents_managed_section.status
+        is ManagedSectionStatus.CURRENT
+    )
+    assert (
+        profile.agentic_os.gitignore_managed_section.status
+        is ManagedSectionStatus.CURRENT
+    )
 
 
 def test_unicode_context_paths_and_repeated_scan_are_deterministic(tmp_path: Path) -> None:

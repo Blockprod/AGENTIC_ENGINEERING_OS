@@ -123,6 +123,10 @@ from .integration_gate import (
     IntegrationMemberCommit,
     IntegrationWorktreeManagerPort,
 )
+from .initialization_planner import (
+    InitializationPlanner,
+    InitializationPlanningError,
+)
 from .merge_coordinator import (
     MergeContext,
     MergeCoordinationError,
@@ -326,6 +330,8 @@ __all__ = [
     "IntegrationGateResult",
     "IntegrationMemberCommit",
     "IntegrationWorktreeManagerPort",
+    "InitializationPlanner",
+    "InitializationPlanningError",
     "InvalidJsonlLine",
     "MergeContext",
     "MergeCoordinationError",
