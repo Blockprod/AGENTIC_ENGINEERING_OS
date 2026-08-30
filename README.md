@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `IN PROGRESS — P4.3`
+Phase 4 — `IN PROGRESS — P4.4 — capability discovery`
 
 Documentation :
 
@@ -54,4 +54,5 @@ Documentation :
 - [Roadmap Phase 4](docs/36-phase-4-roadmap.md)
 - [Deterministic Context Builder](docs/37-context-builder.md)
 - [Deterministic Prompt Compiler](docs/38-prompt-compiler.md)
+- [Capacités runtime Codex](docs/39-codex-runtime-capabilities.md)
 - [JSON Schemas V1](schemas/README.md)
