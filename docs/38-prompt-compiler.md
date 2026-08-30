@@ -20,6 +20,8 @@ compilation sans invention : sujet, étape, scope, tâche bornée, vérification
 et contrat de résultat. `CompiledPrompt` contient :
 
 - l'identité du request et l'empreinte SHA-256 canonique du contexte ;
+- la mission, la génération, le sujet, le repository/worktree et le commit déjà
+  validés, afin que le transport P4.5 puisse les comparer sans parser le texte ;
 - le rôle et le RoleResult canonique attendu ;
 - le texte compilé ;
 - les métriques caractères, sections et éléments cognitifs.

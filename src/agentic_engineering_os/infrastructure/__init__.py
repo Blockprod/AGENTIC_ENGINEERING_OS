@@ -1,5 +1,9 @@
 """Local infrastructure adapters."""
 
+from .codex_runtime_adapter import (
+    CodexRuntimeAdapter,
+    CodexRuntimeConfiguration,
+)
 from .mission_state_store import MissionStateStore
 from .git_adapter import (
     GitAdapter,
@@ -20,6 +24,8 @@ from .worktree_manager import (
 from .worktree_registry_store import WorktreeRegistryStore
 
 __all__ = [
+    "CodexRuntimeAdapter",
+    "CodexRuntimeConfiguration",
     "GitAdapter",
     "GitDiffEntry",
     "GitMergePreflight",

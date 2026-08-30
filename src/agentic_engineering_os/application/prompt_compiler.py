@@ -119,7 +119,13 @@ class PromptCompilationError(RuntimeError):
 class CompiledPrompt:
     request_id: str
     context_fingerprint: str
+    mission_id: str
+    workflow_generation: int
     role: MissionRole
+    subject: str
+    repository_root: str
+    worktree_path: str | None
+    observed_commit: str
     expected_result_contract: str
     prompt_text: str
     character_count: int
@@ -166,7 +172,17 @@ class PromptCompiler:
         return CompiledPrompt(
             request_id=execution_context.request_id,
             context_fingerprint=fingerprint,
+            mission_id=cast(str, validated.mission["mission_id"]),
+            workflow_generation=cast(int, validated.mission["workflow_generation"]),
             role=execution_context.role,
+            subject=execution_context.subject,
+            repository_root=cast(str, validated.repository["repository_root"]),
+            worktree_path=(
+                cast(str, validated.worktree["worktree_path"])
+                if validated.worktree is not None
+                else None
+            ),
+            observed_commit=cast(str, validated.repository["head_commit"]),
             expected_result_contract=execution_context.expected_result_contract,
             prompt_text=prompt_text,
             character_count=len(prompt_text),

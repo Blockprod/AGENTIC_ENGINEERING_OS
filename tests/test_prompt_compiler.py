@@ -248,6 +248,12 @@ def test_compiles_closed_policy_for_each_role(role: MissionRole) -> None:
     ]
     assert compiled.role is role
     assert compiled.expected_result_contract == f"{role.value.casefold()}-result@1.0"
+    assert compiled.mission_id == "mission-1"
+    assert compiled.workflow_generation == 3
+    assert compiled.subject == ("architecture" if role is MissionRole.ARCHITECT else "US-0001")
+    assert compiled.repository_root == "D:/DEV/AGENTIC_ENGINEERING_OS"
+    assert compiled.observed_commit == SHA
+    assert (compiled.worktree_path is not None) is (role is MissionRole.IMPLEMENTER)
     assert f"- role: {role.value}" in compiled.prompt_text
     assert f"- contract: roles/{role.value.casefold()}.md" in compiled.prompt_text
     assert compiled.section_count == 10

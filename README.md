@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `IN PROGRESS — P4.4 — capability discovery`
+Phase 4 — `IN PROGRESS — P4.5 — Codex runtime adapter`
 
 Documentation :
 
@@ -55,4 +55,5 @@ Documentation :
 - [Deterministic Context Builder](docs/37-context-builder.md)
 - [Deterministic Prompt Compiler](docs/38-prompt-compiler.md)
 - [Capacités runtime Codex](docs/39-codex-runtime-capabilities.md)
+- [Codex Runtime Adapter](docs/40-codex-runtime-adapter.md)
 - [JSON Schemas V1](schemas/README.md)
