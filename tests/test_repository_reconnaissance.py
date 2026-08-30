@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -545,6 +546,18 @@ def test_agents_and_gitignore_are_observed_without_claiming_managed_compliance(
         ".agentic-engineering-os/worktrees.json",
     )
     assert "managed-section compliance is not inferred" in profile.agentic_os.agents_reference.detail
+
+
+def test_managed_file_fingerprint_binds_exact_bytes(tmp_path: Path) -> None:
+    raw = b"dist/\r\n# exact bytes\r\n"
+    root = repository(tmp_path, {".gitignore": raw.decode("utf-8")})
+    (root / ".gitignore").write_bytes(raw)
+
+    profile = RepositoryReconnaissance().inspect(root)
+
+    assert profile.agentic_os.gitignore_managed_section.content_fingerprint == (
+        hashlib.sha256(raw).hexdigest()
+    )
 
 
 def test_codex_availability_stays_machine_bound_unknown(tmp_path: Path) -> None:

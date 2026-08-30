@@ -66,10 +66,15 @@ comparer l'empreinte au plan ; P5.4 n'effectue pas cette application.
 ## Validation fail-closed
 
 Le planner bloque si les faits Git ne prouvent pas un repository supporté,
-complet et propre, si racine/HEAD/worktree sont incohérents, ou si la
+complet et propre pour toute mutation, si racine/HEAD/worktree sont
+incohérents, ou si la
 configuration courante fournie ne correspond pas à l'empreinte observée. Une
 configuration désirée absente, invalide ou forgée n'est jamais remplacée par
 une inférence de toolchain ou de commande.
+
+Un repository dirty déjà `INITIALIZED` peut uniquement produire le plan
+idempotent `NO_OP` lorsque toutes les cibles sont conformes. Cette exception ne
+permet aucune nouvelle écriture.
 
 Les états sont traités ainsi :
 

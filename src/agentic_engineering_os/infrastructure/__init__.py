@@ -21,6 +21,7 @@ from .repository_reconnaissance import (
     RepositoryReconnaissance,
     RepositoryReconnaissanceError,
 )
+from .repository_initializer import RepositoryInitializer
 from .project_state_store import PersistenceError, ProjectStateStore
 from .project_configuration import (
     CONFIG_DIRECTORY,
@@ -62,6 +63,7 @@ __all__ = [
     "ProjectStateStore",
     "RepositoryReconnaissance",
     "RepositoryReconnaissanceError",
+    "RepositoryInitializer",
     "WorktreeInspection",
     "WorktreeManager",
     "WorktreeManagerError",

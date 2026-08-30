@@ -330,7 +330,11 @@ class InitializationPlanner:
                     "Git identity, root, HEAD, or primary worktree facts are inconsistent",
                 )
             )
-        if git.clean.value is not True:
+        if (
+            git.clean.value is not True
+            and profile.agentic_os.state
+            is not AgenticOsInitializationState.INITIALIZED
+        ):
             blockers.append(
                 InitializationFinding(
                     "DIRTY_REPOSITORY",

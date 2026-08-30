@@ -103,8 +103,8 @@ La reconnaissance observe séparément :
 - la présence littérale d'une référence Agentic OS dans `AGENTS.md`, sans
   en faire une autorité ;
 - le statut borné des sections gérées versionnées dans `AGENTS.md` et
-  `.gitignore`, ainsi que l'empreinte de leur fichier sans conserver le contenu
-  utilisateur ;
+  `.gitignore`, ainsi que l'empreinte SHA-256 de leurs octets exacts sans
+  conserver le contenu utilisateur ;
 - les seules règles `.gitignore` Agentic OS connues.
 
 La classification dérivée signifie :

@@ -767,7 +767,7 @@ class RepositoryReconnaissance:
         end_marker: str,
         canonical_section: str,
     ) -> ManagedSectionObservation:
-        status, text = self._read_bounded_file(root, relative)
+        status, content = self._read_bounded_bytes(root, relative)
         if status is DocumentStatus.ABSENT:
             return ManagedSectionObservation(
                 relative,
@@ -784,7 +784,7 @@ class RepositoryReconnaissance:
                 "filesystem:lstat",
                 "target file is a symlink or otherwise unsafe",
             )
-        if status is not DocumentStatus.VALID or text is None:
+        if status is not DocumentStatus.VALID or content is None:
             return ManagedSectionObservation(
                 relative,
                 ManagedSectionStatus.UNKNOWN,
@@ -792,13 +792,24 @@ class RepositoryReconnaissance:
                 relative,
                 "target file is not readable bounded UTF-8 text",
             )
+        try:
+            text = content.decode("utf-8")
+        except UnicodeError:
+            return ManagedSectionObservation(
+                relative,
+                ManagedSectionStatus.UNKNOWN,
+                None,
+                relative,
+                "target file is not readable bounded UTF-8 text",
+            )
+        normalized_text = text.replace("\r\n", "\n").replace("\r", "\n")
         section_status = _managed_section_status(
-            text, start_marker, end_marker, canonical_section
+            normalized_text, start_marker, end_marker, canonical_section
         )
         return ManagedSectionObservation(
             relative,
             section_status,
-            _sha256_text(text),
+            hashlib.sha256(content).hexdigest(),
             relative,
             "managed markers and canonical section were inspected without retaining user content",
         )
@@ -917,6 +928,27 @@ class RepositoryReconnaissance:
         try:
             return DocumentStatus.VALID, resolved.read_text(encoding="utf-8")
         except (OSError, UnicodeError):
+            return DocumentStatus.INVALID, None
+
+    def _read_bounded_bytes(
+        self, root: Path, relative: str
+    ) -> tuple[DocumentStatus, bytes | None]:
+        path = root / Path(relative)
+        if _has_symlink_component(root, path):
+            return DocumentStatus.UNSAFE, None
+        if not path.exists():
+            return DocumentStatus.ABSENT, None
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError:
+            return DocumentStatus.UNSAFE, None
+        if not resolved.is_file() or not _contains(root, resolved):
+            return DocumentStatus.UNSAFE, None
+        if not _safe_size(resolved, self._max_configuration_bytes):
+            return DocumentStatus.TOO_LARGE, None
+        try:
+            return DocumentStatus.VALID, resolved.read_bytes()
+        except OSError:
             return DocumentStatus.INVALID, None
 
 

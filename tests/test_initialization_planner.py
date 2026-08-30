@@ -147,6 +147,26 @@ def test_already_initialized_repository_is_idempotent_no_op(tmp_path: Path) -> N
     assert all(item.desired_content is None for item in plan.operations)
 
 
+def test_dirty_but_conforming_initialized_repository_can_only_plan_no_op(
+    tmp_path: Path,
+) -> None:
+    root = repository(tmp_path)
+    current = configuration()
+    initialize_fixture(root, current)
+    (root / "unrelated-dirty.txt").write_text("dirty\n", encoding="utf-8")
+    profile = RepositoryReconnaissance().inspect(root)
+
+    plan = InitializationPlanner().plan(
+        profile, current, current_configuration=current
+    )
+
+    assert profile.git.clean.value is False
+    assert plan.ready_for_application is True
+    assert {item.operation_type for item in plan.operations} == {
+        InitializationOperationType.NO_OP
+    }
+
+
 def test_repeated_planning_is_deterministic_and_immutable(tmp_path: Path) -> None:
     root = repository(tmp_path)
     profile = RepositoryReconnaissance().inspect(root)

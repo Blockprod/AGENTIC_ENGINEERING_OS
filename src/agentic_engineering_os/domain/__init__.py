@@ -94,6 +94,14 @@ from .repository_reconnaissance import (
     GITIGNORE_SECTION_END,
     GITIGNORE_SECTION_START,
 )
+from .repository_initialization import (
+    HumanOperationConfirmation,
+    InitializationApplyFinding,
+    InitializationApplyStatus,
+    InitializationOperationResult,
+    InitializationResult,
+    OperationApplyStatus,
+)
 
 __all__ = [
     "AcceptanceCriterion",
@@ -132,10 +140,15 @@ __all__ = [
     "GITIGNORE_SECTION_END",
     "GITIGNORE_SECTION_START",
     "HumanApproval",
+    "HumanOperationConfirmation",
+    "InitializationApplyFinding",
+    "InitializationApplyStatus",
     "InitializationFinding",
     "InitializationOperationType",
     "InitializationPlan",
     "InitializationRepositoryIdentity",
+    "InitializationOperationResult",
+    "InitializationResult",
     "MissionRole",
     "MissionStateGitPolicy",
     "MissionState",
@@ -144,6 +157,7 @@ __all__ = [
     "ManagedSectionObservation",
     "ManagedSectionStatus",
     "ObservationClassification",
+    "OperationApplyStatus",
     "ObservedValue",
     "OperatingStep",
     "NodeReadiness",
