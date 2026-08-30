@@ -51,6 +51,11 @@ porte un `RoleHandoff` vers `IMPLEMENTER`. L'isolation n'élargit jamais le
 `UserStory.scope` et aucun modèle, thread, processus Codex ou VS Code n'est
 lancé.
 
+`validate_prepared_group(...)` reconstruit le plan et le groupe canoniques,
+relit le registre et réconcilie chaque assignment `ACTIVE` avec son worktree.
+Cette vérification est read-only : elle ne crée, n'active et ne complète aucune
+ressource. P4.9 l'utilise avant tout lancement concurrent.
+
 ## Soumission et completion
 
 La planification porte des stories `PLANNED/READY`, alors que le contrat

@@ -74,6 +74,12 @@ Le coordinator utilise exclusivement P4.7 :
 - tout autre état retourne une exécution incomplète/bloquée ou propage l'erreur
   applicative déterministe.
 
+Pour Implementer, le Context Builder accepte qu'un assignment physiquement
+exact et resumable porte les effets Git d'une tentative antérieure. Cette
+tolérance n'autorise jamais un nouveau lancement : P4.7 exige toujours un état
+Git initial exactement propre pour `SAFE_NOT_STARTED`. Elle permet seulement
+de revalider un résultat terminé ou de rapporter l'état de recovery sans retry.
+
 Un résultat accepté signifie seulement qu'un RoleResult canonique a passé
 P4.6. Son verdict peut lui-même être `BLOCKED` ou demander remédiation. Aucun
 retry aveugle, rollback Git ou progression métier automatique n'est effectué.

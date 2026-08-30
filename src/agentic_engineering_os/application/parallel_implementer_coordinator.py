@@ -371,6 +371,55 @@ class ParallelImplementerCoordinator:
             implementer_result=result,
         )
 
+    def validate_prepared_group(
+        self,
+        plan: ParallelExecutionPlan,
+        prepared_group: PreparedParallelGroup,
+        *,
+        coordination_input: ParallelCoordinationInput,
+    ) -> PreparedParallelGroup:
+        """Reconstruct and prove one prepared group without creating resources."""
+
+        canonical = self.plan(coordination_input)
+        if plan != canonical:
+            raise ParallelCoordinationError(
+                "PLAN_STALE", "plan differs from current canonical context"
+            )
+        self._validate_prepared_structure(prepared_group)
+        expected = _group(canonical, prepared_group.group_index)
+        if (
+            prepared_group.wave_index != expected.wave_index
+            or prepared_group.user_story_ids != expected.user_story_ids
+            or prepared_group.baseline_commit != canonical.baseline_commit
+            or prepared_group.workflow_generation != canonical.workflow_generation
+        ):
+            raise ParallelCoordinationError(
+                "GROUP_STALE", "prepared group differs from the canonical SAFE group"
+            )
+        self._validate_current_mission(
+            coordination_input.mission_state, prepared_group
+        )
+        if self._manager.current_primary_commit() != canonical.baseline_commit:
+            raise ParallelCoordinationError(
+                "PLAN_STALE", "primary repository no longer matches the baseline"
+            )
+        for context in prepared_group.contexts:
+            self._assignment_for_context(
+                context, expected_status=WorktreeStatus.ACTIVE
+            )
+            try:
+                self._manager.resume(
+                    context.assignment_id,
+                    current_generation=prepared_group.workflow_generation,
+                )
+            except Exception as error:
+                raise ParallelCoordinationError(
+                    "ASSIGNMENT_MISMATCH",
+                    "assignment/worktree is not physically resumable: "
+                    f"{getattr(error, 'code', type(error).__name__)}",
+                ) from error
+        return prepared_group
+
     def complete_group(
         self,
         prepared_group: PreparedParallelGroup,

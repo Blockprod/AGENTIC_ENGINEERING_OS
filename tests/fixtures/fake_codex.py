@@ -17,6 +17,9 @@ def main() -> int:
     arguments = sys.argv[1:]
     mode = "normal"
     result_file = None
+    parallel_barrier = None
+    parallel_size = None
+    delay_seconds = 0.0
     if "--fake-mode" in arguments:
         index = arguments.index("--fake-mode")
         mode = arguments[index + 1]
@@ -24,6 +27,18 @@ def main() -> int:
     if "--fake-result-file" in arguments:
         index = arguments.index("--fake-result-file")
         result_file = Path(arguments[index + 1])
+        del arguments[index : index + 2]
+    if "--fake-parallel-barrier" in arguments:
+        index = arguments.index("--fake-parallel-barrier")
+        parallel_barrier = Path(arguments[index + 1])
+        del arguments[index : index + 2]
+    if "--fake-parallel-size" in arguments:
+        index = arguments.index("--fake-parallel-size")
+        parallel_size = int(arguments[index + 1])
+        del arguments[index : index + 2]
+    if "--fake-delay" in arguments:
+        index = arguments.index("--fake-delay")
+        delay_seconds = float(arguments[index + 1])
         del arguments[index : index + 2]
     if "--version" in arguments:
         if mode == "version-fail":
@@ -48,12 +63,27 @@ def main() -> int:
         "role-result-tool-failure",
         "role-result-forbidden-side-effect",
         "role-result-invalid-side-effect",
+        "role-result-parallel",
     }:
         if result_file is None or not result_file.is_file():
             print("fake RoleResult file is absent", file=sys.stderr)
             return 65
         payload = result_file.read_text(encoding="utf-8")
-        if mode == "role-result-side-effect":
+        if mode == "role-result-parallel":
+            if parallel_barrier is None or parallel_size is None or parallel_size < 1:
+                print("fake parallel barrier is invalid", file=sys.stderr)
+                return 66
+            parallel_barrier.mkdir(parents=True, exist_ok=True)
+            marker = parallel_barrier / f"{os.getpid()}.started"
+            marker.write_text(str(Path.cwd()), encoding="utf-8")
+            deadline = time.monotonic() + 10.0
+            while len(tuple(parallel_barrier.glob("*.started"))) < parallel_size:
+                if time.monotonic() >= deadline:
+                    print("fake parallel barrier timed out", file=sys.stderr)
+                    return 67
+                time.sleep(0.02)
+            time.sleep(delay_seconds)
+        if mode in {"role-result-side-effect", "role-result-parallel"}:
             value = json.loads(payload)
             paths = value.get("files_changed", value.get("test_files_changed", []))
             for relative in paths:

@@ -354,6 +354,22 @@ def test_completed_execution_is_revalidated_without_runtime_replay(tmp_path: Pat
     assert case.runtime.calls == 1
 
 
+def test_completed_implementer_is_revalidated_with_its_observed_dirty_worktree(
+    tmp_path: Path,
+) -> None:
+    case = make_case(tmp_path, MissionRole.IMPLEMENTER)
+    first = case.executor.execute(
+        case.handoff, request_id="request-implementer-completed", artifacts=case.artifacts
+    )
+    second = case.executor.execute(
+        case.handoff, request_id="request-implementer-completed", artifacts=case.artifacts
+    )
+
+    assert first.validated and second.validated
+    assert second.completed_reused
+    assert case.runtime.calls == 1
+
+
 def test_observation_restart_replays_only_intake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case = make_case(tmp_path, MissionRole.ARCHITECT)
     original = case.service.replay_intake
@@ -437,10 +453,10 @@ def test_timeout_never_retries_and_dirty_timeout_requires_recovery(tmp_path: Pat
     assert not outcome.validated
     assert case.runtime.calls == 1
     if mode == "timeout-side-effect":
-        with pytest.raises(RuntimeError, match="WORKTREE_MISMATCH"):
-            case.executor.execute(
-                case.handoff, request_id=f"request-{mode}", artifacts=case.artifacts
-            )
+        replay = case.executor.execute(
+            case.handoff, request_id=f"request-{mode}", artifacts=case.artifacts
+        )
+        assert not replay.validated
     else:
         replay = case.executor.execute(
             case.handoff, request_id=f"request-{mode}", artifacts=case.artifacts

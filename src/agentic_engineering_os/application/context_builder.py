@@ -423,12 +423,11 @@ class ContextBuilder:
         if (
             not inspection.resumable
             or inspection.head_commit != request.observed_commit
-            or inspection.clean is not True
             or not inspection.physical_exists
             or not inspection.branch_matches
             or inspection.reasons
         ):
-            raise ContextBuildError("WORKTREE_MISMATCH", "physical worktree is not exact and clean")
+            raise ContextBuildError("WORKTREE_MISMATCH", "physical worktree is not exact")
         return assignment
 
     def _select_role_results(
