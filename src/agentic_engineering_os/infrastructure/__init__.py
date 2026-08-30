@@ -14,7 +14,12 @@ from .git_adapter import (
     GitMergeResult,
     GitOperationError,
     GitPrimaryState,
+    GitReadOnlyState,
     GitWorktree,
+)
+from .repository_reconnaissance import (
+    RepositoryReconnaissance,
+    RepositoryReconnaissanceError,
 )
 from .project_state_store import PersistenceError, ProjectStateStore
 from .project_configuration import (
@@ -44,6 +49,7 @@ __all__ = [
     "GitMergeResult",
     "GitOperationError",
     "GitPrimaryState",
+    "GitReadOnlyState",
     "GitWorktree",
     "MissionStateStore",
     "PersistenceError",
@@ -54,6 +60,8 @@ __all__ = [
     "ProjectConfigurationLoader",
     "ProjectConfigurationValidator",
     "ProjectStateStore",
+    "RepositoryReconnaissance",
+    "RepositoryReconnaissanceError",
     "WorktreeInspection",
     "WorktreeManager",
     "WorktreeManagerError",

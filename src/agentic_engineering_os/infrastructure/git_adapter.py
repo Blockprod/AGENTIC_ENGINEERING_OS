@@ -46,6 +46,18 @@ class GitPrimaryState:
 
 
 @dataclass(frozen=True, slots=True)
+class GitReadOnlyState:
+    """Repository facts observed with optional Git locks disabled."""
+
+    top_level: Path
+    branch_name: str | None
+    detached: bool
+    head_commit: str
+    clean: bool
+    worktrees: tuple[GitWorktree, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class GitDiffEntry:
     status: str
     paths: tuple[str, ...]
@@ -104,6 +116,90 @@ class GitAdapter:
             )
         return actual
 
+    def observe_read_only(self) -> GitReadOnlyState:
+        """Observe Git identity and worktrees without refreshing the index."""
+
+        if not self._repository_root.exists() or not self._repository_root.is_dir():
+            raise GitOperationError(
+                "INVALID_REPOSITORY", "repository root does not exist or is not a directory"
+            )
+        environment = {"GIT_OPTIONAL_LOCKS": "0"}
+        top_result = self._execute(
+            self._repository_root,
+            (0, 128),
+            "rev-parse",
+            "--show-toplevel",
+            environment_overrides=environment,
+        )
+        if top_result.returncode != 0:
+            raise GitOperationError(
+                "NOT_GIT_REPOSITORY",
+                "target path is not inside a Git worktree",
+                command=top_result.args,
+                exit_code=top_result.returncode,
+            )
+        try:
+            top_level = Path(top_result.stdout.strip()).resolve(strict=True)
+        except OSError as error:
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "Git top-level path cannot be resolved"
+            ) from error
+        head_result = self._execute(
+            self._repository_root,
+            (0,),
+            "rev-parse",
+            "HEAD",
+            environment_overrides=environment,
+        )
+        head = head_result.stdout.strip().casefold()
+        if len(head) != 40 or any(character not in "0123456789abcdef" for character in head):
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "Git HEAD is not a full commit SHA"
+            )
+        branch_result = self._execute(
+            self._repository_root,
+            (0, 1),
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "HEAD",
+            environment_overrides=environment,
+        )
+        branch = branch_result.stdout.strip() if branch_result.returncode == 0 else None
+        if branch_result.returncode == 0 and not branch:
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "Git returned an empty branch name"
+            )
+        status_result = self._execute(
+            self._repository_root,
+            (0,),
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            environment_overrides=environment,
+        )
+        worktree_result = self._execute(
+            self._repository_root,
+            (0,),
+            "worktree",
+            "list",
+            "--porcelain",
+            environment_overrides=environment,
+        )
+        worktrees = _parse_worktrees(worktree_result.stdout)
+        if not worktrees:
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "Git returned no worktree records"
+            )
+        return GitReadOnlyState(
+            top_level=top_level,
+            branch_name=branch,
+            detached=branch is None,
+            head_commit=head,
+            clean=not status_result.stdout,
+            worktrees=worktrees,
+        )
+
     def resolve_commit(self, commit: str) -> str:
         result = self._run("rev-parse", "--verify", f"{commit}^{{commit}}")
         resolved = result.stdout.strip().casefold()
@@ -139,35 +235,7 @@ class GitAdapter:
 
     def list_worktrees(self) -> tuple[GitWorktree, ...]:
         output = self._run("worktree", "list", "--porcelain").stdout
-        records: list[GitWorktree] = []
-        current: dict[str, str] = {}
-        for line in (*output.splitlines(), ""):
-            if not line:
-                if current:
-                    path_text = current.get("worktree")
-                    head = current.get("HEAD")
-                    if path_text is None or head is None:
-                        raise GitOperationError(
-                            "INVALID_GIT_OUTPUT", "incomplete git worktree record"
-                        )
-                    branch_ref = current.get("branch")
-                    branch = (
-                        branch_ref.removeprefix("refs/heads/")
-                        if branch_ref is not None
-                        else None
-                    )
-                    records.append(
-                        GitWorktree(
-                            path=Path(path_text).resolve(strict=False),
-                            head_commit=head.casefold(),
-                            branch_name=branch,
-                        )
-                    )
-                    current = {}
-                continue
-            key, _, value = line.partition(" ")
-            current[key] = value
-        return tuple(records)
+        return _parse_worktrees(output)
 
     def add_worktree(self, path: Path, branch_name: str, baseline_commit: str) -> None:
         self._run("worktree", "add", "-b", branch_name, str(path), baseline_commit)
@@ -465,6 +533,42 @@ class GitAdapter:
                 exit_code=process.returncode,
             )
         return result
+
+
+def _parse_worktrees(output: str) -> tuple[GitWorktree, ...]:
+    records: list[GitWorktree] = []
+    current: dict[str, str] = {}
+    for line in (*output.splitlines(), ""):
+        if not line:
+            if current:
+                path_text = current.get("worktree")
+                head = current.get("HEAD")
+                if path_text is None or head is None:
+                    raise GitOperationError(
+                        "INVALID_GIT_OUTPUT", "incomplete git worktree record"
+                    )
+                branch_ref = current.get("branch")
+                branch = (
+                    branch_ref.removeprefix("refs/heads/")
+                    if branch_ref is not None
+                    else None
+                )
+                records.append(
+                    GitWorktree(
+                        path=Path(path_text).resolve(strict=False),
+                        head_commit=head.casefold(),
+                        branch_name=branch,
+                    )
+                )
+                current = {}
+            continue
+        key, _, value = line.partition(" ")
+        if not key or key in current:
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "malformed Git worktree record"
+            )
+        current[key] = value
+    return tuple(records)
 
 
 def _path_key(path: Path) -> str:
