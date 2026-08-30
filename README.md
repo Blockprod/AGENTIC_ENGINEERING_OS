@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `IN PROGRESS — P4.9 — parallel Codex Implementers`
+Phase 4 — `IN PROGRESS — P4.10 — VS Code / end-to-end Codex runtime`
 
 Documentation :
 
@@ -60,4 +60,5 @@ Documentation :
 - [Codex Execution State & Restart Recovery](docs/42-codex-execution-recovery.md)
 - [Single-Role Codex Execution](docs/43-single-role-codex-execution.md)
 - [Parallel Codex Implementers](docs/44-parallel-codex-implementers.md)
+- [VS Code / End-to-End Codex Runtime](docs/45-vscode-codex-e2e-runtime.md)
 - [JSON Schemas V1](schemas/README.md)

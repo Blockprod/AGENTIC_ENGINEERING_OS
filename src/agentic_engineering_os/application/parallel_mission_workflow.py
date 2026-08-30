@@ -866,6 +866,29 @@ class ParallelMissionWorkflow:
             implementer_result=candidate,
         )
 
+    def runtime_handoff(
+        self,
+        dossier: ParallelStoryDossier,
+        role: MissionRole,
+    ) -> RoleHandoff:
+        """Derive the only post-merge handoff allowed by the current P3 dossier."""
+
+        expected = {
+            ParallelStoryStage.TESTING: (MissionRole.TESTER, OperatingStep.VERIFY),
+            ParallelStoryStage.REVIEW: (MissionRole.REVIEWER, OperatingStep.REPORT),
+            ParallelStoryStage.CERTIFICATION: (
+                MissionRole.CERTIFIER,
+                OperatingStep.CONTROLLED_TRANSITION,
+            ),
+        }.get(dossier.stage if isinstance(dossier, ParallelStoryDossier) else None)
+        if expected is None or role is not expected[0]:
+            raise ParallelMissionWorkflowError(
+                "ROLE_CHAIN_VIOLATION",
+                "post-merge runtime role must match the authoritative dossier stage",
+            )
+        self._require_dossier(dossier, dossier.stage)
+        return self._dossier_handoff(dossier, role, expected[1])
+
     def accept_tester(
         self, dossier: ParallelStoryDossier, candidate: TesterResult
     ) -> ParallelStoryDossier:
