@@ -155,6 +155,14 @@ from .prompt_compiler import (
     PromptCompilationError,
     PromptCompiler,
 )
+from .result_intake import (
+    CodexResultIntake,
+    ResultIntakeDiagnostics,
+    ResultIntakeOutcome,
+    ResultIntakeRefusal,
+    ResultIntakeRefusalCode,
+    ResultIntakeValidationContext,
+)
 from .readiness_engine import ReadinessEngine, ReadinessEvaluationError
 from .reviewer import (
     ReviewDimension,
@@ -213,6 +221,7 @@ __all__ = [
     "CodexJsonlEvent",
     "CodexRuntimePort",
     "CodexSandboxMode",
+    "CodexResultIntake",
     "CodexExecutionRequest",
     "CognitiveCategory",
     "CognitiveContextEntry",
@@ -319,6 +328,11 @@ __all__ = [
     "ReviewerVerdict",
     "ReadinessEngine",
     "ReadinessEvaluationError",
+    "ResultIntakeDiagnostics",
+    "ResultIntakeOutcome",
+    "ResultIntakeRefusal",
+    "ResultIntakeRefusalCode",
+    "ResultIntakeValidationContext",
     "SequentialMissionResult",
     "SequentialMissionWorkflow",
     "SequentialMissionWorkflowError",
