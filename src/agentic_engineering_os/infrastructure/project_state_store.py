@@ -114,7 +114,7 @@ class ProjectStateStore:
             )
         state = ProjectState(schema_version=schema_version)
         serialized = self._validate_state(state)
-        self._write_serialized(serialized)
+        self._write_serialized(serialized, exclusive=True)
         return state
 
     def load(self) -> ProjectState:
@@ -194,7 +194,9 @@ class ProjectStateStore:
             )
         return self._write_serialized(serialized)
 
-    def _write_serialized(self, serialized: dict[str, object]) -> Path:
+    def _write_serialized(
+        self, serialized: dict[str, object], *, exclusive: bool = False
+    ) -> Path:
         text = _canonical_json(serialized)
 
         try:
@@ -209,7 +211,22 @@ class ProjectStateStore:
         temporary_path: Path | None = None
         try:
             temporary_path = _write_temporary(self._state_directory, text)
-            os.replace(temporary_path, self._state_path)
+            if exclusive:
+                try:
+                    os.link(temporary_path, self._state_path)
+                except FileExistsError as error:
+                    raise PersistenceError(
+                        "STATE_ALREADY_EXISTS",
+                        "authoritative state appeared during exclusive initialization",
+                    ) from error
+                _cleanup_temporary(temporary_path)
+                temporary_path = None
+            else:
+                os.replace(temporary_path, self._state_path)
+                temporary_path = None
+        except PersistenceError:
+            _cleanup_temporary(temporary_path)
+            raise
         except Exception as error:
             _cleanup_temporary(temporary_path)
             raise PersistenceError(

@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.6`
+Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.7`
 
 Documentation :
 
@@ -69,4 +69,5 @@ Documentation :
 - [Initialization Planner déterministe](docs/50-initialization-planner.md)
 - [Safe Repository Initializer](docs/51-safe-repository-initializer.md)
 - [Intégration sûre AGENTS.md](docs/52-agents-integration.md)
+- [Runtime State Bootstrap](docs/53-runtime-state-bootstrap.md)
 - [JSON Schemas V1](schemas/README.md)

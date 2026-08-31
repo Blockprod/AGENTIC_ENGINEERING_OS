@@ -96,6 +96,13 @@ from .repository_reconnaissance import (
     GITIGNORE_SECTION_START,
 )
 from .agents_integration import AgentsIntegrationInspection
+from .runtime_bootstrap import (
+    RuntimeBootstrapFinding,
+    RuntimeBootstrapResult,
+    RuntimeBootstrapStatus,
+    RuntimeFileFact,
+    RuntimeStoreDisposition,
+)
 from .repository_initialization import (
     HumanOperationConfirmation,
     InitializationApplyFinding,
@@ -177,6 +184,11 @@ __all__ = [
     "ReadinessClassification",
     "ReadinessSnapshot",
     "RiskLevel",
+    "RuntimeBootstrapFinding",
+    "RuntimeBootstrapResult",
+    "RuntimeBootstrapStatus",
+    "RuntimeFileFact",
+    "RuntimeStoreDisposition",
     "ReconnaissanceIssue",
     "RepositoryRootPolicy",
     "RepositoryProfile",

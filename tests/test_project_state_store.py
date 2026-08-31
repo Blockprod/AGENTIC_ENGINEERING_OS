@@ -344,7 +344,7 @@ def test_successive_saves_replace_state_nominally(
     authorized_save(store, updated)
 
     assert to_dict(store.load()) == to_dict(updated)
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert all(source.parent == target.parent for source, target in calls)
     assert all(target == store.state_path for _, target in calls)
 

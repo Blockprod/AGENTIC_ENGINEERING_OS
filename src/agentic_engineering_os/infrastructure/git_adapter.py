@@ -6,7 +6,7 @@ import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 class GitOperationError(RuntimeError):
@@ -199,6 +199,30 @@ class GitAdapter:
             clean=not status_result.stdout,
             worktrees=worktrees,
         )
+
+    def is_ignored(self, relative_path: str) -> bool:
+        """Return Git's ignore decision for one canonical repository-relative path."""
+
+        if (
+            not isinstance(relative_path, str)
+            or not relative_path
+            or "\\" in relative_path
+            or relative_path.startswith("/")
+        ):
+            raise GitOperationError(
+                "INVALID_RELATIVE_PATH", "ignore query path must be canonical and relative"
+            )
+        candidate = PurePosixPath(relative_path)
+        if str(candidate) != relative_path or any(
+            part in {"", ".", ".."} for part in candidate.parts
+        ):
+            raise GitOperationError(
+                "INVALID_RELATIVE_PATH", "ignore query path must be canonical and relative"
+            )
+        result = self._run_allowed(
+            (0, 1), "check-ignore", "--quiet", "--no-index", "--", relative_path
+        )
+        return result.returncode == 0
 
     def resolve_commit(self, commit: str) -> str:
         result = self._run("rev-parse", "--verify", f"{commit}^{{commit}}")
