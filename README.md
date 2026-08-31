@@ -11,7 +11,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
 Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `CERTIFIED / CLOSED` ;
-Phase 6 — `IN PROGRESS — P6.3`
+Phase 6 — `IN PROGRESS — P6.4`
 
 Documentation :
 
@@ -81,4 +81,5 @@ Documentation :
 - [Roadmap Phase 6](docs/60-phase-6-roadmap.md)
 - [Modèle OperationalEvent](docs/61-operational-event-model.md)
 - [Operational Event Store](docs/62-operational-event-store.md)
+- [Metrics & Runtime Counters](docs/63-metrics-runtime-counters.md)
 - [JSON Schemas V1](schemas/README.md)

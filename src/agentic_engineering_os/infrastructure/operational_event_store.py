@@ -34,6 +34,7 @@ DEFAULT_MAX_SEGMENTS = 4
 
 _SEGMENT_PATTERN = re.compile(r"^segment-([0-9]{6})\.jsonl$")
 _RECORD_FIELDS = frozenset({"record_version", "fingerprint", "event"})
+_RETENTION_MARKER = ".retention-exhausted"
 
 
 class OperationalEventStoreError(RuntimeError):
@@ -121,6 +122,7 @@ class OperationalEventStore:
         self._state_directory = self._root / STATE_DIRECTORY
         self._event_directory = self._state_directory / OPERATIONAL_EVENT_DIRECTORY
         self._lock_path = self._event_directory / ".writer.lock"
+        self._retention_marker = self._event_directory / _RETENTION_MARKER
         self._max_segment_bytes = max_segment_bytes
         self._max_segments = max_segments
         self._validator = validator if validator is not None else ContractValidator()
@@ -175,6 +177,13 @@ class OperationalEventStore:
         if not isinstance(query, OperationalEventQuery):
             raise TypeError("query must be an OperationalEventQuery")
         return tuple(event for event in self.read() if _matches_query(event, query))
+
+    def retention_exhausted(self) -> bool:
+        """Return a durable technical fact; it grants no business authority."""
+
+        with self._thread_lock:
+            self._read_entries(ignore_writer_lock=False)
+            return self._retention_marker.exists()
 
     def _validate_event(self, event: OperationalEvent) -> OperationalEvent:
         if not isinstance(event, OperationalEvent):
@@ -263,6 +272,7 @@ class OperationalEventStore:
                 "CONCURRENT_WRITER",
                 "journal cannot be read while a cooperative writer lock is present",
             )
+        self._validate_retention_marker()
         segments = self._segments()
         events: list[OperationalEvent] = []
         event_ids: set[str] = set()
@@ -401,7 +411,7 @@ class OperationalEventStore:
                 "READ_FAILED", "event store directory cannot be enumerated"
             ) from error
         for path in entries:
-            if path == self._lock_path:
+            if path in {self._lock_path, self._retention_marker}:
                 continue
             match = _SEGMENT_PATTERN.fullmatch(path.name)
             if match is None or _is_link_like(path) or not path.is_file():
@@ -435,11 +445,50 @@ class OperationalEventStore:
         if active_size + record_size <= self._max_segment_bytes:
             return active
         if len(segments) >= self._max_segments:
+            self._mark_retention_exhausted()
             raise OperationalEventStoreError(
                 "RETENTION_LIMIT_REACHED",
                 "rotation requires a new segment beyond configured retention",
             )
         return self._event_directory / f"segment-{len(segments) + 1:06d}.jsonl"
+
+    def _mark_retention_exhausted(self) -> None:
+        if self._retention_marker.exists():
+            self._validate_retention_marker()
+            return
+        try:
+            with self._retention_marker.open("xb", buffering=0) as stream:
+                payload = (OPERATIONAL_EVENT_STORE_VERSION + "\n").encode("ascii")
+                if stream.write(payload) != len(payload):
+                    raise OSError("short retention marker write")
+                stream.flush()
+                os.fsync(stream.fileno())
+        except FileExistsError:
+            self._validate_retention_marker()
+        except OSError as error:
+            raise OperationalEventStoreError(
+                "RETENTION_DIAGNOSTIC_WRITE_FAILED",
+                "retention exhaustion could not be recorded durably",
+            ) from error
+
+    def _validate_retention_marker(self) -> None:
+        if not self._retention_marker.exists():
+            return
+        if _is_link_like(self._retention_marker) or not self._retention_marker.is_file():
+            raise OperationalEventStoreError(
+                "UNSAFE_PATH", "retention marker is not a safe regular file"
+            )
+        try:
+            content = self._retention_marker.read_bytes()
+        except OSError as error:
+            raise OperationalEventStoreError(
+                "READ_FAILED", "retention marker cannot be read"
+            ) from error
+        if content != (OPERATIONAL_EVENT_STORE_VERSION + "\n").encode("ascii"):
+            raise OperationalEventStoreError(
+                "INVALID_RETENTION_MARKER",
+                "retention marker has unknown or malformed content",
+            )
 
     def _durable_append(self, target: Path, record: bytes) -> None:
         before_size = target.stat().st_size if target.exists() else 0
@@ -467,6 +516,7 @@ class OperationalEventStore:
             (self._state_directory, "state directory"),
             (self._event_directory, "event directory"),
             (self._lock_path, "writer lock"),
+            (self._retention_marker, "retention marker"),
         ):
             if _is_link_like(path):
                 raise OperationalEventStoreError(

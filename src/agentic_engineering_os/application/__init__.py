@@ -138,6 +138,7 @@ from .merge_coordinator import (
     MergeResult,
     MergeStatus,
 )
+from .metrics_engine import MetricsComputationError, MetricsEngine, OperationalEventReader
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -345,10 +346,13 @@ __all__ = [
     "MergeResult",
     "MergeStatus",
     "MissionStateReader",
+    "MetricsComputationError",
+    "MetricsEngine",
     "MissionStateStorePort",
     "OrchestrationResult",
     "Orchestrator",
     "OrchestratorConfigurationError",
+    "OperationalEventReader",
     "ParseError",
     "ParallelCoordinationError",
     "ParallelCoordinationInput",

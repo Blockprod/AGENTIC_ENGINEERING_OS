@@ -103,7 +103,9 @@ Par défaut, un segment est limité à 1 048 576 octets et le store à quatre
 segments. Un record individuel est borné par le contrat OperationalEvent plus
 l'enveloppe du store. Lorsque le segment actif ne peut contenir le prochain
 record, un segment numéroté suivant est créé. Lorsque la limite est atteinte,
-`RETENTION_LIMIT_REACHED` bloque l'append.
+`RETENTION_LIMIT_REACHED` bloque l'append et crée le marqueur technique borné
+`.retention-exhausted`. Ce marqueur versionné rend la saturation observable
+après restart ; il ne contient aucun événement et ne confère aucune autorité.
 
 Aucun segment, actif ou historique, n'est supprimé, écrasé ou archivé
 silencieusement. Une politique future pourra organiser l'archivage, mais elle
