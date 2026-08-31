@@ -14,6 +14,10 @@ from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError
 from referencing import Registry, Resource
 
+from agentic_engineering_os.domain.operational_events import (
+    OperationalEventError,
+    operational_event_from_dict,
+)
 from agentic_engineering_os.resources.product import product_schema_directory
 
 
@@ -41,6 +45,7 @@ _SCHEMA_FILES = {
     "merge-result": "merge-result.schema.json",
     "worktree-assignment": "worktree-assignment.schema.json",
     "worktree-registry": "worktree-registry.schema.json",
+    "operational-event": "operational-event.schema.json",
 }
 
 
@@ -166,6 +171,19 @@ class ContractValidator:
     def _local_semantic_issues(
         contract: str, candidate: object
     ) -> tuple[ValidationIssue, ...]:
+        if contract == "operational-event":
+            try:
+                operational_event_from_dict(candidate)
+            except OperationalEventError as error:
+                return (
+                    ValidationIssue(
+                        code=error.code,
+                        path=error.path,
+                        message=error.message,
+                    ),
+                )
+            return ()
+
         if contract == "mission-state":
             mission_state = cast(Mapping[str, object], candidate)
             timestamp = cast(str, mission_state["updated_at"])

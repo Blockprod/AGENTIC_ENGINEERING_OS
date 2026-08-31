@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "event_id": "123e4567-e89b-42d3-a456-426614174000",
+  "event_type": "OPERATIONAL_ANOMALY",
+  "occurred_at": "2026-09-01T08:30:00.000000Z",
+  "severity": "WARNING",
+  "source_component": "RepositoryObserver",
+  "project_id": "example-project",
+  "correlation": {
+    "mission_id": null,
+    "workflow_generation": null,
+    "user_story_id": null,
+    "role": null,
+    "execution_id": null,
+    "assignment_id": null,
+    "wave_index": null,
+    "group_index": null,
+    "gate_id": null,
+    "certification_id": null,
+    "repository_commit": null
+  },
+  "payload": {
+    "operation": "DETECTED",
+    "outcome": null,
+    "reason_code": "UNEXPECTED_FIELD",
+    "duration_ms": null,
+    "attempt": null,
+    "attributes": [],
+    "authority": "CERTIFIED"
+  },
+  "provenance": {
+    "kind": "DETERMINISTIC_COMPONENT",
+    "producer": "RepositoryObserver",
+    "source_ref": null
+  }
+}

@@ -32,6 +32,7 @@ SCHEMA_FILES = {
     "merge-result": "merge-result.schema.json",
     "worktree-assignment": "worktree-assignment.schema.json",
     "worktree-registry": "worktree-registry.schema.json",
+    "operational-event": "operational-event.schema.json",
 }
 
 VALID_FIXTURES = [(name, f"{name}.json") for name in SCHEMA_FILES]
@@ -88,6 +89,11 @@ INVALID_FIXTURES = [
         "worktree-registry",
         "worktree-registry-invalid-structure.json",
         ["schema_version"],
+    ),
+    (
+        "operational-event",
+        "operational-event-invalid-structure.json",
+        ["payload"],
     ),
 ]
 

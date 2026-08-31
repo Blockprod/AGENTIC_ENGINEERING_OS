@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "event_id": "123e4567-e89b-42d3-a456-426614174000",
+  "event_type": "CODEX_EXECUTION",
+  "occurred_at": "2026-09-01T08:30:00.000000Z",
+  "severity": "INFO",
+  "source_component": "RestartSafeCodexExecutionService",
+  "project_id": "example-project",
+  "correlation": {
+    "mission_id": "mission-001",
+    "workflow_generation": 2,
+    "user_story_id": "US-1001",
+    "role": "IMPLEMENTER",
+    "execution_id": "execution-001",
+    "assignment_id": null,
+    "wave_index": null,
+    "group_index": null,
+    "gate_id": null,
+    "certification_id": null,
+    "repository_commit": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "payload": {
+    "operation": "FINISHED",
+    "outcome": "PROCESS_OBSERVED",
+    "reason_code": null,
+    "duration_ms": 1200,
+    "attempt": 1,
+    "attributes": [
+      {"name": "exit_code", "value": 0},
+      {"name": "summary", "value": "Exécution terminée"}
+    ]
+  },
+  "provenance": {
+    "kind": "PROCESS_RUNTIME",
+    "producer": "CodexRuntimeAdapter",
+    "source_ref": "process:observed"
+  }
+}

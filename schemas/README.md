@@ -134,3 +134,10 @@ schéma canonique est embarqué sous
 `agentic_engineering_os/resources/schemas/project-configuration.schema.json`
 afin que sa validation ne dépende pas du checkout source. Il reste distinct du
 `ProjectState` et des observations de reconnaissance.
+
+Le contrat P6.2 `operational-event.schema.json` ferme la structure d'une
+observation opérationnelle non autoritative. Le schéma source et sa copie
+packagée restent identiques ; `ContractValidator` complète les types fermés par
+les invariants de corrélation, la politique de taille et le refus des secrets.
+Un OperationalEvent n'est ni une Evidence, ni un AuditEvent, ni un résultat de
+Gate ou de Certification.

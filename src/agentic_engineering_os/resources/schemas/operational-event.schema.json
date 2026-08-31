@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-engineering-os.local/schemas/operational-event.schema.json",
+  "title": "Operational Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "severity",
+    "source_component",
+    "project_id",
+    "correlation",
+    "payload",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "event_type": {
+      "enum": [
+        "MISSION_LIFECYCLE",
+        "ROLE_EXECUTION",
+        "CODEX_EXECUTION",
+        "WORKTREE_LIFECYCLE",
+        "INTEGRATION_GATE",
+        "MERGE_OPERATION",
+        "CONTROL_PLANE_DECISION",
+        "REMEDIATION_RECOVERY",
+        "HUMAN_WAITING",
+        "PERSISTENCE_FAILURE",
+        "ADOPTION_MIGRATION",
+        "OPERATIONAL_ANOMALY"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$"
+    },
+    "severity": {"enum": ["INFO", "WARNING", "ERROR", "CRITICAL"]},
+    "source_component": {"type": "string", "minLength": 1, "maxLength": 128},
+    "project_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mission_id",
+        "workflow_generation",
+        "user_story_id",
+        "role",
+        "execution_id",
+        "assignment_id",
+        "wave_index",
+        "group_index",
+        "gate_id",
+        "certification_id",
+        "repository_commit"
+      ],
+      "properties": {
+        "mission_id": {"$ref": "#/$defs/nullableIdentifier"},
+        "workflow_generation": {"$ref": "#/$defs/nullableNonNegativeInteger"},
+        "user_story_id": {"$ref": "#/$defs/nullableIdentifier"},
+        "role": {
+          "type": ["string", "null"],
+          "enum": [
+            "ORCHESTRATOR",
+            "ARCHITECT",
+            "IMPLEMENTER",
+            "TESTER",
+            "REVIEWER",
+            "CERTIFIER",
+            null
+          ]
+        },
+        "execution_id": {"$ref": "#/$defs/nullableIdentifier"},
+        "assignment_id": {"$ref": "#/$defs/nullableIdentifier"},
+        "wave_index": {"$ref": "#/$defs/nullableNonNegativeInteger"},
+        "group_index": {"$ref": "#/$defs/nullableNonNegativeInteger"},
+        "gate_id": {"$ref": "#/$defs/nullableIdentifier"},
+        "certification_id": {"$ref": "#/$defs/nullableIdentifier"},
+        "repository_commit": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "outcome",
+        "reason_code",
+        "duration_ms",
+        "attempt",
+        "attributes"
+      ],
+      "properties": {
+        "operation": {
+          "enum": [
+            "STARTED",
+            "STATUS_OBSERVED",
+            "BLOCKED",
+            "FINISHED",
+            "FAILED",
+            "PLANNED",
+            "INTERRUPTED",
+            "RECOVERY_INSPECTED",
+            "CREATED",
+            "COMPLETED",
+            "CLEANED",
+            "DIVERGENCE_OBSERVED",
+            "EVALUATED",
+            "CONFLICT_OBSERVED",
+            "EVIDENCE_RECORDED",
+            "GATE_EVALUATED",
+            "CERTIFICATION_RECORDED",
+            "HUMAN_APPROVAL_RECORDED",
+            "REQUESTED",
+            "RECOVERY_REQUIRED",
+            "WAITING_STARTED",
+            "WAITING_FINISHED",
+            "READ_FAILED",
+            "WRITE_FAILED",
+            "CORRUPTION_OBSERVED",
+            "REFUSED",
+            "DETECTED"
+          ]
+        },
+        "outcome": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+        "reason_code": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+        },
+        "duration_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 604800000
+        },
+        "attempt": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "attributes": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              },
+              "value": {
+                "anyOf": [
+                  {"type": "string", "maxLength": 2048},
+                  {"type": "integer"},
+                  {"type": "number"},
+                  {"type": "boolean"},
+                  {"type": "null"}
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "producer", "source_ref"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "DETERMINISTIC_COMPONENT",
+            "GIT_OBSERVATION",
+            "PROCESS_RUNTIME",
+            "CODEX_RUNTIME",
+            "OPERATOR_HUMAN"
+          ]
+        },
+        "producer": {"type": "string", "minLength": 1, "maxLength": 128},
+        "source_ref": {"type": ["string", "null"], "minLength": 1, "maxLength": 256}
+      }
+    }
+  },
+  "$defs": {
+    "nullableIdentifier": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+    },
+    "nullableNonNegativeInteger": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 2147483647
+    }
+  }
+}
