@@ -107,6 +107,10 @@ La reconnaissance observe séparément :
   conserver le contenu utilisateur ;
 - les seules règles `.gitignore` Agentic OS connues.
 
+Pour `AGENTS.md`, la classification exacte est déléguée au contrat P5.6 : une
+version ancienne ou future produit `UPGRADE_REQUIRED`, tandis que marqueurs
+partiels, dupliqués, imbriqués ou spoofés restent ambigus et bloquants.
+
 La classification dérivée signifie :
 
 - `UNINITIALIZED` : aucun footprint observé ;

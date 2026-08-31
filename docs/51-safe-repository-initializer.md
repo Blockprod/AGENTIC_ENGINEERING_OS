@@ -38,12 +38,13 @@ P5.5 autorise uniquement :
 - `CREATE_MANAGED_FILE` pour `AGENTS.md` ou `.gitignore` absents ;
 - `ADD_GITIGNORE_SECTION` pour un fichier existant observé sans section et
   avec confirmation Human exacte ;
+- `UPDATE_MANAGED_SECTION` pour `AGENTS.md` uniquement via la frontière bornée
+  `AgentsIntegrationService` définie en P5.6 ;
 - `NO_OP` après vérification de la configuration ou section courante.
 
-`UPDATE_MANAGED_SECTION` sur un `AGENTS.md` existant reste refusé. La
-coexistence et l'édition bornée avancée de ce fichier ne sont pas implémentées
-ici. `BLOCKED_CONFLICT` et tout type/cible hors catalogue sont refusés avant la
-première écriture.
+`BLOCKED_CONFLICT` et tout type/cible hors catalogue sont refusés avant la
+première écriture. Aucun autre fichier ni contenu libre ne peut emprunter la
+voie AGENTS.
 
 ## Confirmation Human
 
@@ -53,6 +54,7 @@ première écriture.
 - l'identifiant ordinal de l'opération ;
 - le chemin cible ;
 - l'état courant attendu ;
+- l'empreinte exacte du fichier utilisateur attendu ;
 - une identité Human attribuable selon la normalisation canonique existante.
 
 Une confirmation manquante, supplémentaire, dupliquée ou liée à un autre plan
@@ -111,6 +113,6 @@ le filesystem et le code du produit.
 
 ## Hors scope P5.5
 
-Sont exclus : édition d'un `AGENTS.md` existant, bootstrap `ProjectState` ou
-`MissionState`, migrations, suppression/rename de fichiers utilisateur,
+Sont exclus : bootstrap `ProjectState` ou `MissionState`, migrations,
+suppression/rename de fichiers utilisateur,
 permissions arbitraires, commandes libres et CLI.

@@ -28,6 +28,7 @@ from agentic_engineering_os.domain import (
 )
 
 from .git_adapter import GitAdapter, GitOperationError, GitReadOnlyState
+from .agents_integration import AgentsIntegrationError, AgentsIntegrationService
 from .project_configuration import (
     CONFIG_DIRECTORY,
     CONFIG_FILENAME,
@@ -50,6 +51,7 @@ _ALLOWED_OPERATION_TARGETS = {
         {"AGENTS.md", ".gitignore"}
     ),
     InitializationOperationType.ADD_GITIGNORE_SECTION: frozenset({".gitignore"}),
+    InitializationOperationType.UPDATE_MANAGED_SECTION: frozenset({"AGENTS.md"}),
     InitializationOperationType.NO_OP: frozenset(
         {_CONFIG_PATH, "AGENTS.md", ".gitignore"}
     ),
@@ -74,6 +76,7 @@ class RepositoryInitializer:
         self._reconnaissance = RepositoryReconnaissance()
         self._planner = InitializationPlanner()
         self._validator = ProjectConfigurationValidator()
+        self._agents_integration = AgentsIntegrationService()
 
     def apply(
         self,
@@ -182,6 +185,7 @@ class RepositoryInitializer:
                 OSError,
                 ProjectConfigurationError,
                 RepositoryReconnaissanceError,
+                AgentsIntegrationError,
             ) as error:
                 if isinstance(error, _ApplyFailure):
                     code = error.code
@@ -192,6 +196,9 @@ class RepositoryInitializer:
                 elif isinstance(error, RepositoryReconnaissanceError):
                     code = f"RECONNAISSANCE_FAILED:{error.code}"
                     detail = "repository verification failed"
+                elif isinstance(error, AgentsIntegrationError):
+                    code = f"AGENTS_INTEGRATION_FAILED:{error.code}"
+                    detail = error.message
                 else:
                     code = "WRITE_FAILED"
                     detail = f"filesystem operation failed: {type(error).__name__}"
@@ -340,10 +347,42 @@ class RepositoryInitializer:
             canonical = _managed_content(operation.target_path)
             _require_planned_content(operation, canonical)
             _require_absent(target)
-            _exclusive_create(target, canonical.encode("utf-8"))
+            if operation.target_path == "AGENTS.md":
+                self._agents_integration.create_from_plan(
+                    root, planned_content=canonical
+                )
+            else:
+                _exclusive_create(target, canonical.encode("utf-8"))
             if target.read_bytes() != canonical.encode("utf-8"):
                 raise _ApplyFailure(
                     "WRITE_VERIFICATION_FAILED", "managed file bytes differ from plan"
+                )
+            return
+        if operation.operation_type is InitializationOperationType.UPDATE_MANAGED_SECTION:
+            canonical = AGENTS_MANAGED_SECTION
+            _require_planned_content(operation, canonical)
+            expected = profile_before.agentic_os.agents_managed_section
+            if (
+                expected.status is not ManagedSectionStatus.SECTION_ABSENT
+                or expected.content_fingerprint != operation.expected_target_fingerprint
+                or expected.content_fingerprint is None
+            ):
+                raise _ApplyFailure(
+                    "EXPECTED_STATE_MISMATCH",
+                    "initial AGENTS.md fingerprint or section state diverged",
+                )
+            self._agents_integration.integrate_from_plan(
+                root,
+                expected_fingerprint=expected.content_fingerprint,
+                planned_content=canonical,
+            )
+            observed = self._reconnaissance.inspect(
+                root
+            ).agentic_os.agents_managed_section
+            if observed.status is not ManagedSectionStatus.CURRENT:
+                raise _ApplyFailure(
+                    "WRITE_VERIFICATION_FAILED",
+                    "AGENTS.md managed section is not canonical",
                 )
             return
         if operation.operation_type is InitializationOperationType.ADD_GITIGNORE_SECTION:
@@ -464,6 +503,8 @@ def _validate_confirmations(
             or confirmation.target_path != operation.target_path
             or confirmation.expected_current_state
             is not operation.expected_current_state
+            or confirmation.expected_target_fingerprint
+            != operation.expected_target_fingerprint
         ):
             return "HUMAN_CONFIRMATION_BINDING_MISMATCH"
     if set(supplied) != set(required):
@@ -479,8 +520,13 @@ def _validate_operation_catalog(plan: InitializationPlan) -> str | None:
         seen_ids.add(operation.operation_id)
         if operation.human_confirmation_required and operation.operation_type not in {
             InitializationOperationType.ADD_GITIGNORE_SECTION,
+            InitializationOperationType.UPDATE_MANAGED_SECTION,
         }:
             return "UNSUPPORTED_HUMAN_OPERATION"
+        if operation.human_confirmation_required and not _is_sha256(
+            operation.expected_target_fingerprint
+        ):
+            return "INVALID_EXPECTED_TARGET_FINGERPRINT"
         targets = _ALLOWED_OPERATION_TARGETS.get(operation.operation_type)
         if targets is None or operation.target_path not in targets:
             return "UNSUPPORTED_OPERATION"
@@ -743,3 +789,11 @@ def _path_has_symlink_component(path: Path) -> bool:
 
 def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+def _is_sha256(value: str | None) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )

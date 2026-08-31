@@ -1,5 +1,6 @@
 """Local infrastructure adapters."""
 
+from .agents_integration import AgentsIntegrationError, AgentsIntegrationService
 from .codex_runtime_adapter import (
     CodexRuntimeAdapter,
     CodexRuntimeConfiguration,
@@ -40,6 +41,8 @@ from .worktree_manager import (
 from .worktree_registry_store import WorktreeRegistryStore
 
 __all__ = [
+    "AgentsIntegrationError",
+    "AgentsIntegrationService",
     "CodexRuntimeAdapter",
     "CodexRuntimeConfiguration",
     "ExecutionGitObserver",

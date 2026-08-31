@@ -46,6 +46,10 @@ une source et le besoin éventuel d'une confirmation Human. Lorsqu'un contenu
 est prévu, le contenu canonique exact et son SHA-256 sont présents. Il n'existe
 aucune opération de commande arbitraire.
 
+Une opération modifiant un fichier utilisateur porte aussi l'empreinte exacte
+des octets attendus de cette cible. Cette empreinte est reprise dans la
+confirmation Human et revalidée par l'initializer.
+
 ## Liaison aux observations
 
 `profile_fingerprint` est le SHA-256 de la représentation JSON canonique de
@@ -103,7 +107,8 @@ de reconnaissance afin que le dry-run expose exactement l'intention future.
 - fichier utilisateur présent sans section : insertion bornée planifiée avec
   confirmation Human obligatoire ;
 - section canonique unique : `NO_OP` ;
-- section altérée, dupliquée, ambiguë, unsafe ou inconnue : blocker.
+- section altérée, dupliquée, ambiguë, unsafe ou inconnue : blocker ;
+- version AGENTS ancienne ou future : `UPGRADE_REQUIRED`, sans migration.
 
 Cette politique s'applique séparément à `AGENTS.md` et `.gitignore`. Aucun
 contenu situé hors de la section gérée n'est copié dans le plan.

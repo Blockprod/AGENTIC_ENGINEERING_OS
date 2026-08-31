@@ -33,6 +33,7 @@ class HumanOperationConfirmation:
     operation_id: str
     target_path: str
     expected_current_state: PlannedCurrentState
+    expected_target_fingerprint: str
     confirmed_by: str
 
 

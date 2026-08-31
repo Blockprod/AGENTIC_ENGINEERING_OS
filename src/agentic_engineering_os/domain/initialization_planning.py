@@ -54,6 +54,7 @@ class PlannedOperation:
     desired_state: PlannedDesiredState
     desired_content: str | None
     desired_content_sha256: str | None
+    expected_target_fingerprint: str | None
     reason_code: str
     source: str
     human_confirmation_required: bool

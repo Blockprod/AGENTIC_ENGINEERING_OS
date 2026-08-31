@@ -14,9 +14,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from agentic_engineering_os.domain import (
-    AGENTS_MANAGED_SECTION,
-    AGENTS_SECTION_END,
-    AGENTS_SECTION_START,
     AgenticOsInitializationState,
     AgenticOsStateObservation,
     CandidateCommandObservation,
@@ -41,6 +38,7 @@ from agentic_engineering_os.domain import (
     GITIGNORE_SECTION_START,
 )
 
+from .agents_integration import AgentsIntegrationService
 from .git_adapter import GitAdapter, GitOperationError, GitReadOnlyState
 from .project_configuration import (
     CONFIG_DIRECTORY,
@@ -163,6 +161,7 @@ class RepositoryReconnaissance:
         self._max_context_sources = max_context_sources
         self._max_context_depth = max_context_depth
         self._git_adapter_factory = git_adapter_factory
+        self._agents_integration = AgentsIntegrationService()
 
     def inspect(self, repository_root: Path | str) -> RepositoryProfile:
         """Return one reconstructible profile; never create or repair files."""
@@ -645,13 +644,7 @@ class RepositoryReconnaissance:
         config_status, config_version, config_fingerprint = self._config_status(root)
         agents_reference = self._agents_reference(root)
         gitignore_rules = self._gitignore_rules(root)
-        agents_managed = self._managed_section(
-            root,
-            "AGENTS.md",
-            AGENTS_SECTION_START,
-            AGENTS_SECTION_END,
-            AGENTS_MANAGED_SECTION,
-        )
+        agents_managed = self._agents_managed_section(root)
         gitignore_managed = self._managed_section(
             root,
             ".gitignore",
@@ -687,9 +680,13 @@ class RepositoryReconnaissance:
             or bool(gitignore_rules)
             or agents_reference.value is True
         )
-        if config_status is DocumentStatus.UNKNOWN_VERSION or runtime_upgrade:
+        if (
+            config_status is DocumentStatus.UNKNOWN_VERSION
+            or runtime_upgrade
+            or agents_managed.status is ManagedSectionStatus.UPGRADE_REQUIRED
+        ):
             state = AgenticOsInitializationState.UPGRADE_REQUIRED
-            detail = "an observed config or runtime schema version is incompatible"
+            detail = "an observed config, runtime, or AGENTS contract version is incompatible"
         elif (
             config_status is DocumentStatus.VALID
             and not runtime_bad
@@ -812,6 +809,40 @@ class RepositoryReconnaissance:
             hashlib.sha256(content).hexdigest(),
             relative,
             "managed markers and canonical section were inspected without retaining user content",
+        )
+
+    def _agents_managed_section(self, root: Path) -> ManagedSectionObservation:
+        status, content = self._read_bounded_bytes(root, "AGENTS.md")
+        if status is DocumentStatus.ABSENT:
+            inspection = self._agents_integration.inspect(None)
+        elif status is DocumentStatus.UNSAFE:
+            return ManagedSectionObservation(
+                "AGENTS.md",
+                ManagedSectionStatus.UNSAFE,
+                None,
+                "filesystem:lstat",
+                "target file is a symlink or otherwise unsafe",
+            )
+        elif status is not DocumentStatus.VALID or content is None:
+            return ManagedSectionObservation(
+                "AGENTS.md",
+                ManagedSectionStatus.UNKNOWN,
+                None,
+                "AGENTS.md",
+                "target file is not readable bounded UTF-8 text",
+            )
+        else:
+            inspection = self._agents_integration.inspect(content)
+        return ManagedSectionObservation(
+            "AGENTS.md",
+            inspection.status,
+            inspection.content_fingerprint,
+            "AgentsIntegrationService",
+            (
+                "AGENTS.md managed contract was inspected exactly"
+                if inspection.managed_version is None
+                else f"AGENTS.md managed contract version {inspection.managed_version} was inspected"
+            ),
         )
 
     def _agents_reference(self, root: Path) -> ObservedValue:

@@ -70,6 +70,7 @@ from .initialization_planning import (
 )
 from .repository_reconnaissance import (
     AGENTS_MANAGED_SECTION,
+    AGENTS_MANAGED_SECTION_VERSION,
     AGENTS_SECTION_END,
     AGENTS_SECTION_START,
     AgenticOsInitializationState,
@@ -94,6 +95,7 @@ from .repository_reconnaissance import (
     GITIGNORE_SECTION_END,
     GITIGNORE_SECTION_START,
 )
+from .agents_integration import AgentsIntegrationInspection
 from .repository_initialization import (
     HumanOperationConfirmation,
     InitializationApplyFinding,
@@ -106,6 +108,8 @@ from .repository_initialization import (
 __all__ = [
     "AcceptanceCriterion",
     "AGENTS_MANAGED_SECTION",
+    "AGENTS_MANAGED_SECTION_VERSION",
+    "AgentsIntegrationInspection",
     "AGENTS_SECTION_END",
     "AGENTS_SECTION_START",
     "AgenticOsInitializationState",

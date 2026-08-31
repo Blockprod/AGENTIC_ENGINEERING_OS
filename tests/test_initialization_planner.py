@@ -322,7 +322,9 @@ def test_existing_different_valid_configuration_is_never_overwritten(
     [
         (
             "AGENTS.md",
-            AGENTS_MANAGED_SECTION.replace("Control Plane", "altered Control Plane"),
+            AGENTS_MANAGED_SECTION.replace(
+                "Repository and Git truth", "altered repository truth"
+            ),
         ),
         (
             ".gitignore",

@@ -37,15 +37,28 @@ class DocumentStatus(str, Enum):
     VERSION_OBSERVED = "VERSION_OBSERVED"
 
 
-AGENTS_SECTION_START = "<!-- BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION v1 -->"
-AGENTS_SECTION_END = "<!-- END AGENTIC_ENGINEERING_OS MANAGED SECTION v1 -->"
+AGENTS_MANAGED_SECTION_VERSION = "2"
+AGENTS_SECTION_START = (
+    "<!-- BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION "
+    f"v{AGENTS_MANAGED_SECTION_VERSION} -->"
+)
+AGENTS_SECTION_END = (
+    "<!-- END AGENTIC_ENGINEERING_OS MANAGED SECTION "
+    f"v{AGENTS_MANAGED_SECTION_VERSION} -->"
+)
 AGENTS_MANAGED_SECTION = "\n".join(
     (
         AGENTS_SECTION_START,
         "## Agentic Engineering OS",
         "",
-        "Follow the installed AGENTIC_ENGINEERING_OS operating contract.",
-        "Repository facts and Control Plane decisions prevail over agent declarations.",
+        f"Managed contract version: {AGENTS_MANAGED_SECTION_VERSION}",
+        "",
+        "- AGENTIC_ENGINEERING_OS is the repository control and runtime layer.",
+        "- Repository and Git truth prevail over agent declarations.",
+        "- Stay within the explicit mission scope and preserve Human Authority.",
+        "- Mutate authoritative state only through the designated controlled components.",
+        "- Never edit `.agentic-engineering-os` runtime files directly.",
+        "- Use the required role contracts, handoffs, and RoleResult outputs.",
         AGENTS_SECTION_END,
         "",
     )
@@ -74,6 +87,7 @@ class ManagedSectionStatus(str, Enum):
     CURRENT = "CURRENT"
     TAMPERED = "TAMPERED"
     AMBIGUOUS = "AMBIGUOUS"
+    UPGRADE_REQUIRED = "UPGRADE_REQUIRED"
     UNSAFE = "UNSAFE"
     UNKNOWN = "UNKNOWN"
 

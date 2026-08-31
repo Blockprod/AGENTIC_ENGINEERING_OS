@@ -208,6 +208,7 @@ class InitializationPlanner:
                     desired_state=PlannedDesiredState.BLOCKED_UNCHANGED,
                     desired_content=None,
                     desired_content_sha256=None,
+                    expected_target_fingerprint=None,
                     reason_code=item.code,
                     source="InitializationPlanner",
                     human_confirmation_required=False,
@@ -453,6 +454,7 @@ class InitializationPlanner:
             ManagedSectionStatus.CURRENT,
             ManagedSectionStatus.TAMPERED,
             ManagedSectionStatus.AMBIGUOUS,
+            ManagedSectionStatus.UPGRADE_REQUIRED,
         }
         observation_inconsistent = (
             observation.relative_path != expected_path
@@ -476,6 +478,7 @@ class InitializationPlanner:
         if observation.status in {
             ManagedSectionStatus.TAMPERED,
             ManagedSectionStatus.AMBIGUOUS,
+            ManagedSectionStatus.UPGRADE_REQUIRED,
             ManagedSectionStatus.UNSAFE,
             ManagedSectionStatus.UNKNOWN,
         }:
@@ -508,6 +511,7 @@ class InitializationPlanner:
                 PlannedCurrentState,
                 PlannedDesiredState,
                 str | None,
+                str | None,
                 str,
                 str,
                 bool,
@@ -522,6 +526,7 @@ class InitializationPlanner:
                     PlannedCurrentState.ABSENT,
                     PlannedDesiredState.DIRECTORY_PRESENT,
                     None,
+                    None,
                     "CONFIG_DIRECTORY_REQUIRED",
                     "P5.1 footprint",
                     False,
@@ -534,6 +539,7 @@ class InitializationPlanner:
                     PlannedCurrentState.ABSENT,
                     PlannedDesiredState.CANONICAL_CONFIG_PRESENT,
                     desired_text,
+                    None,
                     "EXPLICIT_CONFIGURATION",
                     "ProjectConfigurationValidator",
                     False,
@@ -546,6 +552,7 @@ class InitializationPlanner:
                     _CONFIG_PATH,
                     PlannedCurrentState.PRESENT,
                     PlannedDesiredState.UNCHANGED,
+                    None,
                     None,
                     "CONFIG_ALREADY_IDENTICAL",
                     "observed config semantic fingerprint",
@@ -584,9 +591,10 @@ class InitializationPlanner:
                 desired_content_sha256=(
                     _sha256(item[4]) if item[4] is not None else None
                 ),
-                reason_code=item[5],
-                source=item[6],
-                human_confirmation_required=item[7],
+                expected_target_fingerprint=item[5],
+                reason_code=item[6],
+                source=item[7],
+                human_confirmation_required=item[8],
             )
             for index, item in enumerate(specifications, 1)
         )
@@ -614,6 +622,7 @@ class InitializationPlanner:
             PlannedCurrentState,
             PlannedDesiredState,
             str | None,
+            str | None,
             str,
             str,
             bool,
@@ -627,6 +636,7 @@ class InitializationPlanner:
                     PlannedCurrentState.ABSENT,
                     PlannedDesiredState.CANONICAL_MANAGED_SECTION_PRESENT,
                     canonical_content,
+                    None,
                     "MANAGED_FILE_ABSENT",
                     observation.source,
                     False,
@@ -649,6 +659,7 @@ class InitializationPlanner:
                     PlannedCurrentState.SECTION_ABSENT,
                     PlannedDesiredState.CANONICAL_MANAGED_SECTION_PRESENT,
                     canonical_content,
+                    observation.content_fingerprint,
                     "EXISTING_USER_FILE",
                     observation.source,
                     True,
@@ -661,6 +672,7 @@ class InitializationPlanner:
                 PlannedCurrentState.MANAGED_SECTION_CURRENT,
                 PlannedDesiredState.UNCHANGED,
                 None,
+                observation.content_fingerprint,
                 "MANAGED_SECTION_ALREADY_CURRENT",
                 observation.source,
                 False,

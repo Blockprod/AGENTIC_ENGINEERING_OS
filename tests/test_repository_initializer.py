@@ -100,6 +100,7 @@ def confirmation(plan, operation, *, actor: str = "Human/Alice"):
         operation_id=operation.operation_id,
         target_path=operation.target_path,
         expected_current_state=operation.expected_current_state,
+        expected_target_fingerprint=operation.expected_target_fingerprint,
         confirmed_by=actor,
     )
 
@@ -259,21 +260,23 @@ def test_codex_identity_cannot_confirm_human_operation(
     assert result.findings[0].code == "INVALID_HUMAN_IDENTITY"
 
 
-def test_existing_agents_update_remains_deferred_even_when_confirmed(
+def test_existing_agents_update_routes_through_bounded_integration(
     tmp_path: Path,
 ) -> None:
-    root = repository(tmp_path, {"AGENTS.md": "# User-owned instructions\n"})
+    original = b"# User-owned instructions\r\n"
+    root = repository(tmp_path, {"AGENTS.md": original.decode("utf-8")})
+    (root / "AGENTS.md").write_bytes(original)
+    git(root, "add", "AGENTS.md")
+    git(root, "commit", "-m", "preserve user agents bytes")
     plan = plan_for(root)
     operation = next(item for item in plan.operations if item.human_confirmation_required)
-    before = non_git_snapshot(root)
 
     result = RepositoryInitializer().apply(
         plan, human_confirmations=(confirmation(plan, operation),)
     )
 
-    assert result.status is InitializationApplyStatus.REFUSED
-    assert result.findings[0].code == "UNSUPPORTED_HUMAN_OPERATION"
-    assert non_git_snapshot(root) == before
+    assert result.status is InitializationApplyStatus.APPLIED
+    assert (root / "AGENTS.md").read_bytes().startswith(original)
 
 
 def test_forged_operation_and_path_traversal_are_refused(tmp_path: Path) -> None:
@@ -376,7 +379,7 @@ def test_duplicate_or_tampered_section_after_plan_is_refused(
     agents.write_text(
         AGENTS_MANAGED_SECTION + AGENTS_MANAGED_SECTION
         if tampered == "duplicate"
-        else AGENTS_MANAGED_SECTION.replace("Control Plane", "changed"),
+        else AGENTS_MANAGED_SECTION.replace("Repository and Git truth", "changed"),
         encoding="utf-8",
     )
 
@@ -413,15 +416,15 @@ def test_later_operation_failure_preserves_earlier_writes(
 ) -> None:
     root = repository(tmp_path)
     plan = plan_for(root)
-    original_create = initializer_module._exclusive_create
 
-    def fail_agents(path: Path, content: bytes) -> None:
-        if path.name == "AGENTS.md":
-            raise OSError("simulated later failure")
-        original_create(path, content)
+    def fail_agents(root: Path, *, planned_content: str) -> None:
+        raise OSError("simulated later failure")
 
-    monkeypatch.setattr(initializer_module, "_exclusive_create", fail_agents)
-    result = RepositoryInitializer().apply(plan)
+    initializer = RepositoryInitializer()
+    monkeypatch.setattr(
+        initializer._agents_integration, "create_from_plan", fail_agents
+    )
+    result = initializer.apply(plan)
 
     assert result.status is InitializationApplyStatus.PARTIAL_FAILURE
     assert ProjectConfigurationLoader(root).load() == configuration()
