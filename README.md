@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.10`
+Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.11`
 
 Documentation :
 
@@ -73,4 +73,5 @@ Documentation :
 - [Existing Repository Adoption](docs/54-existing-repository-adoption.md)
 - [Explicit Upgrade & Migration](docs/55-upgrade-migration.md)
 - [Installation Kit & CLI](docs/56-installation-cli.md)
+- [Validation de déploiement multi-repository](docs/57-multi-repository-deployment-validation.md)
 - [JSON Schemas V1](schemas/README.md)
