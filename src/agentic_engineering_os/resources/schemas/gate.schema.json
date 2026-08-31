@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:gate",
+  "title": "Canonical V1 Gate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gate_id",
+    "subject",
+    "required",
+    "result",
+    "evidence_refs",
+    "evaluated_at",
+    "evaluator"
+  ],
+  "properties": {
+    "gate_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required": {
+      "type": "boolean"
+    },
+    "result": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "UNKNOWN", "NOT_APPLICABLE"]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evaluator": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

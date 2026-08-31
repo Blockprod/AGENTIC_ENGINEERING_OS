@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:dag-snapshot",
+  "title": "Canonical V1 User Story DAG Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nodes", "edges"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "user_story_id",
+          "status",
+          "priority",
+          "risk",
+          "depends_on"
+        ],
+        "properties": {
+          "user_story_id": {
+            "type": "string",
+            "pattern": "^US-[0-9]{4}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PROPOSED",
+              "PLANNED",
+              "BLOCKED",
+              "READY",
+              "IN_PROGRESS",
+              "IMPLEMENTED",
+              "TESTING",
+              "REVIEW",
+              "CERTIFICATION",
+              "CERTIFIED",
+              "REJECTED",
+              "REMEDIATION_REQUIRED",
+              "CANCELLED"
+            ]
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+          },
+          "depends_on": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^US-[0-9]{4}$"
+            }
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dependency_id", "dependent_id"],
+        "properties": {
+          "dependency_id": {
+            "type": "string",
+            "pattern": "^US-[0-9]{4}$"
+          },
+          "dependent_id": {
+            "type": "string",
+            "pattern": "^US-[0-9]{4}$"
+          }
+        }
+      }
+    }
+  }
+}

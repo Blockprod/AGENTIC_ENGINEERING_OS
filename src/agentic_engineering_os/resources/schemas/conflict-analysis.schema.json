@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:conflict-analysis",
+  "title": "Canonical V1 Same-Wave Execution Conflict Analysis",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pairs"],
+  "properties": {
+    "pairs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "wave_index",
+          "left_user_story_id",
+          "right_user_story_id",
+          "classification",
+          "reasons",
+          "overlapping_paths"
+        ],
+        "properties": {
+          "wave_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "left_user_story_id": {
+            "type": "string",
+            "pattern": "^US-[0-9]{4}$"
+          },
+          "right_user_story_id": {
+            "type": "string",
+            "pattern": "^US-[0-9]{4}$"
+          },
+          "classification": {
+            "type": "string",
+            "enum": ["SAFE", "CONFLICT", "UNKNOWN"]
+          },
+          "reasons": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "PATH_OVERLAP",
+                "SCOPE_AMBIGUOUS",
+                "SCOPE_UNSPECIFIED"
+              ]
+            }
+          },
+          "overlapping_paths": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:evidence",
+  "title": "Canonical V1 Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_id",
+    "evidence_type",
+    "subject",
+    "result",
+    "source",
+    "command",
+    "exit_code",
+    "artifact",
+    "commit",
+    "timestamp",
+    "producer"
+  ],
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_type": {
+      "type": "string",
+      "enum": [
+        "COMMAND_RESULT",
+        "TEST_RESULT",
+        "GIT_STATE",
+        "FILE_INSPECTION",
+        "REVIEW_RESULT",
+        "HUMAN_APPROVAL",
+        "ACCEPTANCE_CRITERION_CHECK"
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result": {
+      "type": ["string", "number", "boolean", "object", "array"]
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "exit_code": {
+      "type": ["integer", "null"]
+    },
+    "artifact": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "commit": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -26,6 +26,10 @@ from agentic_engineering_os.application.codex_runtime import (
     InvalidJsonlLine,
 )
 from agentic_engineering_os.application.prompt_compiler import CompiledPrompt
+from agentic_engineering_os.resources.product import (
+    ProductResourceError,
+    product_schema_directory,
+)
 
 from .git_adapter import GitAdapter, GitOperationError
 
@@ -476,12 +480,13 @@ def _resolve_output_schema(
         return None, "INVALID_OUTPUT_SCHEMA"
     try:
         resolved = candidate.resolve(strict=True)
-    except OSError:
+        installed_schemas = product_schema_directory()
+    except (OSError, ProductResourceError):
         return None, "INVALID_OUTPUT_SCHEMA"
     if (
         not resolved.is_file()
         or resolved.suffix.casefold() != ".json"
-        or not _contains(cwd, resolved)
+        or not (_contains(cwd, resolved) or _contains(installed_schemas, resolved))
     ):
         return None, "INVALID_OUTPUT_SCHEMA"
     return resolved, None

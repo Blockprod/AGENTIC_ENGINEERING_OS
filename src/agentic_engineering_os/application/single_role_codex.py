@@ -14,6 +14,7 @@ from agentic_engineering_os.domain import (
     WorktreeAssignment,
     WorktreeStatus,
 )
+from agentic_engineering_os.resources.product import product_resource_path
 
 from .architect import ArchitectInput, ArchitectResult
 from .certifier import CertifierInput
@@ -170,7 +171,9 @@ class SingleRoleCodexExecutor:
         )
         compiled = self._compiler.compile(context)
         cwd = compiled.worktree_path or compiled.repository_root
-        schema = Path(cwd) / "schemas" / f"{handoff.to_role.value.casefold()}-result.schema.json"
+        schema = product_resource_path(
+            f"schemas/{handoff.to_role.value.casefold()}-result.schema.json"
+        )
         validation_context = ResultIntakeValidationContext(role_input, str(schema.resolve(strict=False)))
         binding = CodexExecutionBinding(
             request_id=compiled.request_id,

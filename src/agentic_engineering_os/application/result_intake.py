@@ -22,6 +22,10 @@ from agentic_engineering_os.domain import (
     UserStoryScope,
     UserStoryStatus,
 )
+from agentic_engineering_os.resources.product import (
+    ProductResourceError,
+    product_schema_directory,
+)
 
 from .architect import (
     ArchitectDecision,
@@ -430,7 +434,7 @@ def _validate_schema_channel(
         or supplied.is_symlink()
         or not supplied.is_file()
         or supplied.name != expected_name
-        or not _path_is_within(observation.cwd, str(supplied))
+        or not _allowed_output_schema(observation.cwd, supplied)
         or not _same_existing_path(values[0], str(supplied))
     ):
         return (
@@ -440,6 +444,15 @@ def _validate_schema_channel(
             ),
         )
     return ()
+
+
+def _allowed_output_schema(cwd: str, supplied: Path) -> bool:
+    if _path_is_within(cwd, str(supplied)):
+        return True
+    try:
+        return _path_is_within(str(product_schema_directory()), str(supplied))
+    except ProductResourceError:
+        return False
 
 
 def _validate_git_before(

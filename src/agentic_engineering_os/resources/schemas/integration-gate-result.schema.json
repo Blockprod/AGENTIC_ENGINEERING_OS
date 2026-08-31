@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-engineering-os.local/schemas/integration-gate-result.schema.json",
+  "title": "Integration Gate Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mission_id",
+    "workflow_generation",
+    "wave_index",
+    "group_index",
+    "baseline_commit",
+    "member_commits",
+    "result",
+    "findings",
+    "integration_order"
+  ],
+  "properties": {
+    "mission_id": {"type": "string", "minLength": 1},
+    "workflow_generation": {"type": "integer", "minimum": 0},
+    "wave_index": {"type": "integer", "minimum": 0},
+    "group_index": {"type": "integer", "minimum": 0},
+    "baseline_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "result": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+    "integration_order": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^US-[0-9]{4,}$"}
+    },
+    "member_commits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["user_story_id", "assignment_id", "result_commit", "changed_files"],
+        "properties": {
+          "user_story_id": {"type": "string", "pattern": "^US-[0-9]{4,}$"},
+          "assignment_id": {"type": "string", "pattern": "^wa-[0-9a-f]{24}$"},
+          "result_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "changed_files": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "summary", "members", "paths", "blocking", "classification"],
+        "properties": {
+          "code": {
+            "enum": [
+              "INCOMPLETE_MEMBER",
+              "BASELINE_MISMATCH",
+              "GENERATION_MISMATCH",
+              "ASSIGNMENT_MISMATCH",
+              "SCOPE_VIOLATION",
+              "DECLARED_DIFF_MISMATCH",
+              "CROSS_BRANCH_PATH_COLLISION",
+              "CONFLICT_ANALYSIS_MISMATCH",
+              "GIT_MERGE_CONFLICT",
+              "GIT_STATE_UNKNOWN"
+            ]
+          },
+          "summary": {"type": "string", "minLength": 1},
+          "members": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "paths": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "blocking": {"const": true},
+          "classification": {"enum": ["FAIL", "UNKNOWN"]}
+        }
+      }
+    }
+  }
+}

@@ -33,6 +33,10 @@ contrat de rôle, le schéma de sortie et, pour Implementer, l'unique assignment
 Les artefacts amont sont un set exact : aucun manque ni artefact supplémentaire
 n'est accepté.
 
+Le schéma de résultat est résolu depuis les ressources du package installé,
+indépendamment du cwd et de la présence d'un dossier `schemas/` dans le
+repository cible.
+
 ## Politiques fermées par rôle
 
 | Rôle | Artefacts amont | CWD | Sandbox |

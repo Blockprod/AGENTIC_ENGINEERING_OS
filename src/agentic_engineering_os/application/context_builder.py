@@ -26,6 +26,7 @@ from agentic_engineering_os.domain import (
     WorktreeStatus,
     to_dict,
 )
+from agentic_engineering_os.resources.product import product_resource_text
 from .contract_validator import ContractValidator
 
 
@@ -512,7 +513,11 @@ class ContextBuilder:
 
     @staticmethod
     def _authority_reference(root: Path, relative_path: str) -> AuthoritativeContextEntry:
-        content = _read_document(_safe_document(root, relative_path))
+        content = (
+            _read_document(_safe_document(root, relative_path))
+            if relative_path == "AGENTS.md"
+            else product_resource_text(relative_path)
+        )
         return _json_entry(
             "CONTRACT_REFERENCE",
             relative_path,

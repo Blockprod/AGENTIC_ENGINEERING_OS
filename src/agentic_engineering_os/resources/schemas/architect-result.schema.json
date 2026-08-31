@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:architect-result",
+  "title": "Architect Role Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mission_id",
+    "workflow_generation",
+    "role",
+    "subject",
+    "observed_commit",
+    "summary",
+    "assumptions",
+    "decisions",
+    "risks",
+    "blockers",
+    "user_stories",
+    "recommended_next_role",
+    "verdict"
+  ],
+  "properties": {
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow_generation": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "role": {
+      "const": "ARCHITECT"
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}$"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assumptions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "description"],
+        "properties": {
+          "kind": {
+            "enum": ["ARCHITECTURAL", "HUMAN_REQUIRED"]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "user_stories": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:agentic-engineering-os:schema:v1:user-story"
+      }
+    },
+    "recommended_next_role": {
+      "enum": [
+        "ORCHESTRATOR",
+        "ARCHITECT",
+        "IMPLEMENTER",
+        "TESTER",
+        "REVIEWER",
+        "CERTIFIER"
+      ]
+    },
+    "verdict": {
+      "enum": ["READY", "BLOCKED"]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"verdict": {"const": "READY"}},
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "blockers": {"maxItems": 0},
+          "user_stories": {"minItems": 1},
+          "recommended_next_role": {"const": "IMPLEMENTER"},
+          "decisions": {
+            "not": {
+              "contains": {
+                "properties": {"kind": {"const": "HUMAN_REQUIRED"}},
+                "required": ["kind"]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"verdict": {"const": "BLOCKED"}},
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "blockers": {"minItems": 1},
+          "recommended_next_role": {"const": "ORCHESTRATOR"}
+        }
+      }
+    }
+  ]
+}

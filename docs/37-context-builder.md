@@ -45,6 +45,9 @@ Certification, Human Approval ou mutation autoritative.
 Les références communes incluent `AGENTS.md`, les invariants, les frontières
 d'autorité, la politique fail-closed et le contrat P4.1. Le contrat opérationnel
 et le document d'architecture propres au rôle sont également empreintés.
+`AGENTS.md` reste lu dans le repository cible. Les contrats produit sous
+`docs/` et `roles/` sont lus depuis les ressources immuables du package
+installé ; un repository cible n'a pas à recopier le checkout du produit.
 
 ## Contexte cognitif
 

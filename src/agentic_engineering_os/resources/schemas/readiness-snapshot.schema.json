@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-engineering-os:schema:v1:readiness-snapshot",
+  "title": "Canonical V1 User Story Readiness Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nodes"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "user_story_id",
+          "classification",
+          "satisfied_dependencies",
+          "unsatisfied_dependencies",
+          "reason"
+        ],
+        "properties": {
+          "user_story_id": {
+            "type": "string",
+            "pattern": "^US-[0-9]{4}$"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "WAITING_DEPENDENCIES",
+              "BLOCKED",
+              "INELIGIBLE",
+              "TERMINAL"
+            ]
+          },
+          "satisfied_dependencies": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^US-[0-9]{4}$"
+            }
+          },
+          "unsatisfied_dependencies": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^US-[0-9]{4}$"
+            }
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

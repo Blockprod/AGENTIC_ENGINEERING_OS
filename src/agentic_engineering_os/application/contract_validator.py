@@ -14,6 +14,8 @@ from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError
 from referencing import Registry, Resource
 
+from agentic_engineering_os.resources.product import product_schema_directory
+
 
 ErrorPathPart: TypeAlias = str | int
 
@@ -217,7 +219,7 @@ class ContractValidator:
 
 
 def _default_schema_directory() -> Path:
-    return Path(__file__).resolve().parents[3] / "schemas"
+    return product_schema_directory()
 
 
 def _schema_error_sort_key(error: object) -> tuple[tuple[str, ...], str]:

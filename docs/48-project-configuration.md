@@ -158,16 +158,13 @@ migration dans P5.2.
 | Ressource observée | Classe cible | État P5.2 |
 |---|---|---|
 | Schéma `project-configuration` | A — package resource | Embarqué dans `agentic_engineering_os.resources` et résolu par `importlib.resources`, indépendamment du cwd/checkout. |
-| Schémas P1–P3 chargés par `ContractValidator._default_schema_directory()` | A — package resource | Dette existante : résolution actuelle par `Path(__file__).parents[3]/schemas`. Inchangée pour éviter un refactor transversal. |
-| Schémas de résultats calculés par `SingleRoleCodexExecutor` sous `TARGET/schemas/` | A — package resource | Dette P4 : le repository cible ne doit pas les posséder. Inchangée en P5.2. |
-| `roles/*.md` et contrats génériques `docs/02`, `03`, `04`, `12`, `16`–`20`, `35` utilisés par `ContextBuilder` | A — package resource | Dette P4 : actuellement lus depuis la racine cible. Inchangée en P5.2. |
+| Schémas P1–P3 chargés par `ContractValidator` | A — package resource | Résolu en P5.10 via les ressources installées. |
+| Schémas de résultats utilisés par `SingleRoleCodexExecutor` | A — package resource | Résolu en P5.10 ; aucun dossier `TARGET/schemas/` requis. |
+| `roles/*.md` et contrats génériques `docs/02`, `03`, `04`, `12`, `16`–`20`, `35` utilisés par `ContextBuilder` | A — package resource | Résolu en P5.10 ; `AGENTS.md` seul reste une autorité du repository cible. |
 | `AGENTS.md` et `context_sources` configurées | B — target repository resource | Restent repository-locales et sous autorité utilisateur. |
 | `state.json`, `mission.json`, `worktrees.json`, `negative-outcomes.json`, `executions.json` | C — runtime state | Exclus de `ProjectConfiguration` ; leurs stores et autorités restent inchangés. |
-| tests, fixtures, historique documentaire et certifications de phase | D — development-only | Ne doivent pas être requis par une installation. `docs/PHASE-3-CERTIFICATION.md`, actuellement exigé par `ContextBuilder`, est une dette P4 explicite. |
+| tests, fixtures, historique documentaire et certifications de phase | D — development-only | Non requis par l'installation ; l'unique référence de certification nécessaire au runtime est embarquée comme contrat produit. |
 
 `PromptCompiler` conserve des identités logiques `roles/...` mais ne résout pas
-lui-même les fichiers. La correction P5.2 est volontairement minimale : le
-nouveau contrat et son schéma fonctionnent depuis le package installé sans
-checkout source. Le découplage des ressources P4 restantes demeure obligatoire
-avant la readiness d'installation autonome et devra être traité dans une
-mission explicitement autorisée, avec ses tests impactés.
+lui-même les fichiers. Depuis P5.10, les ressources produit nécessaires à P1–P4
+sont résolues depuis le package installé, sans dépendance à un checkout source.
