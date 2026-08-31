@@ -8,6 +8,18 @@ from .codex_runtime_adapter import (
 from .execution_git_observer import ExecutionGitObserver
 from .execution_state_store import ExecutionStateStore
 from .mission_state_store import MissionStateStore
+from .operational_event_store import (
+    DEFAULT_MAX_SEGMENT_BYTES,
+    DEFAULT_MAX_SEGMENTS,
+    MAX_STORE_RECORD_BYTES,
+    OPERATIONAL_EVENT_DIRECTORY,
+    OPERATIONAL_EVENT_STORE_VERSION,
+    OperationalEventAppendReceipt,
+    OperationalEventQuery,
+    OperationalEventStore,
+    OperationalEventStoreError,
+    StructuredEventLogger,
+)
 from .git_adapter import (
     GitAdapter,
     GitDiffEntry,
@@ -59,6 +71,15 @@ __all__ = [
     "GitReadOnlyState",
     "GitWorktree",
     "MissionStateStore",
+    "DEFAULT_MAX_SEGMENT_BYTES",
+    "DEFAULT_MAX_SEGMENTS",
+    "MAX_STORE_RECORD_BYTES",
+    "OPERATIONAL_EVENT_DIRECTORY",
+    "OPERATIONAL_EVENT_STORE_VERSION",
+    "OperationalEventAppendReceipt",
+    "OperationalEventQuery",
+    "OperationalEventStore",
+    "OperationalEventStoreError",
     "PersistenceError",
     "CONFIG_DIRECTORY",
     "CONFIG_FILENAME",
@@ -71,6 +92,7 @@ __all__ = [
     "RepositoryReconnaissanceError",
     "RepositoryInitializer",
     "RuntimeStateBootstrap",
+    "StructuredEventLogger",
     "MigrationRegistryError",
     "RepositoryMigrationRegistry",
     "RepositoryUpgradeService",

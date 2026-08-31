@@ -55,6 +55,7 @@ _LAZY_PATHS = (
     f"{STATE_DIRECTORY}/executions.json",
     f"{STATE_DIRECTORY}/negative-outcomes.json",
     f"{STATE_DIRECTORY}/worktrees.json",
+    f"{STATE_DIRECTORY}/operational-events",
 )
 _VOLATILE_IGNORE_PROBES = (
     f"{STATE_DIRECTORY}/worktrees.json",
@@ -63,6 +64,7 @@ _VOLATILE_IGNORE_PROBES = (
     f"{STATE_DIRECTORY}/.negative-outcomes.bootstrap-check.tmp",
     f"{STATE_DIRECTORY}/executions.json",
     f"{STATE_DIRECTORY}/.executions.bootstrap-check.tmp",
+    f"{STATE_DIRECTORY}/operational-events/segment-000001.jsonl",
 )
 _STRUCTURAL_HANDOFF_PATHS = frozenset(
     {_CONFIG_PATH, "AGENTS.md", ".gitignore"}

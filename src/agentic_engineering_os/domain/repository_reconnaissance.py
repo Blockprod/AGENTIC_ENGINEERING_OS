@@ -75,6 +75,7 @@ GITIGNORE_MANAGED_SECTION = "\n".join(
         ".agentic-engineering-os/.negative-outcomes.*.tmp",
         ".agentic-engineering-os/executions.json",
         ".agentic-engineering-os/.executions.*.tmp",
+        ".agentic-engineering-os/operational-events/",
         GITIGNORE_SECTION_END,
         "",
     )

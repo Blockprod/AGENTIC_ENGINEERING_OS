@@ -15,3 +15,4 @@ Thumbs.db
 .agentic-engineering-os/.negative-outcomes.*.tmp
 .agentic-engineering-os/executions.json
 .agentic-engineering-os/.executions.*.tmp
+.agentic-engineering-os/operational-events/

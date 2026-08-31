@@ -75,6 +75,7 @@ _KNOWN_GITIGNORE_RULES = frozenset(
         ".agentic-engineering-os/.negative-outcomes.*.tmp",
         ".agentic-engineering-os/executions.json",
         ".agentic-engineering-os/.executions.*.tmp",
+        ".agentic-engineering-os/operational-events/",
     }
 )
 _REQUIRED_GITIGNORE_RULES = frozenset(
@@ -85,6 +86,7 @@ _REQUIRED_GITIGNORE_RULES = frozenset(
         ".agentic-engineering-os/.negative-outcomes.*.tmp",
         ".agentic-engineering-os/executions.json",
         ".agentic-engineering-os/.executions.*.tmp",
+        ".agentic-engineering-os/operational-events/",
     }
 )
 _RUNTIME_FORMATS = {
