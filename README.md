@@ -10,7 +10,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
-Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.11`
+Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `IN PROGRESS — P5.12-R2`
 
 Documentation :
 
@@ -74,4 +74,5 @@ Documentation :
 - [Explicit Upgrade & Migration](docs/55-upgrade-migration.md)
 - [Installation Kit & CLI](docs/56-installation-cli.md)
 - [Validation de déploiement multi-repository](docs/57-multi-repository-deployment-validation.md)
+- [CLI portable compatible avec les politiques d'entreprise](docs/58-policy-compatible-portable-cli.md)
 - [JSON Schemas V1](schemas/README.md)

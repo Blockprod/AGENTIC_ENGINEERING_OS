@@ -122,6 +122,7 @@ def test_fresh_eligible_repository_bootstraps_only_empty_project_state(
     assert runtime_paths(root) == {".agentic-engineering-os/state.json"}
     assert to_dict(state) == {
         "schema_version": "1.0",
+        "project_id": config.project_id,
         "user_stories": [],
         "evidence": [],
         "gates": [],
@@ -345,7 +346,7 @@ def test_failure_before_store_write_is_failed_without_artifact(
 ) -> None:
     root, config, profile = eligible_repository(tmp_path)
 
-    def fail_initialize(store: ProjectStateStore):
+    def fail_initialize(store: ProjectStateStore, **_kwargs):
         raise PersistenceError("WRITE_FAILED", "simulated initialization failure")
 
     monkeypatch.setattr(ProjectStateStore, "initialize", fail_initialize)

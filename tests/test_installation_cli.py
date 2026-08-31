@@ -88,6 +88,49 @@ def test_help_and_package_resources_are_available() -> None:
         product_resource_text("../README.md")
 
 
+def test_module_and_console_entrypoints_share_cli_semantics(tmp_path: Path) -> None:
+    root = existing_repository(tmp_path)
+    before = visible_files(root)
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    module = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agentic_engineering_os",
+            "inspect",
+            "--repository",
+            str(root),
+            "--json",
+        ],
+        env=environment,
+        shell=False,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    executable = Path(sys.executable).with_name(
+        "agentic-os.exe" if os.name == "nt" else "agentic-os"
+    )
+    try:
+        console = subprocess.run(
+            [str(executable), "inspect", "--repository", str(root), "--json"],
+            env=environment,
+            shell=False,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as error:
+        if getattr(error, "winerror", None) == 4551:
+            pytest.skip("host policy blocks the optional console-script shim")
+        raise
+    assert module.returncode == console.returncode == 0
+    assert json.loads(module.stdout) == json.loads(console.stdout)
+    assert module.stderr == console.stderr == ""
+    assert visible_files(root) == before
+
+
 def test_inspect_status_and_plan_are_read_only(tmp_path: Path, capsys) -> None:
     root = existing_repository(tmp_path)
     desired = config_file(tmp_path)
@@ -395,8 +438,9 @@ def test_wheel_installs_and_runs_outside_source_checkout(tmp_path: Path) -> None
     target = existing_repository(outside)
     child_environment = os.environ.copy()
     child_environment.pop("PYTHONPATH", None)
+    portable = [str(python), "-m", "agentic_engineering_os"]
     help_result = subprocess.run(
-        [str(executable), "--help"],
+        [*portable, "--help"],
         cwd=outside,
         env=child_environment,
         shell=False,
@@ -421,7 +465,7 @@ def test_wheel_installs_and_runs_outside_source_checkout(tmp_path: Path) -> None
         check=False,
     )
     inspection = subprocess.run(
-        [str(executable), "inspect", "--repository", str(target), "--json"],
+        [*portable, "inspect", "--repository", str(target), "--json"],
         cwd=outside,
         env=child_environment,
         shell=False,
@@ -430,6 +474,7 @@ def test_wheel_installs_and_runs_outside_source_checkout(tmp_path: Path) -> None
         check=False,
     )
     assert help_result.returncode == 0, help_result.stderr
+    assert executable.is_file()
     assert resource_result.returncode == 0, resource_result.stderr
     assert str(source_root) not in resource_result.stdout
     assert inspection.returncode == 0, inspection.stderr

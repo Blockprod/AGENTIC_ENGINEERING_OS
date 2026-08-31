@@ -103,7 +103,12 @@ class ProjectStateStore:
     def state_path(self) -> Path:
         return self._state_path
 
-    def initialize(self, *, schema_version: str = SCHEMA_VERSION) -> ProjectState:
+    def initialize(
+        self,
+        *,
+        schema_version: str = SCHEMA_VERSION,
+        project_id: str | None = None,
+    ) -> ProjectState:
         """Explicitly create a new empty state; never overwrite existing state."""
 
         self._assert_safe_paths(for_write=True)
@@ -112,7 +117,7 @@ class ProjectStateStore:
                 "STATE_ALREADY_EXISTS",
                 f"authoritative state already exists: {self._state_path}",
             )
-        state = ProjectState(schema_version=schema_version)
+        state = ProjectState(schema_version=schema_version, project_id=project_id)
         serialized = self._validate_state(state)
         self._write_serialized(serialized, exclusive=True)
         return state
@@ -177,6 +182,11 @@ class ProjectStateStore:
                 "authoritative state must be created through initialize()",
             )
         current = self.load()
+        if current.project_id != state.project_id:
+            raise PersistenceError(
+                "PROJECT_BINDING_IMMUTABLE",
+                "ProjectState project binding cannot change during a state mutation",
+            )
         current_serialized = self._validate_state(current)
         if current_serialized == serialized:
             return self._state_path
@@ -488,6 +498,11 @@ def _integrity_error(message: str) -> NoReturn:
 def _hydrate_project_state(data: Mapping[str, object]) -> ProjectState:
     return ProjectState(
         schema_version=_string(data["schema_version"], "schema_version"),
+        project_id=(
+            _string(data["project_id"], "project_id")
+            if data.get("project_id") is not None
+            else None
+        ),
         user_stories=[
             _hydrate_user_story(_mapping(item, "user_stories item"))
             for item in _sequence(data["user_stories"], "user_stories")

@@ -26,6 +26,10 @@ from agentic_engineering_os.infrastructure.project_configuration import (
     ProjectConfigurationLoader,
     ProjectConfigurationValidator,
 )
+from agentic_engineering_os.infrastructure.project_state_store import (
+    PersistenceError,
+    ProjectStateStore,
+)
 from agentic_engineering_os.infrastructure.repository_initializer import (
     RepositoryInitializer,
 )
@@ -160,6 +164,29 @@ class ExistingRepositoryAdoption:
                 )
             desired = project_configuration
 
+        if (
+            state is AgenticOsInitializationState.INITIALIZED
+            and current_configuration is not None
+        ):
+            try:
+                persistent_state = ProjectStateStore(
+                    Path(profile.requested_root)
+                ).load()
+            except PersistenceError as error:
+                return _preparation_from_profile(
+                    profile,
+                    AdoptionStatus.PARTIAL_OR_INCONSISTENT,
+                    f"STATE_VALIDATION_FAILED:{error.code}",
+                    error.message,
+                )
+            if persistent_state.project_id != current_configuration.project_id:
+                return _preparation_from_profile(
+                    profile,
+                    AdoptionStatus.PARTIAL_OR_INCONSISTENT,
+                    "STATE_PROJECT_BINDING_MISMATCH",
+                    "ProjectState does not belong to the configured project",
+                )
+
         try:
             plan = self._planner.plan(
                 profile,
@@ -217,6 +244,7 @@ class ExistingRepositoryAdoption:
             raise TypeError("apply_adoption requires AdoptionPreparation")
         plan = preparation.initialization_plan
         configuration = preparation.project_configuration
+        profile = preparation.repository_profile
         if (
             preparation.status
             not in {
@@ -225,12 +253,25 @@ class ExistingRepositoryAdoption:
             }
             or plan is None
             or configuration is None
+            or profile is None
             or plan.desired_configuration != configuration
         ):
             return _result_without_application(
                 preparation,
                 "PREPARATION_NOT_APPLICABLE",
                 "prepare_adoption must yield an applicable exact plan",
+            )
+        if (
+            preparation.repository_root != profile.requested_root
+            or preparation.repository_root != plan.repository.repository_root
+            or self._planner.fingerprint(profile) != plan.profile_fingerprint
+            or preparation.required_human_confirmations
+            != plan.required_human_confirmations
+        ):
+            return _result_without_application(
+                preparation,
+                "PREPARATION_BINDING_MISMATCH",
+                "preparation, profile, plan, and repository identity must match",
             )
 
         initialization = self._initializer.apply(

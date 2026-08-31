@@ -10,11 +10,17 @@
     "evidence",
     "gates",
     "certifications",
-    "audit_events"
+    "audit_events",
+    "project_id"
   ],
   "properties": {
     "schema_version": {
       "const": "1.0"
+    },
+    "project_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 128
     },
     "user_stories": {
       "type": "array",

@@ -227,6 +227,7 @@ def test_initialize_creates_only_canonical_empty_state(tmp_path: Path) -> None:
 
     assert to_dict(state) == {
         "schema_version": "1.0",
+        "project_id": None,
         "user_stories": [],
         "evidence": [],
         "gates": [],
@@ -239,6 +240,31 @@ def test_initialize_creates_only_canonical_empty_state(tmp_path: Path) -> None:
         ".agentic-engineering-os",
         ".agentic-engineering-os/state.json",
     ]
+
+
+def test_project_binding_cannot_change_during_authoritative_save(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStateStore(tmp_path)
+    current = store.initialize(project_id="project-a")
+    candidate = replace(current, project_id="project-b")
+    authorization = _issue_authoritative_write(
+        store_kind="PROJECT_STATE",
+        store=store,
+        before_state=current,
+        candidate_state=candidate,
+        operation="TEST_BINDING_CHANGE",
+    )
+
+    with pytest.raises(PersistenceError) as refused:
+        store.save(
+            candidate,
+            authorization=authorization,
+            operation="TEST_BINDING_CHANGE",
+        )
+
+    assert refused.value.code == "PROJECT_BINDING_IMMUTABLE"
+    assert store.load().project_id == "project-a"
 
 
 def test_save_load_round_trip_preserves_all_five_categories(tmp_path: Path) -> None:

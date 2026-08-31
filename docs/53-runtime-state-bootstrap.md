@@ -40,6 +40,9 @@ footprint partiel et bloque le bootstrap.
 Le bootstrap délègue exclusivement la création à `ProjectStateStore`. L'état
 initial est au schéma canonique et contient zéro User Story, Evidence, Gate,
 Certification et AuditEvent. Aucune approbation Human n'est créée ou inférée.
+Il porte le `project_id` de la configuration canonique ; ce binding est
+immuable lors des écritures autoritatives. Un state lié à un autre projet rend
+le repository incohérent plutôt que `ADOPTED`.
 
 Un état existant valide produit `ALREADY_BOOTSTRAPPED` sans réécriture. Un état
 corrompu ou dangereux bloque l'opération ; une version inconnue exige une voie

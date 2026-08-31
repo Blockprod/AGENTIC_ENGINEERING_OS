@@ -238,7 +238,7 @@ class RuntimeStateBootstrap:
         store = ProjectStateStore(root)
         if state_observation.status is DocumentStatus.VERSION_OBSERVED:
             try:
-                store.load()
+                loaded = store.load()
             except PersistenceError as error:
                 return _refused(
                     root,
@@ -247,6 +247,15 @@ class RuntimeStateBootstrap:
                     before_fingerprint,
                     before_facts,
                     f"STATE_VALIDATION_FAILED:{error.code}",
+                )
+            if loaded.project_id != project_configuration.project_id:
+                return _refused(
+                    root,
+                    current,
+                    expected_fingerprint,
+                    before_fingerprint,
+                    before_facts,
+                    "STATE_PROJECT_BINDING_MISMATCH",
                 )
             return _success_result(
                 root,
@@ -311,10 +320,12 @@ class RuntimeStateBootstrap:
 
         created = False
         try:
-            initialized = store.initialize()
+            initialized = store.initialize(project_id=project_configuration.project_id)
             created = True
             loaded = store.load()
-            if not _canonical_empty(initialized) or not _canonical_empty(loaded):
+            if not _canonical_empty(
+                initialized, project_configuration.project_id
+            ) or not _canonical_empty(loaded, project_configuration.project_id):
                 raise PersistenceError(
                     "NON_EMPTY_BOOTSTRAP_STATE",
                     "ProjectStateStore did not return canonical empty state",
@@ -434,10 +445,11 @@ def _resolve_root(value: Path | str) -> tuple[Path | None, str | None]:
     return resolved, None
 
 
-def _canonical_empty(state: ProjectState) -> bool:
+def _canonical_empty(state: ProjectState, project_id: str) -> bool:
     return (
         isinstance(state, ProjectState)
         and state.schema_version == SCHEMA_VERSION
+        and state.project_id == project_id
         and not state.user_stories
         and not state.evidence
         and not state.gates

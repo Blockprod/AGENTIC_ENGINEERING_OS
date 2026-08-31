@@ -2,8 +2,16 @@
 
 ## Installation et ressources
 
-Le package expose l'entrypoint installé `agentic-os`. Il embarque les schémas
-JSON, contrats de rôles et documents d'autorité nécessaires au runtime P1–P4.
+Le package expose deux chemins vers la même implémentation `cli.main` :
+
+- invocation portable canonique :
+  `<environment-python> -m agentic_engineering_os` ;
+- console script de commodité : `agentic-os`, lorsque la politique de la
+  plateforme autorise son exécution.
+
+L'interpréteur canonique est toujours celui de l'environnement où le wheel est
+installé. Le package embarque les schémas JSON, contrats de rôles et documents
+d'autorité nécessaires au runtime P1–P4.
 Ces ressources sont résolues par `importlib.resources` et ne dépendent ni du
 cwd, ni d'un checkout `AGENTIC_ENGINEERING_OS`, ni de copies dans le repository
 cible. `AGENTS.md` et les sources cognitives configurées restent locaux au
@@ -12,11 +20,11 @@ projet.
 ## Surface fermée
 
 ```text
-agentic-os inspect
-agentic-os status
-agentic-os plan
-agentic-os init [--apply]
-agentic-os upgrade [--apply]
+<environment-python> -m agentic_engineering_os inspect
+<environment-python> -m agentic_engineering_os status
+<environment-python> -m agentic_engineering_os plan
+<environment-python> -m agentic_engineering_os init [--apply]
+<environment-python> -m agentic_engineering_os upgrade [--apply]
 ```
 
 Chaque commande accepte `--repository` et `--json`. `plan` et `init` acceptent
@@ -56,6 +64,15 @@ est compact et machine-readable. Les services restent la source du statut.
 Les erreurs ne rendent jamais un succès. Les chemins traversants, repositories
 ou configurations via symlink, versions inconnues et états partiels sont
 traités fail-closed.
+
+## Politique d'exécution de la plateforme
+
+La disponibilité du shim `agentic-os.exe` n'est pas garantie sous toutes les
+politiques de contrôle d'applications d'entreprise. L'installation est prête si
+au moins un chemin supporté et légitime est compatible avec la politique de
+l'hôte. L'invocation portable utilise explicitement le Python autorisé du venv ;
+elle ne cherche jamais un autre interpréteur et ne constitue pas un mécanisme de
+contournement. Le shim reste packagé pour les plateformes qui l'autorisent.
 
 P5.10 n'ajoute ni validation multi-repository, ni certification Phase 5, ni
 commande de mission, scheduler ou exécution shell générique.

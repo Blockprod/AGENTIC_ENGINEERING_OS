@@ -1,9 +1,10 @@
 # Validation de déploiement multi-repository
 
 P5.11 valide le produit packagé, installé dans un environnement virtuel propre,
-depuis un répertoire extérieur au checkout source. La campagne utilise uniquement
-des repositories Git temporaires et n'exécute aucune commande découverte dans un
-projet cible.
+depuis un répertoire extérieur au checkout source. La campagne utilise
+l'invocation portable canonique `<environment-python> -m agentic_engineering_os`,
+uniquement des repositories Git temporaires, et n'exécute aucune commande
+découverte dans un projet cible.
 
 ## Matrice et résultats attendus
 

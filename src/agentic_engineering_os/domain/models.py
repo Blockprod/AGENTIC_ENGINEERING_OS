@@ -139,6 +139,7 @@ class ProjectState:
     gates: list[Gate] = field(default_factory=list)
     certifications: list[Certification] = field(default_factory=list)
     audit_events: list[AuditEvent] = field(default_factory=list)
+    project_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

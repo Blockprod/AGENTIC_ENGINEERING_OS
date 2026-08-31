@@ -170,7 +170,7 @@ def _remove_tree(path: Path) -> None:
 
 
 def installed_cli_arguments(product: InstalledProduct) -> list[str]:
-    return [str(product.executable)]
+    return [str(product.python), "-m", "agentic_engineering_os"]
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -738,6 +738,81 @@ def test_supported_and_unsupported_upgrade_paths_are_explicit(
         item["code"] == "UNSUPPORTED_MIGRATION"
         for item in unsupported_plan["result"]["blockers"]
     )
+
+
+def test_installed_product_refuses_cross_repository_authority(
+    product: InstalledProduct,
+) -> None:
+    first = repository(product, "cross-first", agents=b"# First user rules\n")
+    second = repository(product, "cross-second", agents=b"# Second user rules\n")
+    migration_first = repository(
+        product, "migration-first", agents=AGENTS_V1.encode("utf-8")
+    )
+    migration_second = repository(
+        product, "migration-second", agents=AGENTS_V1.encode("utf-8")
+    )
+    first_config = configuration(product, "cross-first")
+    second_config = configuration(product, "cross-second")
+    script = "\n".join(
+        (
+            "import json, sys",
+            "from dataclasses import replace",
+            "from pathlib import Path",
+            "from agentic_engineering_os.application import ExistingRepositoryAdoption, UpgradePlanner",
+            "from agentic_engineering_os.domain import HumanOperationConfirmation",
+            "from agentic_engineering_os.infrastructure import ProjectConfigurationValidator, RepositoryUpgradeService",
+            "a, b, ca, cb, ma, mb = map(Path, sys.argv[1:7])",
+            "validator = ProjectConfigurationValidator()",
+            "service = ExistingRepositoryAdoption()",
+            "pa = service.prepare_adoption(a, validator.parse(ca.read_text(encoding='utf-8')))",
+            "pb = service.prepare_adoption(b, validator.parse(cb.read_text(encoding='utf-8')))",
+            "opa = next(item for item in pa.initialization_plan.operations if item.human_confirmation_required)",
+            "confirmation_a = HumanOperationConfirmation(pa.initialization_plan.input_fingerprint, opa.operation_id, opa.target_path, opa.expected_current_state, opa.expected_target_fingerprint, 'Human/Alice')",
+            "wrong_confirmation = service.apply_adoption(pb, human_confirmations=(confirmation_a,))",
+            "foreign_preparation = service.apply_adoption(replace(pa, repository_root=str(b)), human_confirmations=(confirmation_a,))",
+            "upgrade_a = UpgradePlanner().plan(ma)",
+            "foreign_upgrade = RepositoryUpgradeService().apply(replace(upgrade_a, repository_root=str(mb)))",
+            "print(json.dumps({'confirmation': wrong_confirmation.status.value, 'preparation': foreign_preparation.status.value, 'migration': foreign_upgrade.status.value}))",
+        )
+    )
+    result = _run(
+        [
+            str(product.python),
+            "-c",
+            script,
+            str(first),
+            str(second),
+            str(first_config),
+            str(second_config),
+            str(migration_first),
+            str(migration_second),
+        ],
+        cwd=product.base / "outside-cwd",
+        env=product.child_environment,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "confirmation": "BLOCKED",
+        "migration": "REFUSED",
+        "preparation": "BLOCKED",
+    }
+
+    clean_first = repository(product, "state-first")
+    clean_second = repository(product, "state-second")
+    adopt(product, clean_first, configuration(product, "state-first"))
+    adopt(product, clean_second, configuration(product, "state-second"))
+    git(clean_first, "add", ".")
+    git(clean_first, "commit", "-m", "adopt first")
+    git(clean_second, "add", ".")
+    git(clean_second, "commit", "-m", "adopt second")
+    first_state = clean_first / ".agentic-engineering-os/state.json"
+    second_state = clean_second / ".agentic-engineering-os/state.json"
+    second_state.write_bytes(first_state.read_bytes())
+    git(clean_second, "add", ".")
+    git(clean_second, "commit", "-m", "swap foreign state")
+    code, payload, _ = cli(product, clean_second, "status")
+    assert code == 2
+    assert payload["status"] == "PARTIAL_OR_INCONSISTENT"
 
 
 def test_cli_security_attacks_fail_closed_without_project_execution(

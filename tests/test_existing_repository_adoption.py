@@ -241,6 +241,25 @@ def test_stale_plan_and_unrelated_dirty_handoff_are_refused(tmp_path: Path) -> N
     assert not ProjectStateStore(root2).state_path.exists()
 
 
+def test_cross_repository_preparation_is_refused_before_any_write(
+    tmp_path: Path,
+) -> None:
+    first = existing_repository(tmp_path / "first", agents="# First user rules\n")
+    second = existing_repository(tmp_path / "second", agents="# Second user rules\n")
+    service = ExistingRepositoryAdoption()
+    preparation = service.prepare_adoption(first, configuration("first"))
+    forged = replace(preparation, repository_root=str(second))
+
+    result = service.apply_adoption(
+        forged, human_confirmations=confirmations(preparation)
+    )
+
+    assert result.status is AdoptionStatus.BLOCKED
+    assert result.findings[0].code == "PREPARATION_BINDING_MISMATCH"
+    assert not (first / ".agentic-engineering-os").exists()
+    assert not (second / ".agentic-engineering-os").exists()
+
+
 def test_dirty_invalid_configuration_and_unknown_config_are_classified(
     tmp_path: Path,
 ) -> None:
@@ -326,7 +345,7 @@ def test_runtime_failure_remains_observable_without_rollback(
     service = ExistingRepositoryAdoption()
     preparation = service.prepare_adoption(root, configuration())
 
-    def fail_initialize(store: ProjectStateStore):
+    def fail_initialize(store: ProjectStateStore, **_kwargs):
         raise PersistenceError("WRITE_FAILED", "simulated")
 
     monkeypatch.setattr(ProjectStateStore, "initialize", fail_initialize)
