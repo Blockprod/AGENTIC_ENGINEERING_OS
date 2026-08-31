@@ -24,6 +24,8 @@ from .repository_reconnaissance import (
 )
 from .repository_initializer import RepositoryInitializer
 from .runtime_state_bootstrap import RuntimeStateBootstrap
+from .migration_registry import MigrationRegistryError, RepositoryMigrationRegistry
+from .repository_upgrade_service import RepositoryUpgradeService
 from .project_state_store import PersistenceError, ProjectStateStore
 from .project_configuration import (
     CONFIG_DIRECTORY,
@@ -69,6 +71,9 @@ __all__ = [
     "RepositoryReconnaissanceError",
     "RepositoryInitializer",
     "RuntimeStateBootstrap",
+    "MigrationRegistryError",
+    "RepositoryMigrationRegistry",
+    "RepositoryUpgradeService",
     "WorktreeInspection",
     "WorktreeManager",
     "WorktreeManagerError",

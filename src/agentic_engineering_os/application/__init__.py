@@ -128,6 +128,7 @@ from .initialization_planner import (
     InitializationPlanningError,
 )
 from .existing_repository_adoption import ExistingRepositoryAdoption
+from .upgrade_planner import UpgradePlanner
 from .merge_coordinator import (
     MergeContext,
     MergeCoordinationError,
@@ -334,6 +335,7 @@ __all__ = [
     "InitializationPlanner",
     "InitializationPlanningError",
     "ExistingRepositoryAdoption",
+    "UpgradePlanner",
     "InvalidJsonlLine",
     "MergeContext",
     "MergeCoordinationError",
