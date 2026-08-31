@@ -103,6 +103,12 @@ from .runtime_bootstrap import (
     RuntimeFileFact,
     RuntimeStoreDisposition,
 )
+from .repository_adoption import (
+    AdoptionFinding,
+    AdoptionPreparation,
+    AdoptionResult,
+    AdoptionStatus,
+)
 from .repository_initialization import (
     HumanOperationConfirmation,
     InitializationApplyFinding,
@@ -184,6 +190,10 @@ __all__ = [
     "ReadinessClassification",
     "ReadinessSnapshot",
     "RiskLevel",
+    "AdoptionFinding",
+    "AdoptionPreparation",
+    "AdoptionResult",
+    "AdoptionStatus",
     "RuntimeBootstrapFinding",
     "RuntimeBootstrapResult",
     "RuntimeBootstrapStatus",

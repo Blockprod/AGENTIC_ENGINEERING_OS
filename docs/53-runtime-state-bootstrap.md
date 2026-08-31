@@ -12,7 +12,10 @@ fichier du repository et un `RepositoryProfile` courant, rattaché au même
 chemin et à la même identité Git. Le repository doit être conforme aux étapes
 P5.5/P5.6, sans footprint runtime partiel ni version inconnue. Lorsque la
 configuration exige un Git propre, cette condition s'applique à la première
-création.
+création. Le seul handoff dirty admis est un `InitializationResult` P5.5
+`APPLIED` dont l'identité Git, l'empreinte finale et l'ensemble exact des
+chemins structurels modifiés sont reconstruits et vérifiés. Ce handoff ne
+constitue pas un paramètre général de contournement de la propreté Git.
 
 Le profil est reconstruit et comparé exactement avant l'action, puis la
 fraîcheur et l'identité Git sont contrôlées une seconde fois juste avant

@@ -127,6 +127,7 @@ from .initialization_planner import (
     InitializationPlanner,
     InitializationPlanningError,
 )
+from .existing_repository_adoption import ExistingRepositoryAdoption
 from .merge_coordinator import (
     MergeContext,
     MergeCoordinationError,
@@ -332,6 +333,7 @@ __all__ = [
     "IntegrationWorktreeManagerPort",
     "InitializationPlanner",
     "InitializationPlanningError",
+    "ExistingRepositoryAdoption",
     "InvalidJsonlLine",
     "MergeContext",
     "MergeCoordinationError",

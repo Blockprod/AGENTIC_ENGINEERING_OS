@@ -13,7 +13,10 @@ from typing import Any
 from agentic_engineering_os.domain import (
     AgenticOsInitializationState,
     DocumentStatus,
+    InitializationApplyStatus,
+    InitializationResult,
     MissionStateGitPolicy,
+    OperationApplyStatus,
     ProjectConfiguration,
     ProjectState,
     RepositoryProfile,
@@ -61,6 +64,9 @@ _VOLATILE_IGNORE_PROBES = (
     f"{STATE_DIRECTORY}/executions.json",
     f"{STATE_DIRECTORY}/.executions.bootstrap-check.tmp",
 )
+_STRUCTURAL_HANDOFF_PATHS = frozenset(
+    {_CONFIG_PATH, "AGENTS.md", ".gitignore"}
+)
 
 
 class RuntimeStateBootstrap:
@@ -85,6 +91,7 @@ class RuntimeStateBootstrap:
         project_configuration: ProjectConfiguration,
         *,
         expected_profile: RepositoryProfile,
+        initialization_result: InitializationResult | None = None,
     ) -> RuntimeBootstrapResult:
         """Validate freshness and initialize state through ProjectStateStore only."""
 
@@ -263,14 +270,22 @@ class RuntimeStateBootstrap:
         if project_configuration.codex_constraints.require_clean_git and not (
             current.git.clean.value is True and baseline_git.clean
         ):
-            return _refused(
+            handoff_error = _structural_handoff_error(
                 root,
                 current,
-                expected_fingerprint,
                 before_fingerprint,
-                before_facts,
-                "DIRTY_REPOSITORY",
+                baseline_git,
+                initialization_result,
             )
+            if handoff_error is not None:
+                return _refused(
+                    root,
+                    current,
+                    expected_fingerprint,
+                    before_fingerprint,
+                    before_facts,
+                    handoff_error,
+                )
 
         try:
             immediate = self._reconnaissance.inspect(root)
@@ -429,6 +444,48 @@ def _canonical_empty(state: ProjectState) -> bool:
         and not state.certifications
         and not state.audit_events
     )
+
+
+def _structural_handoff_error(
+    root: Path,
+    profile: RepositoryProfile,
+    profile_fingerprint: str | None,
+    git_state: GitReadOnlyState,
+    result: InitializationResult | None,
+) -> str | None:
+    """Authorize only the exact dirty footprint produced by a successful initializer."""
+
+    if not isinstance(result, InitializationResult):
+        return "DIRTY_REPOSITORY"
+    if (
+        result.status is not InitializationApplyStatus.APPLIED
+        or result.findings
+        or _path_key(Path(result.repository_root)) != _path_key(root)
+        or result.profile_fingerprint_after != profile_fingerprint
+        or result.git_head_before != git_state.head_commit
+        or result.git_head_after != git_state.head_commit
+        or result.initialization_state_after
+        is not AgenticOsInitializationState.INITIALIZED
+    ):
+        return "INVALID_INITIALIZATION_HANDOFF"
+    applied_paths = {
+        item.target_path
+        for item in result.operation_results
+        if item.status is OperationApplyStatus.APPLIED
+        and item.target_path in _STRUCTURAL_HANDOFF_PATHS
+    }
+    if not applied_paths or any(
+        item.status not in {OperationApplyStatus.APPLIED, OperationApplyStatus.NO_OP}
+        for item in result.operation_results
+    ):
+        return "INVALID_INITIALIZATION_HANDOFF"
+    try:
+        changed_paths = set(GitAdapter(root).worktree_changed_paths(root))
+    except GitOperationError:
+        return "INITIALIZATION_HANDOFF_GIT_STATE_UNKNOWN"
+    if changed_paths != applied_paths:
+        return "INITIALIZATION_HANDOFF_DIRTY_PATH_MISMATCH"
+    return None
 
 
 def _runtime_facts(profile: RepositoryProfile | None) -> tuple[RuntimeFileFact, ...]:
