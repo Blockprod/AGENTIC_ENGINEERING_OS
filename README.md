@@ -11,7 +11,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
 Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `CERTIFIED / CLOSED` ;
-Phase 6 — `IN PROGRESS — P6.7`
+Phase 6 — `IN PROGRESS — P6.8`
 
 Documentation :
 
@@ -85,4 +85,5 @@ Documentation :
 - [Health Evaluation Engine](docs/64-health-evaluation-engine.md)
 - [Governance Policy Model](docs/65-governance-policy-model.md)
 - [Resource & Concurrency Budgets](docs/66-resource-concurrency-budgets.md)
+- [Incident & Escalation Management](docs/67-incident-escalation-management.md)
 - [JSON Schemas V1](schemas/README.md)

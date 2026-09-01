@@ -54,6 +54,12 @@ from .worktree_manager import (
     WorktreeReconciliation,
 )
 from .worktree_registry_store import WorktreeRegistryStore
+from .incident_event_journal import (
+    IncidentEventJournal,
+    IncidentEventJournalError,
+    incident_record_from_operational_event,
+    incident_record_to_operational_event,
+)
 
 __all__ = [
     "AgentsIntegrationError",
@@ -101,4 +107,8 @@ __all__ = [
     "WorktreeManagerError",
     "WorktreeReconciliation",
     "WorktreeRegistryStore",
+    "IncidentEventJournal",
+    "IncidentEventJournalError",
+    "incident_record_from_operational_event",
+    "incident_record_to_operational_event",
 ]

@@ -149,6 +149,7 @@ from .resource_budget import (
     ResourceBudgetEvaluationError,
     ResourceBudgetEvaluator,
 )
+from .incident_manager import IncidentManagementError, IncidentManager
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -336,6 +337,8 @@ __all__ = [
     "BoundedStorageUsageObserver",
     "ResourceBudgetEvaluationError",
     "ResourceBudgetEvaluator",
+    "IncidentManagementError",
+    "IncidentManager",
     "ImplementerInput",
     "ImplementerInputError",
     "ImplementerResult",
