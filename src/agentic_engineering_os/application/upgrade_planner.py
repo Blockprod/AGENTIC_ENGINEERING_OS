@@ -26,6 +26,14 @@ from agentic_engineering_os.infrastructure.migration_registry import (
 from agentic_engineering_os.infrastructure.agents_integration import (
     AgentsIntegrationService,
 )
+from agentic_engineering_os.infrastructure.maintenance_state_store import (
+    MaintenanceStateStore,
+)
+from agentic_engineering_os.infrastructure.project_configuration import (
+    ProjectConfigurationError,
+    ProjectConfigurationLoader,
+)
+from agentic_engineering_os.infrastructure.project_state_store import PersistenceError
 from agentic_engineering_os.infrastructure.repository_reconnaissance import (
     RepositoryReconnaissance,
     RepositoryReconnaissanceError,
@@ -41,6 +49,7 @@ _ARTIFACT_BY_RUNTIME_PATH = {
     ".agentic-engineering-os/worktrees.json": MigrationArtifact.WORKTREE_REGISTRY,
     ".agentic-engineering-os/negative-outcomes.json": MigrationArtifact.NEGATIVE_OUTCOME_LEDGER,
     ".agentic-engineering-os/executions.json": MigrationArtifact.EXECUTION_LEDGER,
+    ".agentic-engineering-os/maintenance.json": MigrationArtifact.MAINTENANCE_STATE,
 }
 _ORDER = {
     MigrationArtifact.AGENTS_MANAGED_SECTION: 10,
@@ -145,7 +154,14 @@ class UpgradePlanner:
         target_by_artifact = {item.artifact: item.current_version for item in targets}
         for observation in profile.agentic_os.runtime_files:
             artifact = _ARTIFACT_BY_RUNTIME_PATH[observation.relative_path]
-            if observation.status is DocumentStatus.UNKNOWN_VERSION:
+            if (
+                artifact is MigrationArtifact.MAINTENANCE_STATE
+                and observation.status is DocumentStatus.VERSION_OBSERVED
+            ):
+                maintenance_finding = _maintenance_validation_finding(root)
+                if maintenance_finding is not None:
+                    blockers.append(maintenance_finding)
+            elif observation.status is DocumentStatus.UNKNOWN_VERSION:
                 self._append_step(
                     root,
                     artifact,
@@ -365,6 +381,30 @@ def _sha256(value: bytes) -> str:
 
 def _error_code(error: object) -> str:
     return str(getattr(error, "code", type(error).__name__))
+
+
+def _maintenance_validation_finding(root: Path) -> UpgradeFinding | None:
+    target = ".agentic-engineering-os/maintenance.json"
+    try:
+        record = MaintenanceStateStore(root).load()
+        configuration = ProjectConfigurationLoader(root).load()
+    except (PersistenceError, ProjectConfigurationError, OSError) as error:
+        return UpgradeFinding(
+            "CORRUPT_SOURCE_ARTIFACT",
+            target,
+            f"maintenance state validation failed: {_error_code(error)}",
+        )
+    expected_root = os.path.normcase(str(root.resolve(strict=True)))
+    actual_root = os.path.normcase(
+        str(Path(record.scope.repository_root).resolve(strict=False))
+    )
+    if actual_root != expected_root or record.scope.project_id != configuration.project_id:
+        return UpgradeFinding(
+            "FOREIGN_RUNTIME_ARTIFACT",
+            target,
+            "maintenance state is not bound to this repository and project",
+        )
+    return None
 
 
 def _json_default(value: object) -> object:

@@ -30,6 +30,8 @@ l'écriture. Il n'existe aucun re-planning implicite.
 | `.agentic-engineering-os/worktrees.json` | `LAZY_INITIALIZED_ON_FIRST_USE` | Aucun registre n'est nécessaire sans worktree planifié. |
 | `.agentic-engineering-os/negative-outcomes.json` | `LAZY_INITIALIZED_ON_FIRST_USE` | Aucun ledger n'est nécessaire sans résultat négatif. |
 | `.agentic-engineering-os/executions.json` | `LAZY_INITIALIZED_ON_FIRST_USE` | Aucun ledger n'est nécessaire sans requête d'exécution. |
+| `.agentic-engineering-os/maintenance.json` | `LAZY_INITIALIZED_ON_FIRST_USE` | L'état de maintenance n'existe qu'après son initialisation explicite par le service de gouvernance. |
+| `.agentic-engineering-os/operational-events/` | `LAZY_INITIALIZED_ON_FIRST_USE` | Le journal append-oriented possède son propre contrat de stockage et n'est pas un document JSON migré par l'UpgradePlanner. |
 
 L'absence des stores lazy et de `mission.json` est donc l'état canonique d'un
 repository prêt mais idle. Leur présence sans `state.json` constitue un

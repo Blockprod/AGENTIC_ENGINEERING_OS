@@ -312,6 +312,26 @@ def test_wrong_generation_source_is_refused(tmp_path: Path) -> None:
         service.evaluate(wrong, MaintenanceOperation.START_ROLE_EXECUTION)
 
 
+def test_wrong_project_or_repository_bound_state_is_refused(tmp_path: Path) -> None:
+    _, service, _ = _service(tmp_path)
+    context = _context(tmp_path)
+    wrong_project = replace(
+        context,
+        scope=MaintenanceScope("project-two", str(tmp_path.resolve())),
+    )
+    with pytest.raises(MaintenanceGovernanceError, match="STATE_SCOPE_MISMATCH"):
+        service.evaluate(wrong_project, MaintenanceOperation.START_ROLE_EXECUTION)
+
+    other = tmp_path / "other"
+    other.mkdir()
+    wrong_repository = replace(
+        context,
+        scope=MaintenanceScope(PROJECT, str(other.resolve())),
+    )
+    with pytest.raises(MaintenanceGovernanceError, match="REPOSITORY_MISMATCH"):
+        service.evaluate(wrong_repository, MaintenanceOperation.START_ROLE_EXECUTION)
+
+
 def test_corruption_and_missing_expected_state_fail_closed(tmp_path: Path) -> None:
     store = MaintenanceStateStore(tmp_path)
     with pytest.raises(PersistenceError, match="MAINTENANCE_STATE_ABSENT"):

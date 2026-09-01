@@ -11,6 +11,7 @@ from agentic_engineering_os.application.execution_state import EXECUTION_LEDGER_
 from agentic_engineering_os.domain import (
     AGENTS_MANAGED_SECTION,
     AGENTS_MANAGED_SECTION_VERSION,
+    MAINTENANCE_SCHEMA_VERSION,
     MigrationArtifact,
 )
 
@@ -117,6 +118,7 @@ class RepositoryMigrationRegistry:
             (MigrationArtifact.WORKTREE_REGISTRY, WORKTREE_REGISTRY_VERSION, False, True),
             (MigrationArtifact.NEGATIVE_OUTCOME_LEDGER, "2.0", False, True),
             (MigrationArtifact.EXECUTION_LEDGER, EXECUTION_LEDGER_VERSION, False, True),
+            (MigrationArtifact.MAINTENANCE_STATE, MAINTENANCE_SCHEMA_VERSION, False, True),
         )
 
     def definition(

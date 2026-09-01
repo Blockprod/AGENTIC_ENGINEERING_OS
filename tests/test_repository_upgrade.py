@@ -2,16 +2,19 @@ import hashlib
 import json
 import subprocess
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 import agentic_engineering_os.infrastructure.repository_upgrade_service as service_module
-from agentic_engineering_os.application import UpgradePlanner
+from agentic_engineering_os.application import MaintenanceGovernanceService, UpgradePlanner
 from agentic_engineering_os.domain import (
     AGENTS_MANAGED_SECTION,
     GITIGNORE_MANAGED_SECTION,
     HumanUpgradeConfirmation,
+    MaintenanceInitializationRequest,
+    MaintenanceScope,
     MigrationArtifact,
     MissionStateGitPolicy,
     ProjectConfiguration,
@@ -21,6 +24,7 @@ from agentic_engineering_os.domain import (
 )
 from agentic_engineering_os.infrastructure import (
     AgentsIntegrationService,
+    MaintenanceStateStore,
     ProjectConfigurationValidator,
     ProjectStateStore,
     RepositoryMigrationRegistry,
@@ -136,6 +140,24 @@ def confirmations(plan, producer: str = "Human/Alice"):
     )
 
 
+def initialize_maintenance(
+    root: Path, *, project_id: str = "upgrade-target"
+) -> bytes:
+    head = git(root, "rev-parse", "HEAD")
+    service = MaintenanceGovernanceService(MaintenanceStateStore(root))
+    service.initialize(
+        MaintenanceInitializationRequest(
+            MaintenanceScope(project_id, str(root.resolve())),
+            head,
+            None,
+            None,
+            datetime(2026, 9, 1, 16, 0, tzinfo=timezone.utc),
+            "Human/Alice",
+        )
+    )
+    return (root / ".agentic-engineering-os/maintenance.json").read_bytes()
+
+
 def test_agents_v1_to_v2_requires_human_and_preserves_user_bytes_and_backup(
     tmp_path: Path,
 ) -> None:
@@ -245,6 +267,122 @@ def test_already_current_is_noop_and_package_import_does_not_mutate(
         for path in root.rglob("*")
         if path.is_file() and ".git" not in path.parts
     } == before
+
+
+def test_absent_or_current_maintenance_state_is_known_and_never_mutated(
+    tmp_path: Path,
+) -> None:
+    root = repository(tmp_path)
+
+    absent = UpgradePlanner().plan(root)
+    assert absent.status is UpgradePlanStatus.ALREADY_CURRENT
+    assert not absent.steps
+
+    maintenance_before = initialize_maintenance(root)
+    current = UpgradePlanner().plan(root)
+    result = RepositoryUpgradeService().apply(current)
+
+    target = next(
+        item
+        for item in current.target_versions
+        if item.artifact is MigrationArtifact.MAINTENANCE_STATE
+    )
+    assert (target.current_version, target.versioned_in_git, target.volatile) == (
+        "1.0",
+        False,
+        True,
+    )
+    assert current.status is UpgradePlanStatus.ALREADY_CURRENT
+    assert not current.steps
+    assert result.status is UpgradeResultStatus.ALREADY_CURRENT
+    assert (
+        root / ".agentic-engineering-os/maintenance.json"
+    ).read_bytes() == maintenance_before
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_code"),
+    [
+        ('{"schema_version":"99.0"}', "UNSUPPORTED_MIGRATION"),
+        ('{"schema_version":"1.0",', "CORRUPT_SOURCE_ARTIFACT"),
+    ],
+)
+def test_unknown_or_corrupt_maintenance_state_blocks_without_replacement(
+    tmp_path: Path,
+    content: str,
+    expected_code: str,
+) -> None:
+    root = repository(tmp_path)
+    path = root / ".agentic-engineering-os/maintenance.json"
+    path.write_text(content, encoding="utf-8")
+    before = path.read_bytes()
+
+    plan = UpgradePlanner().plan(root)
+
+    assert plan.status is UpgradePlanStatus.BLOCKED
+    assert any(item.code == expected_code for item in plan.blockers)
+    assert not any(
+        item.artifact is MigrationArtifact.MAINTENANCE_STATE for item in plan.steps
+    )
+    assert path.read_bytes() == before
+
+
+def test_structurally_invalid_maintenance_state_blocks_without_replacement(
+    tmp_path: Path,
+) -> None:
+    root = repository(tmp_path)
+    path = root / ".agentic-engineering-os/maintenance.json"
+    path.write_text('{"schema_version":"1.0"}', encoding="utf-8")
+    before = path.read_bytes()
+
+    plan = UpgradePlanner().plan(root)
+
+    assert plan.status is UpgradePlanStatus.BLOCKED
+    assert any(item.code == "CORRUPT_SOURCE_ARTIFACT" for item in plan.blockers)
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("binding", ["project", "repository"])
+def test_foreign_maintenance_binding_is_refused_without_replacement(
+    tmp_path: Path, binding: str
+) -> None:
+    root = repository(tmp_path)
+    path = root / ".agentic-engineering-os/maintenance.json"
+    if binding == "project":
+        initialize_maintenance(root, project_id="foreign-project")
+    else:
+        other = repository(tmp_path / "other")
+        foreign = initialize_maintenance(other)
+        path.write_bytes(foreign)
+    before = path.read_bytes()
+
+    plan = UpgradePlanner().plan(root)
+
+    assert plan.status is UpgradePlanStatus.BLOCKED
+    assert any(item.code == "FOREIGN_RUNTIME_ARTIFACT" for item in plan.blockers)
+    assert path.read_bytes() == before
+
+
+def test_maintenance_state_symlink_substitution_blocks_upgrade_inspection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = repository(tmp_path)
+    path = root / ".agentic-engineering-os/maintenance.json"
+    original_is_symlink = Path.is_symlink
+    monkeypatch.setattr(
+        Path,
+        "is_symlink",
+        lambda candidate: candidate == path or original_is_symlink(candidate),
+    )
+
+    plan = UpgradePlanner().plan(root)
+
+    assert plan.status is UpgradePlanStatus.BLOCKED
+    assert any(
+        item.code == "CORRUPT_SOURCE_ARTIFACT"
+        and item.target_path == ".agentic-engineering-os/maintenance.json"
+        for item in plan.blockers
+    )
 
 
 def test_replan_after_success_is_current_and_old_plan_replay_is_refused(
@@ -406,6 +544,10 @@ def test_closed_registry_has_only_real_edges_and_no_generic_migrate_api() -> Non
     )
     assert (
         registry.definition(MigrationArtifact.EXECUTION_LEDGER, "1.0", "1.1")
+        is None
+    )
+    assert (
+        registry.definition(MigrationArtifact.MAINTENANCE_STATE, "0.9", "1.0")
         is None
     )
     assert not hasattr(registry, "migrate")

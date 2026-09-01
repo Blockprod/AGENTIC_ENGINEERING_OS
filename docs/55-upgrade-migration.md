@@ -21,10 +21,13 @@ inspect → plan → confirmation Human → backup → apply → validate
 | `worktrees.json` | `1.0` | aucun | ignoré | oui | aucune | version incompatible refusée |
 | `negative-outcomes.json` | `2.0` | `1.0` | ignoré | oui | `1.0 → 2.0` | exige explicitement une migration `2.0` |
 | `executions.json` | `1.1` | `1.0` | ignoré | oui | non supportée | ancienne version refusée |
+| `maintenance.json` | `1.0` | aucun | ignoré | oui | aucune | absence lazy admise ; version inconnue ou forme invalide refusée |
 
-Les autres contrats JSON sont des entrées/sorties, ressources de validation ou
-objets contenus dans `ProjectState`; ils ne constituent pas des stores
-supplémentaires du footprint d'adoption.
+Le répertoire `operational-events/` suit le contrat append-oriented de
+`OperationalEventStore`; ce n'est pas un document JSON versionné pris en charge
+par `UpgradePlanner`. Les autres contrats JSON sont des entrées/sorties,
+ressources de validation ou objets contenus dans `ProjectState`; ils ne
+constituent pas des stores supplémentaires du footprint d'adoption.
 
 `executions.json 1.0 → 1.1` n'est pas supporté : `1.1` ajoute les chemins Git
 modifiés à chaque observation. Pour une ancienne observation dirty, ces faits
@@ -46,8 +49,11 @@ Le registre contient exactement :
 - `AGENTS_MANAGED_SECTION: 1 → 2` ;
 - `NEGATIVE_OUTCOME_LEDGER: 1.0 → 2.0`.
 
-Aucune chaîne implicite n'existe. Toute autre source, destination ou version
-future est `UNSUPPORTED_MIGRATION`.
+`MAINTENANCE_STATE` reconnaît uniquement la version courante `1.0`, sans edge
+de migration puisqu'aucune version historique persistée n'existe. Cette
+reconnaissance ne lit ni ne modifie son état métier et ne confère aucune
+autorité de transition. Aucune chaîne implicite n'existe. Toute autre source,
+destination ou version future est `UNSUPPORTED_MIGRATION`.
 
 ## Transformations et autorité
 

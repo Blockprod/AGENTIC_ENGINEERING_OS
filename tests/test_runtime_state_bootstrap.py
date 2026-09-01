@@ -171,6 +171,10 @@ def test_store_dispositions_define_one_required_and_no_fake_mission() -> None:
             RuntimeStoreDisposition.LAZY_INITIALIZED_ON_FIRST_USE,
         ),
         (
+            ".agentic-engineering-os/maintenance.json",
+            RuntimeStoreDisposition.LAZY_INITIALIZED_ON_FIRST_USE,
+        ),
+        (
             ".agentic-engineering-os/worktrees.json",
             RuntimeStoreDisposition.LAZY_INITIALIZED_ON_FIRST_USE,
         ),

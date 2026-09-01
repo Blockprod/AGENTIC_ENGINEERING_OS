@@ -36,6 +36,7 @@ from agentic_engineering_os.domain import (
     GITIGNORE_MANAGED_SECTION,
     GITIGNORE_SECTION_END,
     GITIGNORE_SECTION_START,
+    MAINTENANCE_SCHEMA_VERSION,
 )
 
 from .agents_integration import AgentsIntegrationService
@@ -101,7 +102,7 @@ _RUNTIME_FORMATS = {
     "worktrees.json": ("schema_version", "1.0"),
     "negative-outcomes.json": ("version", "2.0"),
     "executions.json": ("schema_version", "1.1"),
-    "maintenance.json": ("schema_version", "1.0"),
+    "maintenance.json": ("schema_version", MAINTENANCE_SCHEMA_VERSION),
 }
 _PACKAGE_SCRIPT_KINDS = {
     "build": VerificationKind.BUILD,
