@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from dataclasses import fields, is_dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Sequence
@@ -30,12 +31,19 @@ from agentic_engineering_os.infrastructure.project_configuration import (
     CONFIG_FILENAME,
     ProjectConfigurationError,
 )
+from agentic_engineering_os.diagnostics_cli import (
+    DIAGNOSTIC_COMMANDS,
+    OperatorDiagnosticError,
+    add_diagnostic_subparsers,
+    execute_diagnostic_command,
+)
 
 
 EXIT_SUCCESS = 0
 EXIT_ERROR = 1
 EXIT_BLOCKED = 2
 _MAX_CONFIGURATION_BYTES = 1_000_000
+_MAX_OUTPUT_BYTES = 1_000_000
 
 
 class CliError(RuntimeError):
@@ -65,6 +73,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _init(repository, arguments)
         if arguments.command == "upgrade":
             return _upgrade(repository, arguments)
+        if arguments.command in DIAGNOSTIC_COMMANDS:
+            diagnostic = execute_diagnostic_command(repository, arguments)
+            _emit(
+                arguments.command,
+                diagnostic.status,
+                diagnostic.result,
+                arguments.json,
+            )
+            return diagnostic.exit_code
         raise CliError("UNKNOWN_COMMAND", "command is not supported")
     except CliError as error:
         _emit(
@@ -75,6 +92,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             stream=sys.stderr,
         )
         return error.exit_code
+    except OperatorDiagnosticError as error:
+        _emit(
+            arguments.command,
+            "BLOCKED",
+            {"code": error.code, "detail": error.message},
+            arguments.json,
+            stream=sys.stderr,
+        )
+        return EXIT_BLOCKED
     except (OSError, ProjectConfigurationError) as error:
         _emit(
             arguments.command,
@@ -130,6 +156,7 @@ def _parser() -> argparse.ArgumentParser:
         help="apply the exact freshly prepared upgrade plan",
     )
     _confirmation_arguments(upgrade)
+    add_diagnostic_subparsers(subparsers)
     return parser
 
 
@@ -406,17 +433,17 @@ def _has_symlink_component(path: Path) -> bool:
 def _emit(command: str, status: str, result, json_output: bool, *, stream=None) -> None:
     output = sys.stdout if stream is None else stream
     payload = {"command": command, "result": _json_value(result), "status": status}
-    print(
-        json.dumps(
-            payload,
-            ensure_ascii=False,
-            sort_keys=True,
-            indent=None if json_output else 2,
-            separators=(",", ":") if json_output else None,
-            allow_nan=False,
-        ),
-        file=output,
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=True,
+        sort_keys=True,
+        indent=None if json_output else 2,
+        separators=(",", ":") if json_output else None,
+        allow_nan=False,
     )
+    if len(serialized.encode("utf-8")) > _MAX_OUTPUT_BYTES:
+        raise CliError("OUTPUT_LIMIT_EXCEEDED", "serialized CLI output exceeds policy")
+    print(serialized, file=output)
 
 
 def _json_value(value):
@@ -426,6 +453,8 @@ def _json_value(value):
         return value.value
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat().replace("+00:00", "Z")
     if isinstance(value, tuple | list):
         return [_json_value(item) for item in value]
     if isinstance(value, dict):
