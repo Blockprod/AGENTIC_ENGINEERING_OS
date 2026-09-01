@@ -11,7 +11,18 @@ séparées, preuves reproductibles et blocage fail-closed.
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
 Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `CERTIFIED / CLOSED` ;
-Phase 6 — `IN PROGRESS — P6.11`
+Phase 6 — `CERTIFIED / CLOSED` ; Phase 7 — `NEXT`
+
+Roadmap canonique :
+
+- P0 — Foundation
+- P1 — Deterministic Control Plane
+- P2 — Sequential Agentic Workflow
+- P3 — DAG + Waves + Parallel Execution
+- P4 — VS Code / Codex Runtime Integration
+- P5 — Repository Deployment / Installation Kit
+- P6 — Production Governance & Observability
+- P7 — Generalization / Final Product Certification — `NEXT`
 
 Documentation :
 
@@ -89,4 +100,5 @@ Documentation :
 - [Operator Diagnostics & CLI](docs/68-operator-diagnostics-cli.md)
 - [Recovery & Maintenance Governance](docs/69-recovery-maintenance-governance.md)
 - [Production E2E & Failure Injection](docs/70-production-e2e-failure-injection.md)
+- [Certification Phase 6](docs/PHASE-6-CERTIFICATION.md)
 - [JSON Schemas V1](schemas/README.md)
