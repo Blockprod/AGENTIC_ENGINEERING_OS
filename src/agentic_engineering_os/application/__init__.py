@@ -139,6 +139,7 @@ from .merge_coordinator import (
     MergeStatus,
 )
 from .metrics_engine import MetricsComputationError, MetricsEngine, OperationalEventReader
+from .health_evaluation import HealthEvaluationEngine, HealthEvaluationError
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -319,6 +320,8 @@ __all__ = [
     "HumanApprovalError",
     "HumanApprovalResult",
     "HumanApprovalService",
+    "HealthEvaluationEngine",
+    "HealthEvaluationError",
     "ImplementerInput",
     "ImplementerInputError",
     "ImplementerResult",
