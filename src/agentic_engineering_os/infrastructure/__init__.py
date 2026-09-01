@@ -75,8 +75,18 @@ from .platform_environment import (
     environment_value,
     windows_contract_path_key,
 )
+from .repository_archetype import (
+    RepositoryArchetypeError,
+    RepositoryArchetypeEvaluator,
+    RepositoryArchetypeProfiler,
+    RepositoryToolchainProbe,
+)
 
 __all__ = [
+    "RepositoryArchetypeError",
+    "RepositoryArchetypeEvaluator",
+    "RepositoryArchetypeProfiler",
+    "RepositoryToolchainProbe",
     "RUNTIME_ENVIRONMENT_ALLOWLIST",
     "PlatformDiscoveryError",
     "PlatformEnvironmentProbe",

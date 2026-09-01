@@ -11,7 +11,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
 Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `CERTIFIED / CLOSED` ;
-Phase 6 — `CERTIFIED / CLOSED` ; Phase 7 — `IN PROGRESS — P7.3`
+Phase 6 — `CERTIFIED / CLOSED` ; Phase 7 — `IN PROGRESS — P7.4`
 
 Roadmap canonique :
 
@@ -22,7 +22,7 @@ Roadmap canonique :
 - P4 — VS Code / Codex Runtime Integration
 - P5 — Repository Deployment / Installation Kit
 - P6 — Production Governance & Observability
-- P7 — Generalization / Final Product Certification — `IN PROGRESS — P7.3`
+- P7 — Generalization / Final Product Certification — `IN PROGRESS — P7.4`
 
 Documentation :
 
@@ -104,4 +104,5 @@ Documentation :
 - [Generalization & Final Product Contract](docs/70-generalization-final-product-contract.md)
 - [Roadmap Phase 7](docs/71-phase-7-roadmap.md)
 - [Platform & Environment Abstraction](docs/72-platform-environment-abstraction.md)
+- [Repository Archetype Generalization](docs/73-repository-archetype-generalization.md)
 - [JSON Schemas V1](schemas/README.md)

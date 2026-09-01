@@ -299,8 +299,26 @@ from .platform import (
     ProcessTerminationSemantics,
     ProjectPlatformBinding,
 )
+from .repository_archetype import (
+    ArchetypeAssessment,
+    ArchetypeComponent,
+    ArchetypeSupportLevel,
+    RepositoryArchetype,
+    RepositoryArchetypeProfile,
+    ToolchainAvailability,
+    ToolchainMachineFact,
+    VerificationCommandContract,
+)
 
 __all__ = [
+    "ArchetypeAssessment",
+    "ArchetypeComponent",
+    "ArchetypeSupportLevel",
+    "RepositoryArchetype",
+    "RepositoryArchetypeProfile",
+    "ToolchainAvailability",
+    "ToolchainMachineFact",
+    "VerificationCommandContract",
     "CapabilityState",
     "CaseSemantics",
     "CaseSensitivityObservation",
