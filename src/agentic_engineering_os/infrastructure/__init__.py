@@ -8,6 +8,12 @@ from .codex_runtime_adapter import (
 from .execution_git_observer import ExecutionGitObserver
 from .execution_state_store import ExecutionStateStore
 from .mission_state_store import MissionStateStore
+from .maintenance_state_store import (
+    MAINTENANCE_FILENAME,
+    MAINTENANCE_LOCK_FILENAME,
+    MAX_MAINTENANCE_BYTES,
+    MaintenanceStateStore,
+)
 from .operational_event_store import (
     DEFAULT_MAX_SEGMENT_BYTES,
     DEFAULT_MAX_SEGMENTS,
@@ -62,6 +68,10 @@ from .incident_event_journal import (
 )
 
 __all__ = [
+    "MAINTENANCE_FILENAME",
+    "MAINTENANCE_LOCK_FILENAME",
+    "MAX_MAINTENANCE_BYTES",
+    "MaintenanceStateStore",
     "AgentsIntegrationError",
     "AgentsIntegrationService",
     "CodexRuntimeAdapter",

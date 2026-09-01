@@ -75,6 +75,9 @@ _KNOWN_GITIGNORE_RULES = frozenset(
         ".agentic-engineering-os/.negative-outcomes.*.tmp",
         ".agentic-engineering-os/executions.json",
         ".agentic-engineering-os/.executions.*.tmp",
+        ".agentic-engineering-os/maintenance.json",
+        ".agentic-engineering-os/.maintenance.*.tmp",
+        ".agentic-engineering-os/.maintenance.lock",
         ".agentic-engineering-os/operational-events/",
     }
 )
@@ -86,6 +89,9 @@ _REQUIRED_GITIGNORE_RULES = frozenset(
         ".agentic-engineering-os/.negative-outcomes.*.tmp",
         ".agentic-engineering-os/executions.json",
         ".agentic-engineering-os/.executions.*.tmp",
+        ".agentic-engineering-os/maintenance.json",
+        ".agentic-engineering-os/.maintenance.*.tmp",
+        ".agentic-engineering-os/.maintenance.lock",
         ".agentic-engineering-os/operational-events/",
     }
 )
@@ -95,6 +101,7 @@ _RUNTIME_FORMATS = {
     "worktrees.json": ("schema_version", "1.0"),
     "negative-outcomes.json": ("version", "2.0"),
     "executions.json": ("schema_version", "1.1"),
+    "maintenance.json": ("schema_version", "1.0"),
 }
 _PACKAGE_SCRIPT_KINDS = {
     "build": VerificationKind.BUILD,

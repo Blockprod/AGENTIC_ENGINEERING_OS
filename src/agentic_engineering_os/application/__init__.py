@@ -150,6 +150,11 @@ from .resource_budget import (
     ResourceBudgetEvaluator,
 )
 from .incident_manager import IncidentManagementError, IncidentManager
+from .maintenance_governance import (
+    MaintenanceGovernanceError,
+    MaintenanceGovernanceService,
+    MaintenanceStateStorePort,
+)
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -256,6 +261,9 @@ from .tester import (
 from .wave_planner import WavePlanner, WavePlanningError
 
 __all__ = [
+    "MaintenanceGovernanceError",
+    "MaintenanceGovernanceService",
+    "MaintenanceStateStorePort",
     "AcceptanceResult",
     "AuthoritativeContextEntry",
     "ArchitectDecision",
