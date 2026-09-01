@@ -6,6 +6,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from typing import Protocol
+from unicodedata import category, normalize
 
 from agentic_engineering_os._maintenance_write import _issue_maintenance_write
 from agentic_engineering_os.domain.governance import GovernedOperation, GovernanceDecision
@@ -150,6 +151,11 @@ class MaintenanceGovernanceService:
             raise MaintenanceGovernanceError("FOREIGN_TRANSITION", "transition request does not match evaluation scope")
         if request.expected_revision != record.revision or request.expected_fingerprint != record.fingerprint:
             raise MaintenanceGovernanceError("STALE_TRANSITION", "transition does not extend exact current state")
+        if _identity_key(request.operator_identity) != _identity_key(record.actor_identity):
+            raise MaintenanceGovernanceError(
+                "OPERATOR_MISMATCH",
+                "transition operator differs from the durable current operator",
+            )
         if request.requested_at != context.evaluated_at or request.requested_at <= record.updated_at:
             raise MaintenanceGovernanceError("STALE_TRANSITION", "transition timestamp is stale or not current")
         if request.target_state not in _ALLOWED_TRANSITIONS[record.state]:
@@ -260,3 +266,8 @@ def _governed_operation(operation: MaintenanceOperation) -> GovernedOperation:
     if operation in {MaintenanceOperation.READ_DIAGNOSTICS, MaintenanceOperation.COMPLETE_IN_FLIGHT}:
         return GovernedOperation.VERIFICATION
     return GovernedOperation.EXECUTION
+
+
+def _identity_key(value: str) -> str:
+    normalized = normalize("NFKC", value).strip()
+    return "".join(character for character in normalized if category(character) != "Cf").casefold()

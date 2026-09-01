@@ -68,9 +68,11 @@ with a default.
 ## Human authority and recovery routing
 
 Initialization and every state transition require an attributable non-Codex Human
-identity. This operator authority is separate from business `HumanApproval`; the
-service cannot create or apply such an approval. Requests carry the exact current
-revision and fingerprint, so stale, duplicate and replayed writes are refused.
+identity. Each transition must also match the canonically normalized identity of
+the durable current operator; an unrelated Human cannot take over implicitly.
+This operator authority is separate from business `HumanApproval`; the service
+cannot create or apply such an approval. Requests carry the exact current revision
+and fingerprint, so stale, duplicate and replayed writes are refused.
 
 Entering `RECOVERY_REQUIRED` produces only a declarative request for an existing
 boundary:

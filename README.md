@@ -11,7 +11,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
 Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `CERTIFIED / CLOSED` ;
-Phase 6 — `IN PROGRESS — P6.10`
+Phase 6 — `IN PROGRESS — P6.11`
 
 Documentation :
 
@@ -88,4 +88,5 @@ Documentation :
 - [Incident & Escalation Management](docs/67-incident-escalation-management.md)
 - [Operator Diagnostics & CLI](docs/68-operator-diagnostics-cli.md)
 - [Recovery & Maintenance Governance](docs/69-recovery-maintenance-governance.md)
+- [Production E2E & Failure Injection](docs/70-production-e2e-failure-injection.md)
 - [JSON Schemas V1](schemas/README.md)

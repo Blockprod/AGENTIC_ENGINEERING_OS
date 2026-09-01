@@ -210,6 +210,19 @@ def test_valid_human_can_exit_maintenance_after_healthy_reevaluation(tmp_path: P
     assert result.record.state is MaintenanceState.NORMAL
 
 
+def test_current_operator_identity_comparison_is_casefolded(tmp_path: Path) -> None:
+    _, service, record = _service(tmp_path)
+    at = NOW + timedelta(seconds=1)
+    context = _context(tmp_path, GovernedOperation.MAINTENANCE, at=at)
+    request = MaintenanceTransitionRequest(
+        context.scope, HEAD, MISSION, GENERATION, record.revision,
+        record.fingerprint, MaintenanceState.MAINTENANCE,
+        MaintenanceTransitionReason.OPERATOR_MAINTENANCE, at,
+        "aLiCe/oPeRaToR",
+    )
+    assert service.request_transition(context, request).record.state is MaintenanceState.MAINTENANCE
+
+
 def test_frozen_blocks_execution_but_keeps_diagnostics(tmp_path: Path) -> None:
     _, service, record = _service(tmp_path)
     frozen = _transition(service, record, tmp_path, MaintenanceState.FROZEN).record
@@ -316,7 +329,7 @@ def test_blocked_health_cannot_transition_to_normal(tmp_path: Path) -> None:
     at = NOW + timedelta(seconds=2)
     health = _health(at=at, blocked=True)
     context = _context(tmp_path, GovernedOperation.MAINTENANCE, at=at, health=health)
-    request = MaintenanceTransitionRequest(context.scope, HEAD, MISSION, GENERATION, maintenance.revision, maintenance.fingerprint, MaintenanceState.NORMAL, MaintenanceTransitionReason.OPERATOR_RETURN_TO_NORMAL, at, "Alice")
+    request = MaintenanceTransitionRequest(context.scope, HEAD, MISSION, GENERATION, maintenance.revision, maintenance.fingerprint, MaintenanceState.NORMAL, MaintenanceTransitionReason.OPERATOR_RETURN_TO_NORMAL, at, "Alice/Operator")
     with pytest.raises(MaintenanceGovernanceError, match="NORMAL_EXIT_REFUSED"):
         service.request_transition(context, request)
 
@@ -326,7 +339,7 @@ def test_unresolved_critical_incident_prevents_exit(tmp_path: Path) -> None:
     maintenance = _transition(service, record, tmp_path, MaintenanceState.MAINTENANCE).record
     at = NOW + timedelta(seconds=2)
     context = _context(tmp_path, GovernedOperation.MAINTENANCE, at=at, incidents=(_critical(),))
-    request = MaintenanceTransitionRequest(context.scope, HEAD, MISSION, GENERATION, maintenance.revision, maintenance.fingerprint, MaintenanceState.NORMAL, MaintenanceTransitionReason.OPERATOR_RETURN_TO_NORMAL, at, "Alice")
+    request = MaintenanceTransitionRequest(context.scope, HEAD, MISSION, GENERATION, maintenance.revision, maintenance.fingerprint, MaintenanceState.NORMAL, MaintenanceTransitionReason.OPERATOR_RETURN_TO_NORMAL, at, "Alice/Operator")
     with pytest.raises(MaintenanceGovernanceError, match="CRITICAL_INCIDENT_ACTIVE"):
         service.request_transition(context, request)
 
