@@ -144,40 +144,16 @@ class GitAdapter:
             raise GitOperationError(
                 "INVALID_GIT_OUTPUT", "Git top-level path cannot be resolved"
             ) from error
-        head_result = self._execute(
-            self._repository_root,
-            (0,),
-            "rev-parse",
-            "HEAD",
-            environment_overrides=environment,
-        )
-        head = head_result.stdout.strip().casefold()
-        if len(head) != 40 or any(character not in "0123456789abcdef" for character in head):
-            raise GitOperationError(
-                "INVALID_GIT_OUTPUT", "Git HEAD is not a full commit SHA"
-            )
-        branch_result = self._execute(
-            self._repository_root,
-            (0, 1),
-            "symbolic-ref",
-            "--quiet",
-            "--short",
-            "HEAD",
-            environment_overrides=environment,
-        )
-        branch = branch_result.stdout.strip() if branch_result.returncode == 0 else None
-        if branch_result.returncode == 0 and not branch:
-            raise GitOperationError(
-                "INVALID_GIT_OUTPUT", "Git returned an empty branch name"
-            )
         status_result = self._execute(
             self._repository_root,
             (0,),
             "status",
-            "--porcelain=v1",
+            "--porcelain=v2",
+            "--branch",
             "--untracked-files=all",
             environment_overrides=environment,
         )
+        head, clean = _parse_status_v2(status_result.stdout)
         worktree_result = self._execute(
             self._repository_root,
             (0,),
@@ -191,12 +167,29 @@ class GitAdapter:
             raise GitOperationError(
                 "INVALID_GIT_OUTPUT", "Git returned no worktree records"
             )
+        matching_worktrees = tuple(
+            worktree
+            for worktree in worktrees
+            if _path_key(worktree.path) == _path_key(top_level)
+        )
+        if len(matching_worktrees) != 1:
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT",
+                "Git returned no unique record for the current worktree",
+            )
+        current_worktree = matching_worktrees[0]
+        if current_worktree.head_commit != head:
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT",
+                "Git status and worktree records disagree on HEAD",
+            )
+        branch = current_worktree.branch_name
         return GitReadOnlyState(
             top_level=top_level,
             branch_name=branch,
             detached=branch is None,
             head_commit=head,
-            clean=not status_result.stdout,
+            clean=clean,
             worktrees=worktrees,
         )
 
@@ -593,6 +586,31 @@ def _parse_worktrees(output: str) -> tuple[GitWorktree, ...]:
             )
         current[key] = value
     return tuple(records)
+
+
+def _parse_status_v2(output: str) -> tuple[str, bool]:
+    head: str | None = None
+    dirty = False
+    for line in output.splitlines():
+        if line.startswith("# branch.oid "):
+            if head is not None:
+                raise GitOperationError(
+                    "INVALID_GIT_OUTPUT", "Git returned duplicate branch oid facts"
+                )
+            head = line.removeprefix("# branch.oid ").casefold()
+        elif line.startswith("# branch."):
+            continue
+        else:
+            dirty = True
+    if (
+        head is None
+        or len(head) != 40
+        or any(character not in "0123456789abcdef" for character in head)
+    ):
+        raise GitOperationError(
+            "INVALID_GIT_OUTPUT", "Git HEAD is not a full commit SHA"
+        )
+    return head, not dirty
 
 
 def _path_key(path: Path) -> str:

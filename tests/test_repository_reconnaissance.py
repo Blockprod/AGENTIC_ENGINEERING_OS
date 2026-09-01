@@ -295,6 +295,17 @@ def test_detached_head_is_reported_without_git_error(tmp_path: Path) -> None:
     assert profile.git.errors == ()
 
 
+def test_branch_named_detached_is_not_misclassified(tmp_path: Path) -> None:
+    root = repository(tmp_path)
+    git(root, "switch", "-c", "(detached)")
+
+    profile = RepositoryReconnaissance().inspect(root)
+
+    assert profile.git.detached.value is False
+    assert profile.git.branch.value == "(detached)"
+    assert profile.git.errors == ()
+
+
 def test_multiple_worktrees_are_observed_in_canonical_order(tmp_path: Path) -> None:
     root = repository(tmp_path)
     secondary = tmp_path / "secondary-worktree"
