@@ -11,7 +11,7 @@ séparées, preuves reproductibles et blocage fail-closed.
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
 Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `CERTIFIED / CLOSED` ;
-Phase 6 — `IN PROGRESS — P6.5`
+Phase 6 — `IN PROGRESS — P6.6`
 
 Documentation :
 
@@ -83,4 +83,5 @@ Documentation :
 - [Operational Event Store](docs/62-operational-event-store.md)
 - [Metrics & Runtime Counters](docs/63-metrics-runtime-counters.md)
 - [Health Evaluation Engine](docs/64-health-evaluation-engine.md)
+- [Governance Policy Model](docs/65-governance-policy-model.md)
 - [JSON Schemas V1](schemas/README.md)

@@ -140,6 +140,10 @@ from .merge_coordinator import (
 )
 from .metrics_engine import MetricsComputationError, MetricsEngine, OperationalEventReader
 from .health_evaluation import HealthEvaluationEngine, HealthEvaluationError
+from .governance_policy import (
+    GovernancePolicyEvaluationError,
+    GovernancePolicyEvaluator,
+)
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -322,6 +326,8 @@ __all__ = [
     "HumanApprovalService",
     "HealthEvaluationEngine",
     "HealthEvaluationError",
+    "GovernancePolicyEvaluationError",
+    "GovernancePolicyEvaluator",
     "ImplementerInput",
     "ImplementerInputError",
     "ImplementerResult",
