@@ -66,8 +66,24 @@ from .incident_event_journal import (
     incident_record_from_operational_event,
     incident_record_to_operational_event,
 )
+from .platform_environment import (
+    RUNTIME_ENVIRONMENT_ALLOWLIST,
+    PlatformDiscoveryError,
+    PlatformEnvironmentProbe,
+    build_bounded_environment,
+    discover_executable,
+    environment_value,
+    windows_contract_path_key,
+)
 
 __all__ = [
+    "RUNTIME_ENVIRONMENT_ALLOWLIST",
+    "PlatformDiscoveryError",
+    "PlatformEnvironmentProbe",
+    "build_bounded_environment",
+    "discover_executable",
+    "environment_value",
+    "windows_contract_path_key",
     "MAINTENANCE_FILENAME",
     "MAINTENANCE_LOCK_FILENAME",
     "MAX_MAINTENANCE_BYTES",

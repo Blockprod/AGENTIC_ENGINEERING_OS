@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import math
 import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+
+from .platform_environment import (
+    RUNTIME_ENVIRONMENT_ALLOWLIST,
+    build_bounded_environment,
+)
 
 
 class GitOperationError(RuntimeError):
@@ -85,12 +91,33 @@ class _CommandResult:
 class GitAdapter:
     """Execute only the Git primitives required by WorktreeManager."""
 
-    def __init__(self, repository_root: Path | str) -> None:
+    def __init__(
+        self,
+        repository_root: Path | str,
+        *,
+        executable: str = "git",
+        timeout_seconds: float = 120.0,
+    ) -> None:
+        if not isinstance(executable, str) or not executable.strip() or "\0" in executable:
+            raise ValueError("Git executable must be explicit safe text")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(timeout_seconds)
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("Git timeout must be a positive number")
         self._repository_root = Path(repository_root).resolve(strict=False)
+        self._git_executable = executable
+        self._timeout_seconds = float(timeout_seconds)
 
     @property
     def repository_root(self) -> Path:
         return self._repository_root
+
+    @property
+    def git_executable(self) -> str:
+        return self._git_executable
 
     def verify_repository(self) -> Path:
         if not self._repository_root.exists() or not self._repository_root.is_dir():
@@ -531,29 +558,39 @@ class GitAdapter:
     ) -> _CommandResult:
         return self._execute(self._repository_root, allowed_codes, *arguments)
 
-    @staticmethod
     def _execute(
+        self,
         root: Path,
         allowed_codes: tuple[int, ...],
         *arguments: str,
         environment_overrides: dict[str, str] | None = None,
     ) -> _CommandResult:
-        command = ("git", "-C", str(root), *arguments)
-        environment = os.environ.copy()
-        environment["GIT_TERMINAL_PROMPT"] = "0"
+        command = (self._git_executable, "-C", str(root), *arguments)
+        environment = build_bounded_environment(
+            os.environ,
+            RUNTIME_ENVIRONMENT_ALLOWLIST,
+        )
         if environment_overrides:
             environment.update(environment_overrides)
         try:
             process = subprocess.run(
                 list(command),
                 shell=False,
+                cwd=root,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
                 env=environment,
+                timeout=self._timeout_seconds,
                 check=False,
             )
+        except subprocess.TimeoutExpired as error:
+            raise GitOperationError(
+                "GIT_TIMEOUT",
+                "Git command exceeded its configured timeout",
+                command=command,
+            ) from error
         except OSError as error:
             raise GitOperationError(
                 "GIT_UNAVAILABLE",

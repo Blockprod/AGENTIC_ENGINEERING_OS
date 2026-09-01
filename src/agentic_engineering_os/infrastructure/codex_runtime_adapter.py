@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import threading
 from collections.abc import Callable, Mapping
@@ -32,6 +31,11 @@ from agentic_engineering_os.resources.product import (
 )
 
 from .git_adapter import GitAdapter, GitOperationError
+from .platform_environment import (
+    RUNTIME_ENVIRONMENT_ALLOWLIST,
+    build_bounded_environment,
+    discover_executable,
+)
 
 
 _SHA40 = re.compile(r"[0-9a-f]{40}")
@@ -39,30 +43,6 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 _SECRET_ENV_TOKEN = re.compile(
     r"(?:api[_-]?key|token|secret|password|credential)", re.IGNORECASE
 )
-_DEFAULT_ENVIRONMENT_ALLOWLIST = (
-    "APPDATA",
-    "CODEX_HOME",
-    "COMSPEC",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "LANG",
-    "LC_ALL",
-    "LOCALAPPDATA",
-    "PATH",
-    "PATHEXT",
-    "PROGRAMDATA",
-    "PROGRAMFILES",
-    "PROGRAMFILES(X86)",
-    "SYSTEMDRIVE",
-    "SYSTEMROOT",
-    "TEMP",
-    "TERM",
-    "TMP",
-    "USERPROFILE",
-    "WINDIR",
-)
-
-
 @dataclass(frozen=True, slots=True)
 class CodexRuntimeConfiguration:
     """Pinned infrastructure configuration, separate from application bindings."""
@@ -72,7 +52,7 @@ class CodexRuntimeConfiguration:
     expected_executable_version: str
     expected_executable_sha256: str
     launcher_arguments: tuple[str, ...] = ()
-    environment_allowlist: tuple[str, ...] = _DEFAULT_ENVIRONMENT_ALLOWLIST
+    environment_allowlist: tuple[str, ...] = RUNTIME_ENVIRONMENT_ALLOWLIST
     max_output_characters: int = 1_000_000
     version_timeout_seconds: float = 10.0
 
@@ -260,6 +240,7 @@ class CodexRuntimeAdapter:
             process = subprocess.Popen(
                 list(invocation),
                 shell=False,
+                cwd=cwd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -391,6 +372,7 @@ class CodexRuntimeAdapter:
             result = subprocess.run(
                 list(command),
                 shell=False,
+                cwd=executable.parent,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -496,19 +478,15 @@ def _resolve_executable(
     configuration: CodexRuntimeConfiguration,
     parent_environment: Mapping[str, str],
 ) -> tuple[Path | None, str | None]:
-    requested = Path(configuration.executable)
-    if requested.is_absolute() or requested.parent != Path("."):
-        candidate = requested
-    else:
-        located = shutil.which(
-            configuration.executable,
-            path=_environment_value(parent_environment, "PATH"),
-        )
-        if located is None:
-            return None, "EXECUTABLE_UNAVAILABLE"
-        candidate = Path(located)
+    fact = discover_executable(
+        configuration.executable,
+        parent_environment,
+        identity="codex",
+    )
+    if fact.path is None:
+        return None, "EXECUTABLE_UNAVAILABLE"
     try:
-        resolved = candidate.resolve(strict=True)
+        resolved = Path(fact.path).resolve(strict=True)
         expected = Path(configuration.expected_executable_path).resolve(strict=True)
     except OSError:
         return None, "EXECUTABLE_UNAVAILABLE"
@@ -520,23 +498,7 @@ def _resolve_executable(
 def _build_environment(
     parent: Mapping[str, str], allowlist: tuple[str, ...]
 ) -> dict[str, str]:
-    environment: dict[str, str] = {}
-    for name in allowlist:
-        value = _environment_value(parent, name)
-        if value is not None:
-            environment[name] = value
-    environment["GIT_TERMINAL_PROMPT"] = "0"
-    environment["NO_COLOR"] = "1"
-    environment["PYTHONIOENCODING"] = "utf-8"
-    return environment
-
-
-def _environment_value(environment: Mapping[str, str], name: str) -> str | None:
-    requested = name.casefold()
-    for key, value in environment.items():
-        if key.casefold() == requested:
-            return value
-    return None
+    return build_bounded_environment(parent, allowlist)
 
 
 def _invocation(
