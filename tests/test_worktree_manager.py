@@ -242,6 +242,21 @@ def test_non_git_repository_is_refused(tmp_path: Path) -> None:
         manager.initialize_registry()
 
 
+def test_linked_worktree_cannot_be_used_as_primary_repository(tmp_path: Path) -> None:
+    root, _, baseline = repository(tmp_path)
+    linked = tmp_path / "linked"
+    linked_worktrees = tmp_path / "linked-worktrees"
+    linked_worktrees.mkdir()
+    git(root, "worktree", "add", "-b", "linked", str(linked), baseline)
+    manager = WorktreeManager(
+        repository_root=linked,
+        worktree_root=linked_worktrees,
+    )
+
+    with pytest.raises(WorktreeManagerError, match="NOT_PRIMARY_WORKTREE"):
+        manager.initialize_registry()
+
+
 def test_unknown_baseline_is_refused_without_registry_mutation(tmp_path: Path) -> None:
     root, worktrees, _ = repository(tmp_path)
     manager = manager_for(root, worktrees)

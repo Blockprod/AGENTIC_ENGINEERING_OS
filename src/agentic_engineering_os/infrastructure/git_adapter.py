@@ -97,20 +97,32 @@ class GitAdapter:
             raise GitOperationError(
                 "INVALID_REPOSITORY", "repository root does not exist or is not a directory"
             )
-        output = self._run("rev-parse", "--show-toplevel").stdout.strip()
+        output = self._run(
+            "rev-parse",
+            "--show-toplevel",
+            "--absolute-git-dir",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ).stdout
+        fields = output.splitlines()
+        if len(fields) != 3 or any(not field for field in fields):
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "Git repository identity is incomplete"
+            )
         try:
-            actual = Path(output).resolve(strict=True)
+            actual = Path(fields[0]).resolve(strict=True)
+            git_directory = Path(fields[1]).resolve(strict=True)
+            common_directory = Path(fields[2]).resolve(strict=True)
         except OSError as error:
             raise GitOperationError(
-                "INVALID_REPOSITORY", "Git top-level path cannot be resolved"
+                "INVALID_REPOSITORY", "Git repository identity cannot be resolved"
             ) from error
         if _path_key(actual) != _path_key(self._repository_root):
             raise GitOperationError(
                 "NOT_PRIMARY_WORKTREE",
                 "repository root is not the primary worktree top level",
             )
-        worktrees = self.list_worktrees()
-        if not worktrees or _path_key(worktrees[0].path) != _path_key(actual):
+        if _path_key(git_directory) != _path_key(common_directory):
             raise GitOperationError(
                 "NOT_PRIMARY_WORKTREE", "primary worktree cannot be identified"
             )
@@ -119,6 +131,9 @@ class GitAdapter:
     def observe_read_only(self) -> GitReadOnlyState:
         """Observe Git identity and worktrees without refreshing the index."""
 
+        return self._observe_read_only(exclude_registry=False)
+
+    def _observe_read_only(self, *, exclude_registry: bool) -> GitReadOnlyState:
         if not self._repository_root.exists() or not self._repository_root.is_dir():
             raise GitOperationError(
                 "INVALID_REPOSITORY", "repository root does not exist or is not a directory"
@@ -144,13 +159,20 @@ class GitAdapter:
             raise GitOperationError(
                 "INVALID_GIT_OUTPUT", "Git top-level path cannot be resolved"
             ) from error
-        status_result = self._execute(
-            self._repository_root,
-            (0,),
+        status_arguments = [
             "status",
             "--porcelain=v2",
             "--branch",
             "--untracked-files=all",
+        ]
+        if exclude_registry:
+            status_arguments.extend(
+                ["--", ".", ":(exclude).agentic-engineering-os/worktrees.json"]
+            )
+        status_result = self._execute(
+            self._repository_root,
+            (0,),
+            *status_arguments,
             environment_overrides=environment,
         )
         head, clean = _parse_status_v2(status_result.stdout)
@@ -361,11 +383,15 @@ class GitAdapter:
         return parents
 
     def primary_state(self) -> GitPrimaryState:
-        self.verify_repository()
+        observed = self._observe_read_only(exclude_registry=True)
+        if observed.branch_name is None:
+            raise GitOperationError(
+                "DETACHED_HEAD", "primary worktree must be attached to a branch"
+            )
         return GitPrimaryState(
-            branch_name=self.current_branch(self._repository_root),
-            head_commit=self.current_head(self._repository_root),
-            clean=self.is_clean(self._repository_root, exclude_registry=True),
+            branch_name=observed.branch_name,
+            head_commit=observed.head_commit,
+            clean=observed.clean,
         )
 
     def diff_name_status(
