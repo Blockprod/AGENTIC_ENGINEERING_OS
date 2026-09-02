@@ -92,8 +92,10 @@ from .repository_reconnaissance import (
     SymlinkObservation,
     ToolchainObservation,
     GITIGNORE_MANAGED_SECTION,
+    GITIGNORE_MISSION_STATE_RULE,
     GITIGNORE_SECTION_END,
     GITIGNORE_SECTION_START,
+    gitignore_managed_section,
 )
 from .agents_integration import AgentsIntegrationInspection
 from .runtime_bootstrap import (
@@ -462,8 +464,10 @@ __all__ = [
     "GitRepositoryObservation",
     "GitWorktreeObservation",
     "GITIGNORE_MANAGED_SECTION",
+    "GITIGNORE_MISSION_STATE_RULE",
     "GITIGNORE_SECTION_END",
     "GITIGNORE_SECTION_START",
+    "gitignore_managed_section",
     "HumanApproval",
     "HumanOperationConfirmation",
     "InitializationApplyFinding",

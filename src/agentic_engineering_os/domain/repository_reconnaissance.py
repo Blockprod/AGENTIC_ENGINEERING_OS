@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from .project_configuration import VerificationKind
+from .project_configuration import MissionStateGitPolicy, VerificationKind
 
 
 class ObservationClassification(str, Enum):
@@ -66,8 +66,8 @@ AGENTS_MANAGED_SECTION = "\n".join(
 
 GITIGNORE_SECTION_START = "# BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION v1"
 GITIGNORE_SECTION_END = "# END AGENTIC_ENGINEERING_OS MANAGED SECTION v1"
-GITIGNORE_MANAGED_SECTION = "\n".join(
-    (
+GITIGNORE_MISSION_STATE_RULE = ".agentic-engineering-os/mission.json"
+_GITIGNORE_BASE_RULES = (
         GITIGNORE_SECTION_START,
         ".agentic-engineering-os/worktrees.json",
         ".agentic-engineering-os/.worktrees.*.tmp",
@@ -79,10 +79,28 @@ GITIGNORE_MANAGED_SECTION = "\n".join(
         ".agentic-engineering-os/.maintenance.*.tmp",
         ".agentic-engineering-os/.maintenance.lock",
         ".agentic-engineering-os/operational-events/",
+)
+
+
+def gitignore_managed_section(policy: MissionStateGitPolicy) -> str:
+    """Return the bounded canonical section for an explicit mission Git policy."""
+
+    if not isinstance(policy, MissionStateGitPolicy):
+        raise TypeError("MissionStateGitPolicy is required")
+    rules = _GITIGNORE_BASE_RULES
+    if policy is MissionStateGitPolicy.IGNORED:
+        rules += (GITIGNORE_MISSION_STATE_RULE,)
+    return "\n".join(
+        (
+            *rules,
         GITIGNORE_SECTION_END,
         "",
+        )
     )
-)
+
+
+# Backward-compatible canonical TRACKED section.
+GITIGNORE_MANAGED_SECTION = gitignore_managed_section(MissionStateGitPolicy.TRACKED)
 
 
 class ManagedSectionStatus(str, Enum):

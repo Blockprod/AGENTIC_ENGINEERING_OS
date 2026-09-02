@@ -74,7 +74,9 @@ contenu exact et le SHA-256 du plan.
 
 Pour `.gitignore` existant, l'empreinte porte sur les octets bruts observés.
 Les octets utilisateur sont conservés comme préfixe inchangé et la section
-canonique est ajoutée. Le fichier est relu juste avant un `os.replace` atomique
+canonique liée à `mission_state_git_policy` est ajoutée. Pour `IGNORED`, elle
+contient exactement `.agentic-engineering-os/mission.json`; pour `TRACKED`,
+elle ne le contient pas. Le fichier est relu juste avant un `os.replace` atomique
 explicitement confirmé ; tout changement détecté bloque et préserve l'ancien
 fichier. Le dossier est fsyncé lorsque la plateforme le permet.
 

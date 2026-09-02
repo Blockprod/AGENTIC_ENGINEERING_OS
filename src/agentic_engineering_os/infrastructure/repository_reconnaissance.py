@@ -33,10 +33,12 @@ from agentic_engineering_os.domain import (
     SymlinkObservation,
     ToolchainObservation,
     VerificationKind,
-    GITIGNORE_MANAGED_SECTION,
+    GITIGNORE_MISSION_STATE_RULE,
     GITIGNORE_SECTION_END,
     GITIGNORE_SECTION_START,
     MAINTENANCE_SCHEMA_VERSION,
+    MissionStateGitPolicy,
+    gitignore_managed_section,
 )
 
 from .agents_integration import AgentsIntegrationService
@@ -80,6 +82,7 @@ _KNOWN_GITIGNORE_RULES = frozenset(
         ".agentic-engineering-os/.maintenance.*.tmp",
         ".agentic-engineering-os/.maintenance.lock",
         ".agentic-engineering-os/operational-events/",
+        GITIGNORE_MISSION_STATE_RULE,
     }
 )
 _REQUIRED_GITIGNORE_RULES = frozenset(
@@ -652,6 +655,11 @@ class RepositoryReconnaissance:
         issues: list[ReconnaissanceIssue],
     ) -> AgenticOsStateObservation:
         config_status, config_version, config_fingerprint = self._config_status(root)
+        mission_policy = MissionStateGitPolicy.TRACKED
+        if config_status is DocumentStatus.VALID:
+            mission_policy = ProjectConfigurationLoader(
+                root
+            ).load().mission_state_git_policy
         agents_reference = self._agents_reference(root)
         gitignore_rules = self._gitignore_rules(root)
         agents_managed = self._agents_managed_section(root)
@@ -660,7 +668,7 @@ class RepositoryReconnaissance:
             ".gitignore",
             GITIGNORE_SECTION_START,
             GITIGNORE_SECTION_END,
-            GITIGNORE_MANAGED_SECTION,
+            gitignore_managed_section(mission_policy),
         )
         runtime_files = tuple(
             self._runtime_file(root, filename)

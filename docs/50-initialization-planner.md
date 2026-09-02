@@ -102,6 +102,9 @@ Le planner ne répare, ne migre et n'écrase jamais un document existant.
 
 Les marqueurs versionnés et leur contenu canonique sont définis dans le modèle
 de reconnaissance afin que le dry-run expose exactement l'intention future.
+La variante canonique de `.gitignore` est dérivée de la configuration désirée :
+elle exclut `mission.json` pour `IGNORED` et conserve la variante historique
+sans cette règle pour `TRACKED`. Le planner ne choisit jamais cette politique.
 
 - fichier absent : `CREATE_MANAGED_FILE`, sans écriture pendant P5.4 ;
 - fichier utilisateur présent sans section : insertion bornée planifiée avec

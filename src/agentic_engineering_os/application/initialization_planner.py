@@ -12,7 +12,6 @@ from typing import Any
 
 from agentic_engineering_os.domain import (
     AGENTS_MANAGED_SECTION,
-    GITIGNORE_MANAGED_SECTION,
     AgenticOsInitializationState,
     DocumentStatus,
     ExpectedFootprintEntry,
@@ -29,6 +28,7 @@ from agentic_engineering_os.domain import (
     ProjectConfiguration,
     RepositoryProfile,
     RepositorySupportStatus,
+    gitignore_managed_section,
 )
 from agentic_engineering_os.infrastructure.project_configuration import (
     CONFIG_DIRECTORY,
@@ -222,6 +222,7 @@ class InitializationPlanner:
                 profile,
                 desired_text,
                 desired_hash,
+                desired_configuration,
             )
             warnings.extend(plan_warnings)
             expected = _expected_footprint()
@@ -495,12 +496,17 @@ class InitializationPlanner:
         profile: RepositoryProfile,
         desired_text: str | None,
         desired_hash: str,
+        desired_configuration: ProjectConfiguration | None,
     ) -> tuple[
         tuple[PlannedOperation, ...],
         tuple[str, ...],
         tuple[InitializationFinding, ...],
     ]:
         if desired_text is None:
+            raise InitializationPlanningError(
+                "INTERNAL_PLANNING_ERROR", "validated desired configuration disappeared"
+            )
+        if desired_configuration is None:
             raise InitializationPlanningError(
                 "INTERNAL_PLANNING_ERROR", "validated desired configuration disappeared"
             )
@@ -574,7 +580,9 @@ class InitializationPlanner:
         specifications.extend(
             self._managed_operations(
                 profile.agentic_os.gitignore_managed_section,
-                GITIGNORE_MANAGED_SECTION,
+                gitignore_managed_section(
+                    desired_configuration.mission_state_git_policy
+                ),
                 InitializationOperationType.ADD_GITIGNORE_SECTION,
                 confirmations,
                 warnings,

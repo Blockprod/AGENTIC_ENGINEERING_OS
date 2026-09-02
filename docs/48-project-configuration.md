@@ -88,7 +88,7 @@ informations opérationnelles utiles sans devenir une configuration fourre-tout.
 | `path_policy` | `REQUIRED EXPLICIT` | Les trois listes sont présentes, même vides ; elles bornent les écritures sans remplacer les scopes User Story. |
 | `context_sources` | `OPTIONAL OVERRIDE` explicite | Sources Markdown projet additionnelles ; liste vide autorisée, aucun document n'est deviné. |
 | `codex_constraints` | `REQUIRED EXPLICIT` | Plafond de sandbox, politique d'approbation, propreté Git et limite de parallélisme ; ne peut affaiblir P4. |
-| `mission_state_git_policy` | `REQUIRED EXPLICIT` | `TRACKED` ou `IGNORED`, sans défaut silencieux. |
+| `mission_state_git_policy` | `REQUIRED EXPLICIT` | `TRACKED` conserve `mission.json` versionnable. `IGNORED` impose à l'adoption d'installer sa règle exacte dans la section `.gitignore` gérée, sans défaut silencieux. |
 
 HEAD, branche, dirty state, taille du repository, worktrees, versions observées
 et disponibilité de Codex sont des faits runtime. Ils ne sont jamais persistés

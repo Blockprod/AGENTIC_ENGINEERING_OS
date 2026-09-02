@@ -436,12 +436,29 @@ def test_versioned_state_must_not_be_ignored(tmp_path: Path) -> None:
     assert result.findings[0].code == "VERSIONED_STATE_IS_IGNORED"
 
 
-def test_ignored_mission_policy_requires_matching_gitignore_plan(
+def test_ignored_mission_policy_bootstraps_with_matching_managed_plan(
     tmp_path: Path,
 ) -> None:
     root, config, profile = eligible_repository(
         tmp_path, mission_policy=MissionStateGitPolicy.IGNORED
     )
+
+    result = RuntimeStateBootstrap().bootstrap(
+        root, config, expected_profile=profile
+    )
+
+    assert result.status is RuntimeBootstrapStatus.BOOTSTRAPPED
+
+
+def test_runtime_bootstrap_keeps_mission_git_policy_check_strict(
+    tmp_path: Path,
+) -> None:
+    root, config, _ = eligible_repository(tmp_path)
+    with (root / ".gitignore").open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(".agentic-engineering-os/mission.json\n")
+    git(root, "add", ".gitignore")
+    git(root, "commit", "-m", "contradict tracked mission policy")
+    profile = RepositoryReconnaissance().inspect(root)
 
     result = RuntimeStateBootstrap().bootstrap(
         root, config, expected_profile=profile

@@ -74,7 +74,10 @@ supporté, scan complet, configuration valide et identique, sections AGENTS et
 Git-ignore courantes, `state.json` de version compatible, et identité Git
 inchangée. La politique Git réelle des stores est contrôlée par P5.7.
 `mission.json` n'est pas nécessaire pour un repository idle et P5.8 ne le crée
-jamais.
+jamais. L'adoption prépare néanmoins sa politique future : `TRACKED` le laisse
+versionnable, tandis que `IGNORED` installe proactivement sa règle canonique
+gérée. Une première mission ne requiert donc aucune édition manuelle de
+`.gitignore`.
 
 Au premier échec, les composants s'arrêtent sans rollback destructif. Les
 fichiers déjà créés restent observables. Un nouvel appel doit recommencer par

@@ -9,7 +9,6 @@ from pathlib import Path, PurePosixPath
 
 from agentic_engineering_os.domain import (
     AGENTS_MANAGED_SECTION,
-    GITIGNORE_MANAGED_SECTION,
     AgenticOsInitializationState,
     DocumentStatus,
     HumanOperationConfirmation,
@@ -25,6 +24,7 @@ from agentic_engineering_os.domain import (
     PlannedOperation,
     ProjectConfiguration,
     RepositoryProfile,
+    gitignore_managed_section,
 )
 
 from .git_adapter import GitAdapter, GitOperationError, GitReadOnlyState
@@ -344,7 +344,9 @@ class RepositoryInitializer:
                 )
             return
         if operation.operation_type is InitializationOperationType.CREATE_MANAGED_FILE:
-            canonical = _managed_content(operation.target_path)
+            canonical = _managed_content(
+                operation.target_path, desired_configuration
+            )
             _require_planned_content(operation, canonical)
             _require_absent(target)
             if operation.target_path == "AGENTS.md":
@@ -386,7 +388,11 @@ class RepositoryInitializer:
                 )
             return
         if operation.operation_type is InitializationOperationType.ADD_GITIGNORE_SECTION:
-            canonical = GITIGNORE_MANAGED_SECTION
+            if desired_configuration is None:
+                raise _ApplyFailure("INVALID_PLAN", "desired configuration is absent")
+            canonical = gitignore_managed_section(
+                desired_configuration.mission_state_git_policy
+            )
             _require_planned_content(operation, canonical)
             expected = profile_before.agentic_os.gitignore_managed_section
             if expected.status is not ManagedSectionStatus.SECTION_ABSENT:
@@ -578,11 +584,17 @@ def _require_planned_content(operation: PlannedOperation, expected: str) -> None
         raise _ApplyFailure("INVALID_PLANNED_CONTENT", "planned content is not canonical")
 
 
-def _managed_content(target_path: str) -> str:
+def _managed_content(
+    target_path: str, desired_configuration: ProjectConfiguration | None
+) -> str:
     if target_path == "AGENTS.md":
         return AGENTS_MANAGED_SECTION
     if target_path == ".gitignore":
-        return GITIGNORE_MANAGED_SECTION
+        if desired_configuration is None:
+            raise _ApplyFailure("INVALID_PLAN", "desired configuration is absent")
+        return gitignore_managed_section(
+            desired_configuration.mission_state_git_policy
+        )
     raise _ApplyFailure("UNSUPPORTED_OPERATION", "managed-file target is unsupported")
 
 
