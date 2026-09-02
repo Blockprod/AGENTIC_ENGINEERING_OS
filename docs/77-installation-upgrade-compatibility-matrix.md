@@ -22,16 +22,18 @@ that wheel and its declared dependency. Import resolved from its
 
 The matrix is derived only from P5.9 and P7.7 repository truth: package
 `0.1.0`; configuration, state, mission, worktree, operational-event and
-maintenance formats `1.0`; AGENTS `2`; Git-ignore `1`; negative outcomes
-`2.0`; execution ledger `1.1`. The only registered edges are AGENTS `1 → 2`
-and negative outcomes `1.0 → 2.0`. Execution `1.0 → 1.1` is unsupported.
+maintenance formats `1.0`; AGENTS `2`; Git-ignore `2`; negative outcomes
+`2.0`; execution ledger `1.1`. The registered edges are AGENTS `1 → 2`,
+Git-ignore `1 → 2`, and negative outcomes `1.0 → 2.0`. Execution `1.0 → 1.1`
+is unsupported.
 
 ## Installed compatibility matrix
 
 | Scenario | Product | Artifact versions / pre-install state | Expected classification | Explicit migration | Observed result |
 |---|---:|---|---|---|---|
 | A — fresh uninitialized | `0.1.0` | no Agentic OS artifacts | `SUPPORTED`, then `NEEDS_CONFIGURATION` | adoption plan only | `inspect=0/SUPPORTED`; `status=2/NEEDS_CONFIGURATION`; `plan=0/READY_TO_APPLY`; bytes unchanged — PASS |
-| B — current adopted | `0.1.0` | config/state `1.0`, AGENTS `2`, Git-ignore `1` | `ADOPTED` / `ALREADY_CURRENT` | none | status and upgrade dry-run/apply current; bytes unchanged — PASS |
+| B — current adopted | `0.1.0` | config/state `1.0`, AGENTS `2`, Git-ignore `2` | `ADOPTED` / `ALREADY_CURRENT` | none | status and upgrade dry-run/apply current; bytes unchanged — PASS |
+| B2 — Git-ignore historical | `0.1.0` | Git-ignore `1` canonical | `MIGRATION_REQUIRED` | registered `1 → 2`, Human required | explicit apply preserves user bytes and installs only the new orchestration runtime rules |
 | C — lazy artifacts absent | `0.1.0` | mission/worktree/execution absent | `NOT_PRESENT_LAZY`, globally current | none | repository remains adopted; no lazy file created — PASS |
 | D — AGENTS historical | `0.1.0` | AGENTS `1` | `MIGRATION_REQUIRED` | registered `1 → 2`, Human required | dry-run first; missing Human `BLOCKED`; fake Codex `REFUSED`; Human apply `MIGRATED`; backup exact — PASS |
 | E — negative outcomes historical | `0.1.0` | negative outcomes `1.0` | `MIGRATION_REQUIRED` | registered `1.0 → 2.0` | explicit apply produced `2.0`, exact backup and preserved outcomes semantics — PASS |

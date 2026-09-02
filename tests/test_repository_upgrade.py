@@ -12,6 +12,9 @@ from agentic_engineering_os.application import MaintenanceGovernanceService, Upg
 from agentic_engineering_os.domain import (
     AGENTS_MANAGED_SECTION,
     GITIGNORE_MANAGED_SECTION,
+    GITIGNORE_MANAGED_SECTION_VERSION,
+    GITIGNORE_ORCHESTRATION_RECORD_RULE,
+    GITIGNORE_ORCHESTRATION_TEMP_RULE,
     HumanUpgradeConfirmation,
     MaintenanceInitializationRequest,
     MaintenanceScope,
@@ -21,6 +24,7 @@ from agentic_engineering_os.domain import (
     UpgradeOperationStatus,
     UpgradePlanStatus,
     UpgradeResultStatus,
+    gitignore_managed_section_v1,
 )
 from agentic_engineering_os.infrastructure import (
     AgentsIntegrationService,
@@ -78,6 +82,7 @@ def repository(
     tmp_path: Path,
     *,
     old_agents: bool = False,
+    old_gitignore: bool = False,
     old_negative: bool = False,
     outcomes: list[dict[str, object]] | None = None,
 ) -> Path:
@@ -95,7 +100,15 @@ def repository(
     ProjectStateStore(root).initialize()
     agents = "# User rules\n\n" + (_AGENTS_V1 if old_agents else AGENTS_MANAGED_SECTION)
     (root / "AGENTS.md").write_text(agents, encoding="utf-8")
-    (root / ".gitignore").write_text(GITIGNORE_MANAGED_SECTION, encoding="utf-8")
+    gitignore = (
+        "# User bytes\r\n"
+        + gitignore_managed_section_v1(MissionStateGitPolicy.TRACKED).replace(
+            "\n", "\r\n"
+        )
+        if old_gitignore
+        else GITIGNORE_MANAGED_SECTION
+    )
+    (root / ".gitignore").write_bytes(gitignore.encode("utf-8"))
     git(root, "add", ".")
     git(root, "commit", "-m", "repository baseline")
     if old_negative:
@@ -209,6 +222,80 @@ def test_negative_outcome_v1_to_v2_preserves_authority_and_creates_backup(
         "outcomes": [original_outcome],
         "transactions": [],
     }
+
+
+def test_gitignore_v1_to_v2_requires_human_preserves_user_bytes_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    root = repository(tmp_path, old_gitignore=True)
+    source = (root / ".gitignore").read_bytes()
+    plan = UpgradePlanner().plan(root)
+
+    assert plan.status is UpgradePlanStatus.NEEDS_HUMAN_CONFIRMATION
+    assert [item.artifact for item in plan.steps] == [
+        MigrationArtifact.GITIGNORE_MANAGED_SECTION
+    ]
+    refused = RepositoryUpgradeService().apply(plan)
+    assert refused.status is UpgradeResultStatus.REFUSED
+    assert (root / ".gitignore").read_bytes() == source
+
+    result = RepositoryUpgradeService().apply(
+        plan, confirmations=confirmations(plan)
+    )
+    step = plan.steps[0]
+    migrated = (root / ".gitignore").read_bytes()
+    assert result.status is UpgradeResultStatus.MIGRATED
+    assert (root / step.backup_path).read_bytes() == source
+    assert migrated.startswith(b"# User bytes\r\n")
+    assert f"MANAGED SECTION v{GITIGNORE_MANAGED_SECTION_VERSION}".encode() in migrated
+    assert GITIGNORE_ORCHESTRATION_RECORD_RULE.encode() in migrated
+    assert GITIGNORE_ORCHESTRATION_TEMP_RULE.encode() in migrated
+    assert UpgradePlanner().plan(root).status is UpgradePlanStatus.ALREADY_CURRENT
+
+
+@pytest.mark.parametrize(
+    "gitignore",
+    (
+        gitignore_managed_section_v1(MissionStateGitPolicy.TRACKED).replace(
+            ".agentic-engineering-os/worktrees.json", "# tampered"
+        ),
+        "# BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION v99\n"
+        "future\n"
+        "# END AGENTIC_ENGINEERING_OS MANAGED SECTION v99\n",
+    ),
+)
+def test_tampered_or_future_gitignore_section_is_refused(
+    tmp_path: Path, gitignore: str
+) -> None:
+    root = repository(tmp_path)
+    (root / ".gitignore").write_text(gitignore, encoding="utf-8")
+    git(root, "add", ".gitignore")
+    git(root, "commit", "-m", "replace gitignore fixture")
+
+    plan = UpgradePlanner().plan(root)
+
+    assert plan.status is UpgradePlanStatus.BLOCKED
+    assert not plan.steps
+    assert any(
+        item.code == "GITIGNORE_SOURCE_NOT_MIGRATABLE" for item in plan.blockers
+    )
+
+
+def test_stale_and_foreign_gitignore_migration_plans_are_refused(tmp_path: Path) -> None:
+    root = repository(tmp_path, old_gitignore=True)
+    plan = UpgradePlanner().plan(root)
+    (root / ".gitignore").write_bytes((root / ".gitignore").read_bytes() + b"# stale\n")
+    stale = RepositoryUpgradeService().apply(plan, confirmations=confirmations(plan))
+    assert stale.status is UpgradeResultStatus.REFUSED
+    assert any(item.code == "STALE_OR_FOREIGN_PLAN" for item in stale.findings)
+
+    other = repository(tmp_path / "foreign", old_gitignore=True)
+    foreign_plan = replace(plan, repository_root=str(other.resolve()))
+    foreign = RepositoryUpgradeService().apply(
+        foreign_plan, confirmations=confirmations(foreign_plan)
+    )
+    assert foreign.status is UpgradeResultStatus.REFUSED
+    assert any(item.code == "STALE_OR_FOREIGN_PLAN" for item in foreign.findings)
 
 
 def test_multi_artifact_order_and_partial_failure_preserve_backups(
@@ -540,6 +627,7 @@ def test_closed_registry_has_only_real_edges_and_no_generic_migrate_api() -> Non
     registry = RepositoryMigrationRegistry()
     assert registry.supported_edges == (
         (MigrationArtifact.AGENTS_MANAGED_SECTION, "1", "2"),
+        (MigrationArtifact.GITIGNORE_MANAGED_SECTION, "1", "2"),
         (MigrationArtifact.NEGATIVE_OUTCOME_LEDGER, "1.0", "2.0"),
     )
     assert (

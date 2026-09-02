@@ -13,7 +13,7 @@ evidence of an older persisted format; it is not a compatibility promise.
 | ProjectState | `1.0` | none observed | `.agentic-engineering-os/state.json`, Git-tracked | authoritative project state | none | unsupported/future/corrupt fail closed |
 | MissionState | `1.0` | `0.9` appears only as an unsupported adversarial fixture | `.agentic-engineering-os/mission.json`, tracked or ignored by project policy | operational state, non-authoritative for project control | none | unsupported/future/corrupt fail closed |
 | AGENTS managed section | `2` | `1` canonical historical content | managed section of Git-tracked `AGENTS.md` | system operating contract | `1 → 2` | unknown/future/tampered fail closed |
-| Git-ignore managed section | `1` | none observed | managed section of Git-tracked `.gitignore` | system installation policy | none | unknown/future/tampered fail closed |
+| Git-ignore managed section | `2` | `1` canonical historical content | managed section of Git-tracked `.gitignore` | system installation policy | `1 → 2` | unknown/future/tampered fail closed |
 | WorktreeRegistry | `1.0` | none observed | ignored volatile `worktrees.json` | operational resource state | none | unsupported/future/corrupt fail closed |
 | negative-outcomes ledger | `2.0` | `1.0` canonical historical document | ignored volatile `negative-outcomes.json` | operational replay protection | `1.0 → 2.0` | unsupported/future/corrupt fail closed |
 | execution ledger | `1.1` | `1.0` | ignored volatile `executions.json` | operational execution recovery | deliberately no `1.0 → 1.1` edge | unsupported/future/corrupt fail closed |
@@ -89,6 +89,7 @@ migrations. P7.7 consults its exact `definition(artifact, source, target)` and
 does not accept caller-provided edges. Only these edges exist:
 
 - AGENTS managed section `1 → 2`, with Human confirmation under P5.9;
+- Git-ignore managed section `1 → 2`, with Human confirmation and exact preservation of user bytes outside the managed section;
 - negative-outcomes ledger `1.0 → 2.0`.
 
 Execution ledger `1.0 → 1.1` is intentionally unsupported. Maintenance state

@@ -11,8 +11,16 @@ from agentic_engineering_os.application.execution_state import EXECUTION_LEDGER_
 from agentic_engineering_os.domain import (
     AGENTS_MANAGED_SECTION,
     AGENTS_MANAGED_SECTION_VERSION,
+    GITIGNORE_MANAGED_SECTION_VERSION,
+    GITIGNORE_SECTION_END,
+    GITIGNORE_SECTION_START,
+    GITIGNORE_V1_SECTION_END,
+    GITIGNORE_V1_SECTION_START,
     MAINTENANCE_SCHEMA_VERSION,
     MigrationArtifact,
+    MissionStateGitPolicy,
+    gitignore_managed_section,
+    gitignore_managed_section_v1,
 )
 
 from ._negative_outcome_store import _validate_document as _validate_negative_current
@@ -79,6 +87,17 @@ class RepositoryMigrationRegistry:
                 _validate_agents_current,
             ),
             _MigrationDefinition(
+                MigrationArtifact.GITIGNORE_MANAGED_SECTION,
+                ".gitignore",
+                "1",
+                GITIGNORE_MANAGED_SECTION_VERSION,
+                True,
+                False,
+                True,
+                _upgrade_gitignore_v1,
+                _validate_gitignore_current,
+            ),
+            _MigrationDefinition(
                 MigrationArtifact.NEGATIVE_OUTCOME_LEDGER,
                 ".agentic-engineering-os/negative-outcomes.json",
                 "1.0",
@@ -109,6 +128,12 @@ class RepositoryMigrationRegistry:
             (
                 MigrationArtifact.AGENTS_MANAGED_SECTION,
                 AGENTS_MANAGED_SECTION_VERSION,
+                True,
+                False,
+            ),
+            (
+                MigrationArtifact.GITIGNORE_MANAGED_SECTION,
+                GITIGNORE_MANAGED_SECTION_VERSION,
                 True,
                 False,
             ),
@@ -198,6 +223,54 @@ def _upgrade_agents_v1(source: bytes) -> MigrationCandidate:
 def _validate_agents_current(content: bytes) -> None:
     if AgentsIntegrationService().inspect(content).status.value != "CURRENT":
         raise MigrationRegistryError("POST_VALIDATION_FAILED", "AGENTS v2 is not canonical")
+
+
+def _upgrade_gitignore_v1(source: bytes) -> MigrationCandidate:
+    try:
+        source.decode("utf-8")
+    except UnicodeError as error:
+        raise MigrationRegistryError("CORRUPT_SOURCE", ".gitignore is not UTF-8") from error
+    candidates: set[bytes] = set()
+    for policy in MissionStateGitPolicy:
+        old_section = gitignore_managed_section_v1(policy).encode("utf-8")
+        new_section = gitignore_managed_section(policy).encode("utf-8")
+        for newline in (b"\r\n", b"\n", b"\r"):
+            old = old_section.replace(b"\n", newline)
+            new = new_section.replace(b"\n", newline)
+            for old_form, new_form in (
+                (old, new),
+                (old.rstrip(newline), new.rstrip(newline)),
+            ):
+                if source.count(old_form) == 1:
+                    candidates.add(source.replace(old_form, new_form, 1))
+    if len(candidates) != 1:
+        raise MigrationRegistryError(
+            "CORRUPT_SOURCE",
+            ".gitignore v1 section is absent, ambiguous, or noncanonical",
+        )
+    return MigrationCandidate(candidates.pop(), None, None)
+
+
+def _validate_gitignore_current(content: bytes) -> None:
+    try:
+        text = content.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    except UnicodeError as error:
+        raise MigrationRegistryError("POST_VALIDATION_FAILED", ".gitignore is not UTF-8") from error
+    matches = 0
+    for policy in MissionStateGitPolicy:
+        canonical = gitignore_managed_section(policy).rstrip("\n")
+        if text.count(canonical) == 1:
+            matches += 1
+    if (
+        matches != 1
+        or text.count(GITIGNORE_SECTION_START) != 1
+        or text.count(GITIGNORE_SECTION_END) != 1
+        or GITIGNORE_V1_SECTION_START in text
+        or GITIGNORE_V1_SECTION_END in text
+    ):
+        raise MigrationRegistryError(
+            "POST_VALIDATION_FAILED", ".gitignore v2 section is not canonical"
+        )
 
 
 def _upgrade_negative_v1(source: bytes) -> MigrationCandidate:

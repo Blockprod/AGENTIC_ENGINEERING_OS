@@ -87,7 +87,7 @@ def test_supported_known_supported_history_requires_registered_migration(tmp_pat
     assert result.global_compatibility is CompatibilityClassification.MIGRATION_REQUIRED
 
 
-def test_negative_outcome_history_is_the_only_other_supported_edge(tmp_path: Path) -> None:
+def test_registered_historical_edges_are_explicit(tmp_path: Path) -> None:
     values = list(context(tmp_path).artifacts)
     values.append(observation(tmp_path, CompatibilityArtifact.NEGATIVE_OUTCOME_LEDGER, version="1.0"))
     result = CompatibilityEvaluator().evaluate(context(tmp_path, observations=values))
@@ -95,8 +95,27 @@ def test_negative_outcome_history_is_the_only_other_supported_edge(tmp_path: Pat
     registry = RepositoryMigrationRegistry()
     assert registry.supported_edges == (
         (MigrationArtifact.AGENTS_MANAGED_SECTION, "1", "2"),
+        (MigrationArtifact.GITIGNORE_MANAGED_SECTION, "1", "2"),
         (MigrationArtifact.NEGATIVE_OUTCOME_LEDGER, "1.0", "2.0"),
     )
+
+
+def test_gitignore_v1_requires_registered_migration(tmp_path: Path) -> None:
+    values = list(context(tmp_path).artifacts)
+    index = next(
+        i
+        for i, item in enumerate(values)
+        if item.artifact is CompatibilityArtifact.GITIGNORE_MANAGED_SECTION
+    )
+    values[index] = observation(
+        tmp_path, CompatibilityArtifact.GITIGNORE_MANAGED_SECTION, version="1"
+    )
+    result = CompatibilityEvaluator().evaluate(
+        context(tmp_path, observations=values)
+    )
+    item = assessment_for(result, CompatibilityArtifact.GITIGNORE_MANAGED_SECTION)
+    assert item.classification is CompatibilityClassification.MIGRATION_REQUIRED
+    assert item.required_migration == ("1", "2")
 
 
 def test_execution_ledger_1_0_is_intentionally_unsupported(tmp_path: Path) -> None:

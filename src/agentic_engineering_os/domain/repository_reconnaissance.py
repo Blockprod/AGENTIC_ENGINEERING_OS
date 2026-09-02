@@ -64,9 +64,20 @@ AGENTS_MANAGED_SECTION = "\n".join(
     )
 )
 
-GITIGNORE_SECTION_START = "# BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION v1"
-GITIGNORE_SECTION_END = "# END AGENTIC_ENGINEERING_OS MANAGED SECTION v1"
+GITIGNORE_MANAGED_SECTION_VERSION = "2"
+GITIGNORE_SECTION_START = (
+    "# BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION "
+    f"v{GITIGNORE_MANAGED_SECTION_VERSION}"
+)
+GITIGNORE_SECTION_END = (
+    "# END AGENTIC_ENGINEERING_OS MANAGED SECTION "
+    f"v{GITIGNORE_MANAGED_SECTION_VERSION}"
+)
+GITIGNORE_V1_SECTION_START = "# BEGIN AGENTIC_ENGINEERING_OS MANAGED SECTION v1"
+GITIGNORE_V1_SECTION_END = "# END AGENTIC_ENGINEERING_OS MANAGED SECTION v1"
 GITIGNORE_MISSION_STATE_RULE = ".agentic-engineering-os/mission.json"
+GITIGNORE_ORCHESTRATION_RECORD_RULE = ".agentic-engineering-os/orchestration.json"
+GITIGNORE_ORCHESTRATION_TEMP_RULE = ".agentic-engineering-os/.orchestration.*.tmp"
 _GITIGNORE_BASE_RULES = (
         GITIGNORE_SECTION_START,
         ".agentic-engineering-os/worktrees.json",
@@ -79,6 +90,13 @@ _GITIGNORE_BASE_RULES = (
         ".agentic-engineering-os/.maintenance.*.tmp",
         ".agentic-engineering-os/.maintenance.lock",
         ".agentic-engineering-os/operational-events/",
+        GITIGNORE_ORCHESTRATION_RECORD_RULE,
+        GITIGNORE_ORCHESTRATION_TEMP_RULE,
+)
+
+_GITIGNORE_V1_BASE_RULES = (
+    GITIGNORE_V1_SECTION_START,
+    *_GITIGNORE_BASE_RULES[1:-2],
 )
 
 
@@ -101,6 +119,17 @@ def gitignore_managed_section(policy: MissionStateGitPolicy) -> str:
 
 # Backward-compatible canonical TRACKED section.
 GITIGNORE_MANAGED_SECTION = gitignore_managed_section(MissionStateGitPolicy.TRACKED)
+
+
+def gitignore_managed_section_v1(policy: MissionStateGitPolicy) -> str:
+    """Return the recognized historical v1 section for explicit migration."""
+
+    if not isinstance(policy, MissionStateGitPolicy):
+        raise TypeError("MissionStateGitPolicy is required")
+    rules = _GITIGNORE_V1_BASE_RULES
+    if policy is MissionStateGitPolicy.IGNORED:
+        rules += (GITIGNORE_MISSION_STATE_RULE,)
+    return "\n".join((*rules, GITIGNORE_V1_SECTION_END, ""))
 
 
 class ManagedSectionStatus(str, Enum):

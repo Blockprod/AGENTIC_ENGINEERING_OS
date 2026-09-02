@@ -19,3 +19,5 @@ Thumbs.db
 .agentic-engineering-os/.maintenance.*.tmp
 .agentic-engineering-os/.maintenance.lock
 .agentic-engineering-os/operational-events/
+.agentic-engineering-os/orchestration.json
+.agentic-engineering-os/.orchestration.*.tmp

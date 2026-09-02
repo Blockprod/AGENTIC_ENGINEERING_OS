@@ -17,7 +17,7 @@ inspect → plan → confirmation Human → backup → apply → validate
 | `state.json` | `1.0` | aucun | versionné | non | aucune | version/forme invalide refusée |
 | `mission.json` | `1.0` | aucun | selon `mission_state_git_policy` | non | aucune | version/forme invalide refusée |
 | section AGENTS | `2` | `1` | versionnée | non | `1 → 2` | ancienne version classée `UPGRADE_REQUIRED` |
-| section Git-ignore | `1` | aucun | versionnée | non | aucune | altération/version incompatible refusée |
+| section Git-ignore | `2` | `1` | versionnée | non | `1 → 2` | ancienne version classée `UPGRADE_REQUIRED` |
 | `worktrees.json` | `1.0` | aucun | ignoré | oui | aucune | version incompatible refusée |
 | `negative-outcomes.json` | `2.0` | `1.0` | ignoré | oui | `1.0 → 2.0` | exige explicitement une migration `2.0` |
 | `executions.json` | `1.1` | `1.0` | ignoré | oui | non supportée | ancienne version refusée |
@@ -47,6 +47,7 @@ générique, ni migration déclenchée par un loader.
 Le registre contient exactement :
 
 - `AGENTS_MANAGED_SECTION: 1 → 2` ;
+- `GITIGNORE_MANAGED_SECTION: 1 → 2` ;
 - `NEGATIVE_OUTCOME_LEDGER: 1.0 → 2.0`.
 
 `MAINTENANCE_STATE` reconnaît uniquement la version courante `1.0`, sans edge
@@ -61,6 +62,12 @@ La migration AGENTS remplace uniquement la section historique v1 canonique,
 en conservant les octets utilisateur et la convention de newline. Elle exige
 une confirmation Human liée au plan, à l'étape, à l'artefact, à l'empreinte
 source et à la version cible. Une identité Codex est refusée.
+
+La migration Git-ignore remplace uniquement la section historique v1
+canonique, conserve les octets utilisateur hors section et ajoute les règles
+précises de l'index runtime d'orchestration et de son temporaire atomique. Elle
+requiert une confirmation Human et ne s'exécute jamais à l'installation ou au
+démarrage.
 
 La migration negative-outcomes valide strictement chaque outcome v1, conserve
 son résultat, son fingerprint et son état `consumed`, passe la version à `2.0`

@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from agentic_engineering_os import __version__ as _PRODUCT_VERSION
 from agentic_engineering_os.domain import (
     DocumentStatus,
+    GITIGNORE_MANAGED_SECTION_VERSION,
     ManagedSectionStatus,
     MigrationArtifact,
     MigrationTargetVersion,
@@ -53,7 +54,8 @@ _ARTIFACT_BY_RUNTIME_PATH = {
 }
 _ORDER = {
     MigrationArtifact.AGENTS_MANAGED_SECTION: 10,
-    MigrationArtifact.NEGATIVE_OUTCOME_LEDGER: 20,
+    MigrationArtifact.GITIGNORE_MANAGED_SECTION: 20,
+    MigrationArtifact.NEGATIVE_OUTCOME_LEDGER: 30,
 }
 
 
@@ -127,6 +129,31 @@ class UpgradePlanner:
             blockers.append(
                 UpgradeFinding(
                     "AGENTS_SOURCE_NOT_MIGRATABLE", "AGENTS.md", agents.status.value
+                )
+            )
+
+        gitignore = profile.agentic_os.gitignore_managed_section
+        if gitignore.status is ManagedSectionStatus.UPGRADE_REQUIRED:
+            self._append_step(
+                root,
+                MigrationArtifact.GITIGNORE_MANAGED_SECTION,
+                ".gitignore",
+                "1",
+                GITIGNORE_MANAGED_SECTION_VERSION,
+                steps,
+                blockers,
+            )
+        elif gitignore.status in {
+            ManagedSectionStatus.TAMPERED,
+            ManagedSectionStatus.AMBIGUOUS,
+            ManagedSectionStatus.UNSAFE,
+            ManagedSectionStatus.UNKNOWN,
+        }:
+            blockers.append(
+                UpgradeFinding(
+                    "GITIGNORE_SOURCE_NOT_MIGRATABLE",
+                    ".gitignore",
+                    gitignore.status.value,
                 )
             )
 

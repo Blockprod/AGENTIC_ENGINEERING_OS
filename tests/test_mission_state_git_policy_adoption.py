@@ -15,6 +15,9 @@ from agentic_engineering_os.domain import (
     AGENTS_MANAGED_SECTION,
     GITIGNORE_MANAGED_SECTION,
     GITIGNORE_MISSION_STATE_RULE,
+    GITIGNORE_ORCHESTRATION_RECORD_RULE,
+    GITIGNORE_ORCHESTRATION_TEMP_RULE,
+    GITIGNORE_SECTION_START,
     AdoptionStatus,
     HumanOperationConfirmation,
     InitializationOperationType,
@@ -160,9 +163,39 @@ def test_fresh_ignored_adoption_materializes_policy_before_bootstrap(
     assert GITIGNORE_MISSION_STATE_RULE in (
         root / ".gitignore"
     ).read_text(encoding="utf-8").splitlines()
+    installed = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert GITIGNORE_SECTION_START in installed
+    assert GITIGNORE_ORCHESTRATION_RECORD_RULE in installed
+    assert GITIGNORE_ORCHESTRATION_TEMP_RULE in installed
     assert result.runtime_bootstrap_result is not None
     assert result.runtime_bootstrap_result.status is RuntimeBootstrapStatus.BOOTSTRAPPED
     assert not (root / ".agentic-engineering-os" / "mission.json").exists()
+
+    (root / ".agentic-engineering-os" / "orchestration.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    (root / ".agentic-engineering-os" / ".orchestration.probe.tmp").write_text(
+        "temporary\n", encoding="utf-8"
+    )
+    assert _git(root, "check-ignore", GITIGNORE_ORCHESTRATION_RECORD_RULE) == (
+        GITIGNORE_ORCHESTRATION_RECORD_RULE
+    )
+    assert _git(
+        root, "check-ignore", ".agentic-engineering-os/.orchestration.probe.tmp"
+    ) == ".agentic-engineering-os/.orchestration.probe.tmp"
+
+    for authoritative in (
+        ".agentic-engineering-os/config.json",
+        ".agentic-engineering-os/state.json",
+    ):
+        observed = subprocess.run(
+            ["git", "-C", str(root), "check-ignore", authoritative],
+            shell=False,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert observed.returncode == 1
 
 
 def test_existing_gitignore_requires_human_and_preserves_user_bytes(

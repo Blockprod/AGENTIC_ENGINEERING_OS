@@ -34,11 +34,16 @@ from agentic_engineering_os.domain import (
     ToolchainObservation,
     VerificationKind,
     GITIGNORE_MISSION_STATE_RULE,
+    GITIGNORE_ORCHESTRATION_RECORD_RULE,
+    GITIGNORE_ORCHESTRATION_TEMP_RULE,
     GITIGNORE_SECTION_END,
     GITIGNORE_SECTION_START,
+    GITIGNORE_V1_SECTION_END,
+    GITIGNORE_V1_SECTION_START,
     MAINTENANCE_SCHEMA_VERSION,
     MissionStateGitPolicy,
     gitignore_managed_section,
+    gitignore_managed_section_v1,
 )
 
 from .agents_integration import AgentsIntegrationService
@@ -82,6 +87,8 @@ _KNOWN_GITIGNORE_RULES = frozenset(
         ".agentic-engineering-os/.maintenance.*.tmp",
         ".agentic-engineering-os/.maintenance.lock",
         ".agentic-engineering-os/operational-events/",
+        GITIGNORE_ORCHESTRATION_RECORD_RULE,
+        GITIGNORE_ORCHESTRATION_TEMP_RULE,
         GITIGNORE_MISSION_STATE_RULE,
     }
 )
@@ -97,6 +104,8 @@ _REQUIRED_GITIGNORE_RULES = frozenset(
         ".agentic-engineering-os/.maintenance.*.tmp",
         ".agentic-engineering-os/.maintenance.lock",
         ".agentic-engineering-os/operational-events/",
+        GITIGNORE_ORCHESTRATION_RECORD_RULE,
+        GITIGNORE_ORCHESTRATION_TEMP_RULE,
     }
 )
 _RUNTIME_FORMATS = {
@@ -669,6 +678,9 @@ class RepositoryReconnaissance:
             GITIGNORE_SECTION_START,
             GITIGNORE_SECTION_END,
             gitignore_managed_section(mission_policy),
+            status_resolver=lambda text: _gitignore_managed_section_status(
+                text, mission_policy
+            ),
         )
         runtime_files = tuple(
             self._runtime_file(root, filename)
@@ -702,6 +714,7 @@ class RepositoryReconnaissance:
             config_status is DocumentStatus.UNKNOWN_VERSION
             or runtime_upgrade
             or agents_managed.status is ManagedSectionStatus.UPGRADE_REQUIRED
+            or gitignore_managed.status is ManagedSectionStatus.UPGRADE_REQUIRED
         ):
             state = AgenticOsInitializationState.UPGRADE_REQUIRED
             detail = "an observed config, runtime, or AGENTS contract version is incompatible"
@@ -781,6 +794,8 @@ class RepositoryReconnaissance:
         start_marker: str,
         end_marker: str,
         canonical_section: str,
+        *,
+        status_resolver: Callable[[str], ManagedSectionStatus] | None = None,
     ) -> ManagedSectionObservation:
         status, content = self._read_bounded_bytes(root, relative)
         if status is DocumentStatus.ABSENT:
@@ -818,8 +833,12 @@ class RepositoryReconnaissance:
                 "target file is not readable bounded UTF-8 text",
             )
         normalized_text = text.replace("\r\n", "\n").replace("\r", "\n")
-        section_status = _managed_section_status(
-            normalized_text, start_marker, end_marker, canonical_section
+        section_status = (
+            status_resolver(normalized_text)
+            if status_resolver is not None
+            else _managed_section_status(
+                normalized_text, start_marker, end_marker, canonical_section
+            )
         )
         return ManagedSectionObservation(
             relative,
@@ -1085,6 +1104,38 @@ def _managed_section_status(
         ManagedSectionStatus.CURRENT
         if observed == canonical_section.rstrip("\n")
         else ManagedSectionStatus.TAMPERED
+    )
+
+
+def _gitignore_managed_section_status(
+    text: str, policy: MissionStateGitPolicy
+) -> ManagedSectionStatus:
+    current = _managed_section_status(
+        text,
+        GITIGNORE_SECTION_START,
+        GITIGNORE_SECTION_END,
+        gitignore_managed_section(policy),
+    )
+    if current is not ManagedSectionStatus.SECTION_ABSENT:
+        return current
+    historical = _managed_section_status(
+        text,
+        GITIGNORE_V1_SECTION_START,
+        GITIGNORE_V1_SECTION_END,
+        gitignore_managed_section_v1(policy),
+    )
+    if historical is ManagedSectionStatus.CURRENT:
+        return ManagedSectionStatus.UPGRADE_REQUIRED
+    if historical is not ManagedSectionStatus.SECTION_ABSENT:
+        return historical
+    marker = re.compile(
+        r"^# (?:BEGIN|END) AGENTIC_ENGINEERING_OS MANAGED SECTION v[^\r\n]+$",
+        re.MULTILINE,
+    )
+    return (
+        ManagedSectionStatus.UNKNOWN
+        if marker.search(text)
+        else ManagedSectionStatus.SECTION_ABSENT
     )
 
 
