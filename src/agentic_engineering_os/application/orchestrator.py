@@ -189,8 +189,9 @@ class Orchestrator:
             f"{_STEP_INSTRUCTIONS[target_step]} Subject: {mission.subject}. "
             f"{subject_context} This handoff grants no Control Plane authority."
         )
+        already_routed = mission.role is next_role
         handoff = RoleHandoff(
-            from_role=mission.role,
+            from_role=(MissionRole.ORCHESTRATOR if already_routed else mission.role),
             to_role=next_role,
             mission_id=mission.mission_id,
             workflow_generation=mission.workflow_generation,
@@ -210,6 +211,16 @@ class Orchestrator:
             updated_at=updated_at,
             blockers=list(blockers),
         )
+        if already_routed and current_commit.casefold() == mission.observed_commit.casefold():
+            return OrchestrationResult(
+                success=True,
+                current_role=mission.role,
+                next_role=next_role,
+                handoff=handoff,
+                blockers=blockers,
+                reason="ROUTE_RECONSTRUCTED",
+                updated_mission_state=mission,
+            )
         try:
             authorization = _issue_authoritative_write(
                 store_kind="MISSION_STATE",

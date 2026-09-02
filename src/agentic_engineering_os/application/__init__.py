@@ -222,6 +222,23 @@ from .mission_admission import (
     MissionReadinessPrecheck,
     MissionRequest,
 )
+from .mission_lifecycle import (
+    MissionLifecycleError,
+    MissionLifecycleService,
+    MissionLifecycleStart,
+)
+from .mission_planning import (
+    MissionPlanningCoordinator,
+    MissionPlanningError,
+    MissionPlanningResult,
+    MissionPlanningStatus,
+)
+from .orchestration_record import (
+    ORCHESTRATION_RECORD_VERSION,
+    OrchestrationRecord,
+    RoleExecutionReference,
+    request_fingerprint,
+)
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -385,6 +402,17 @@ __all__ = [
     "MissionMaintenanceProvider",
     "MissionReadinessPrecheck",
     "MissionRequest",
+    "MissionLifecycleError",
+    "MissionLifecycleService",
+    "MissionLifecycleStart",
+    "MissionPlanningCoordinator",
+    "MissionPlanningError",
+    "MissionPlanningResult",
+    "MissionPlanningStatus",
+    "ORCHESTRATION_RECORD_VERSION",
+    "OrchestrationRecord",
+    "RoleExecutionReference",
+    "request_fingerprint",
     "AcceptanceResult",
     "AuthoritativeContextEntry",
     "ArchitectDecision",

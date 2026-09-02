@@ -354,6 +354,7 @@ def _candidate_state(current: ProjectState) -> ProjectState:
         gates=list(current.gates),
         certifications=list(current.certifications),
         audit_events=list(current.audit_events),
+        project_id=current.project_id,
     )
 
 

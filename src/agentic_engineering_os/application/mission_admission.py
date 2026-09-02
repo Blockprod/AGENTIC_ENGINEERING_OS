@@ -7,7 +7,7 @@ import json
 import os
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -28,11 +28,15 @@ from agentic_engineering_os.domain import (
     RepositoryProfile,
     RepositorySupportStatus,
 )
-from agentic_engineering_os.infrastructure import (
+from agentic_engineering_os.infrastructure.execution_state_store import (
     ExecutionStateStore,
-    MissionStateStore,
+)
+from agentic_engineering_os.infrastructure.mission_state_store import MissionStateStore
+from agentic_engineering_os.infrastructure.project_configuration import (
     ProjectConfigurationLoader,
-    ProjectStateStore,
+)
+from agentic_engineering_os.infrastructure.project_state_store import ProjectStateStore
+from agentic_engineering_os.infrastructure.repository_reconnaissance import (
     RepositoryReconnaissance,
 )
 
@@ -149,6 +153,9 @@ class MissionAdmission:
     blockers: tuple[MissionAdmissionBlocker, ...]
     missing_capabilities: tuple[CodexOperationalCapabilityClass, ...]
     next_action: str
+    maintenance_admission: MaintenanceStartAdmission | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, MissionAdmissionStatus):
@@ -171,6 +178,13 @@ class MissionAdmission:
             self.blockers or self.missing_capabilities
         ):
             raise ValueError("ADMITTED cannot retain blockers")
+        if self.status is MissionAdmissionStatus.ADMITTED and (
+            not isinstance(self.maintenance_admission, MaintenanceStartAdmission)
+            or self.maintenance_admission.operation is not MaintenanceOperation.START_MISSION
+            or self.maintenance_admission.decision
+            is not MaintenanceAdmissionDecision.ADMITTED
+        ):
+            raise ValueError("ADMITTED requires the exact START_MISSION admission")
         if self.status is not MissionAdmissionStatus.ADMITTED and not self.blockers:
             raise ValueError("non-admitted results require blockers")
         if not self.next_action.strip():
@@ -325,7 +339,7 @@ class MissionReadinessPrecheck:
             blockers.append(MissionAdmissionBlocker("MAINTENANCE_REFUSED", ",".join(item.value for item in maintenance.reasons)))
         if blockers:
             human = all(item.code == "HUMAN_AUTHORITY_REQUIRED" for item in blockers)
-            return _result(request, MissionAdmissionStatus.HUMAN_REQUIRED if human else MissionAdmissionStatus.BLOCKED, blockers, (), facts, head, project_id)
+            return _result(request, MissionAdmissionStatus.HUMAN_REQUIRED if human else MissionAdmissionStatus.BLOCKED, blockers, (), facts, head, project_id, maintenance)
 
         try:
             snapshot = self._capabilities.inspect(request, configuration)
@@ -346,6 +360,7 @@ class MissionReadinessPrecheck:
             facts,
             head,
             project_id,
+            maintenance,
         )
 
     def _load_optional_mission(self, root: str) -> tuple[MissionState | None, MissionAdmissionBlocker | None]:
@@ -491,6 +506,7 @@ def _result(
     facts: dict[str, object],
     head: str | None,
     project_id: str | None,
+    maintenance: MaintenanceStartAdmission | None = None,
 ) -> MissionAdmission:
     ordered_blockers = tuple(sorted(set(blockers), key=lambda item: (item.code, item.detail)))
     ordered_missing = tuple(sorted(set(missing), key=lambda item: item.value))
@@ -508,6 +524,7 @@ def _result(
         ordered_blockers,
         ordered_missing,
         next_action,
+        maintenance,
     )
 
 
