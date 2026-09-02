@@ -164,6 +164,36 @@ class AlteredOperationalProver(MatchingOperationalProver):
                 status=CodexOperationalCapabilityStatus.PROVEN,
                 detail="stale test proof",
             )
+        if (
+            self.alteration == "edit-as-command"
+            and proof.capability_class is CodexOperationalCapabilityClass.COMMAND_EXECUTION
+        ):
+            return create_operational_capability_proof(
+                executable_path=proof.executable_path,
+                executable_sha256=proof.executable_sha256,
+                executable_version=proof.executable_version,
+                capability_class=CodexOperationalCapabilityClass.WORKSPACE_EDIT,
+                sandbox=proof.sandbox,
+                approval_policy=proof.approval_policy,
+                environment_fingerprint=proof.environment_fingerprint,
+                status=CodexOperationalCapabilityStatus.PROVEN,
+                detail="edit proof cannot authorize command execution",
+            )
+        if (
+            self.alteration == "read-as-edit"
+            and proof.capability_class is CodexOperationalCapabilityClass.WORKSPACE_EDIT
+        ):
+            return create_operational_capability_proof(
+                executable_path=proof.executable_path,
+                executable_sha256=proof.executable_sha256,
+                executable_version=proof.executable_version,
+                capability_class=CodexOperationalCapabilityClass.REPOSITORY_READ,
+                sandbox=proof.sandbox,
+                approval_policy=proof.approval_policy,
+                environment_fingerprint=proof.environment_fingerprint,
+                status=CodexOperationalCapabilityStatus.PROVEN,
+                detail="read proof cannot authorize workspace edit",
+            )
         return create_operational_capability_proof(
             executable_path=proof.executable_path,
             executable_sha256=proof.executable_sha256,
@@ -216,7 +246,32 @@ def test_architect_repository_read_admission_does_not_require_command_execution(
     )
 
 
-@pytest.mark.parametrize("alteration", ("forged", "stale-digest", "wrong-class"))
+def test_tester_is_refused_before_role_launch_without_command_proof(
+    tmp_path: Path,
+) -> None:
+    root, commit = repository(tmp_path)
+    prompt = replace(compiled(root, commit), role=MissionRole.TESTER)
+    expected = binding(
+        prompt,
+        root,
+        sandbox=CodexSandboxMode.WORKSPACE_WRITE,
+    )
+
+    observation = adapter("tool-failure").execute(prompt, expected)
+
+    assert observation.started_at is None
+    assert observation.process_id is None
+    assert observation.final_output is None
+    assert observation.issues == (
+        "REQUIRED_OPERATIONAL_CAPABILITY_UNPROVEN:COMMAND_EXECUTION:"
+        "CAPABILITY_TOOL_EXECUTION_FAILED:sandbox=workspace-write:approval=never",
+    )
+
+
+@pytest.mark.parametrize(
+    "alteration",
+    ("forged", "stale-digest", "wrong-class", "read-as-edit", "edit-as-command"),
+)
 def test_forged_stale_or_wrong_policy_operational_proof_is_refused_before_spawn(
     tmp_path: Path, alteration: str
 ) -> None:
@@ -235,6 +290,37 @@ def test_forged_stale_or_wrong_policy_operational_proof_is_refused_before_spawn(
     assert len(observation.issues) == 1
     assert observation.issues[0].startswith("REQUIRED_OPERATIONAL_CAPABILITY_UNPROVEN:")
     assert observation.issues[0].endswith("sandbox=workspace-write:approval=never")
+
+
+@pytest.mark.parametrize(
+    ("mode", "capability"),
+    (
+        ("probe-wrong-edit-target", "WORKSPACE_EDIT"),
+        ("probe-extra-edit-file", "WORKSPACE_EDIT"),
+        ("probe-invalid-edit-terminal", "WORKSPACE_EDIT"),
+        ("probe-shell-wrapper", "COMMAND_EXECUTION"),
+    ),
+)
+def test_operational_probe_rejects_wrong_scope_extra_diff_invalid_terminal_and_shell_wrapper(
+    tmp_path: Path,
+    mode: str,
+    capability: str,
+) -> None:
+    root, commit = repository(tmp_path)
+    prompt = compiled(root, commit)
+    expected = binding(prompt, root, sandbox=CodexSandboxMode.WORKSPACE_WRITE)
+    authority_before = (root / "AGENTS.md").read_bytes()
+
+    observation = adapter(mode).execute(prompt, expected)
+
+    assert observation.started_at is None
+    assert observation.process_id is None
+    assert len(observation.issues) == 1
+    assert observation.issues[0].startswith(
+        f"REQUIRED_OPERATIONAL_CAPABILITY_UNPROVEN:{capability}:"
+    )
+    assert (root / "AGENTS.md").read_bytes() == authority_before
+    assert git(root, "status", "--porcelain") == ""
 
 
 def test_optional_unknown_capabilities_do_not_block_sequential_execution(tmp_path: Path) -> None:

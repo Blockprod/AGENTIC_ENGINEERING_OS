@@ -11,7 +11,8 @@ séparées, preuves reproductibles et blocage fail-closed.
 Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
 Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `CERTIFIED / CLOSED` ;
-Phase 6 — `CERTIFIED / CLOSED` ; Phase 7 — `IN PROGRESS — P7.9`
+Phase 6 — `CERTIFIED / CLOSED` ; Phase 7 —
+`IN PROGRESS — P7.10 ENVIRONMENTALLY BLOCKED`
 
 Roadmap canonique :
 
@@ -22,7 +23,8 @@ Roadmap canonique :
 - P4 — VS Code / Codex Runtime Integration
 - P5 — Repository Deployment / Installation Kit
 - P6 — Production Governance & Observability
-- P7 — Generalization / Final Product Certification — `IN PROGRESS — P7.9`
+- P7 — Generalization / Final Product Certification —
+  `IN PROGRESS — P7.10 ENVIRONMENTALLY BLOCKED`
 
 Entrée opérateur canonique : `python -m agentic_engineering_os --help`.
 Le shim `agentic-os` est une commodité optionnelle susceptible d'être bloquée
@@ -114,4 +116,5 @@ Documentation :
 - [Backward Compatibility and Versioning](docs/76-backward-compatibility-versioning.md)
 - [Installation and Upgrade Compatibility Matrix](docs/77-installation-upgrade-compatibility-matrix.md)
 - [Product UX and Operator Acceptance](docs/78-product-operator-ux.md)
+- [P7.10 Host Capability Limitation](docs/79-clean-room-host-capability-limitation.md)
 - [JSON Schemas V1](schemas/README.md)

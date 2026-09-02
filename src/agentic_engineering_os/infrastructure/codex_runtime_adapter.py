@@ -147,29 +147,7 @@ class CodexOperationalCapabilityProver:
                     diagnostic_code="PROBE_REPOSITORY_INITIALIZATION_FAILED",
                 )
             expected = hashlib.sha256(os.urandom(32)).hexdigest()
-            if capability_class is CodexOperationalCapabilityClass.REPOSITORY_READ:
-                (probe_root / "AGENTS.md").write_text(
-                    f"Return this repository marker when explicitly requested: {expected}\n",
-                    encoding="utf-8",
-                )
-                prompt = (
-                    "Read the repository instruction file supplied by Codex for this working "
-                    "directory without invoking a shell or modifying files. Return only a JSON "
-                    "object with key `observed` containing its 64-character repository marker."
-                )
-            elif capability_class is CodexOperationalCapabilityClass.COMMAND_EXECUTION:
-                prompt = (
-                    "Use the shell tool to execute a command that prints exactly "
-                    f"`{expected}`. Return only a JSON object with key `observed` containing "
-                    "the command output. Do not create files."
-                )
-            else:
-                prompt = (
-                    "Use the workspace editing tool, not a shell command, to create "
-                    f"`operational-write-proof.txt` containing exactly `{expected}`. "
-                    "Return only a JSON object with key `observed` containing that value."
-                )
-            schema = Path(temporary) / "operational-proof.schema.json"
+            schema = probe_root / "operational-proof.schema.json"
             schema.write_text(
                 json.dumps(
                     {
@@ -183,6 +161,50 @@ class CodexOperationalCapabilityProver:
                 ),
                 encoding="utf-8",
             )
+            (probe_root / "AGENTS.md").write_text(
+                f"Return this repository marker when explicitly requested: {expected}\n",
+                encoding="utf-8",
+            )
+            edit_path = probe_root / "operational-edit-proof.txt"
+            if capability_class is CodexOperationalCapabilityClass.WORKSPACE_EDIT:
+                edit_path.write_text("before\n", encoding="utf-8")
+            if not _commit_probe_baseline(
+                probe_root,
+                environment,
+                configuration.version_timeout_seconds,
+            ):
+                return create_operational_capability_proof(
+                    executable_path=str(executable),
+                    executable_sha256=executable_sha256,
+                    executable_version=executable_version,
+                    capability_class=capability_class,
+                    sandbox=binding.sandbox.value,
+                    approval_policy=binding.approval_policy.value,
+                    environment_fingerprint=fingerprint,
+                    status=status,
+                    detail="disposable probe baseline could not be committed",
+                    diagnostic_code="PROBE_BASELINE_COMMIT_FAILED",
+                )
+            if capability_class is CodexOperationalCapabilityClass.REPOSITORY_READ:
+                prompt = (
+                    "Read the repository instruction file supplied by Codex for this working "
+                    "directory without invoking a shell or modifying files. Return only a JSON "
+                    "object with key `observed` containing its 64-character repository marker."
+                )
+            elif capability_class is CodexOperationalCapabilityClass.COMMAND_EXECUTION:
+                prompt = (
+                    "Use the command execution tool to run this exact direct argv contract: "
+                    f"`python -c \"print('{expected}')\"`. Do not use PowerShell, cmd.exe, "
+                    "a shell wrapper, redirection, or a file. Return only a JSON object with "
+                    "key `observed` containing the command output."
+                )
+            else:
+                prompt = (
+                    "Use the workspace editing tool, not a shell command, to replace the "
+                    "single line in `operational-edit-proof.txt` with exactly "
+                    f"`{expected}` followed by one newline. Do not change any other file. "
+                    "Return only a JSON object with key `observed` containing that value."
+                )
             invocation = _invocation(
                 executable,
                 configuration.launcher_arguments,
@@ -208,16 +230,29 @@ class CodexOperationalCapabilityProver:
                 events, invalid = _parse_jsonl(process.stdout)
                 terminal, terminal_issue = _terminal_output(events)
                 value = _strict_observed_value(terminal)
-                command_succeeded = _successful_command_observed(events)
-                write_succeeded = (
-                    capability_class is CodexOperationalCapabilityClass.WORKSPACE_EDIT
-                    and (probe_root / "operational-write-proof.txt").is_file()
-                    and (probe_root / "operational-write-proof.txt").read_text(encoding="utf-8").strip() == expected
+                expected_command = f"python -c \"print('{expected}')\""
+                command_succeeded = _successful_command_observed(
+                    events,
+                    expected_command=expected_command,
                 )
+                git_after = _observe_git(probe_root)
+                write_succeeded, before_sha, after_sha = _exact_edit_observed(
+                    probe_root,
+                    edit_path,
+                    expected,
+                    git_after,
+                    environment,
+                    configuration.version_timeout_seconds,
+                )
+                no_side_effect = git_after.error is None and git_after.clean is True
                 primitive_succeeded = {
-                    CodexOperationalCapabilityClass.REPOSITORY_READ: value == expected,
+                    CodexOperationalCapabilityClass.REPOSITORY_READ: (
+                        value == expected and no_side_effect
+                    ),
                     CodexOperationalCapabilityClass.WORKSPACE_EDIT: write_succeeded,
-                    CodexOperationalCapabilityClass.COMMAND_EXECUTION: command_succeeded,
+                    CodexOperationalCapabilityClass.COMMAND_EXECUTION: (
+                        command_succeeded and no_side_effect
+                    ),
                 }.get(capability_class, False)
                 if (
                     process.returncode == 0
@@ -227,10 +262,14 @@ class CodexOperationalCapabilityProver:
                     and value == expected
                 ):
                     status = CodexOperationalCapabilityStatus.PROVEN
-                    detail = "exact active capability probe completed under bound policy"
+                    detail = (
+                        f"exact bounded edit observed; before_sha256={before_sha};"
+                        f"after_sha256={after_sha};changed_paths=operational-edit-proof.txt"
+                        if capability_class is CodexOperationalCapabilityClass.WORKSPACE_EDIT
+                        else "exact active capability probe completed under bound policy"
+                    )
                     diagnostic_code = f"{capability_class.value}_PROVEN"
                 else:
-                    detail = "active capability probe was blocked, malformed, or contradicted"
                     diagnostic_code = _probe_failure_code(
                         process.returncode,
                         process.stderr,
@@ -238,6 +277,7 @@ class CodexOperationalCapabilityProver:
                         terminal_issue,
                         _tool_failure_observed(events),
                     )
+                    detail = f"active capability probe failed: {diagnostic_code}"
             except subprocess.TimeoutExpired:
                 detail = "active capability probe timed out"
                 diagnostic_code = "OPERATIONAL_PROBE_TIMEOUT"
@@ -975,7 +1015,95 @@ def _terminal_output(
     return messages[-1][1], None
 
 
-def _successful_command_observed(events: tuple[CodexJsonlEvent, ...]) -> bool:
+def _commit_probe_baseline(
+    root: Path,
+    environment: Mapping[str, str],
+    timeout: float,
+) -> bool:
+    commands = (
+        ("git", "config", "user.name", "Agentic OS Capability Probe"),
+        ("git", "config", "user.email", "capability-probe@example.invalid"),
+        ("git", "add", "--", "AGENTS.md", "operational-proof.schema.json"),
+    )
+    if (root / "operational-edit-proof.txt").exists():
+        commands += (("git", "add", "--", "operational-edit-proof.txt"),)
+    commands += (("git", "commit", "-m", "probe: establish immutable baseline"),)
+    try:
+        for command in commands:
+            result = subprocess.run(
+                list(command),
+                shell=False,
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=dict(environment),
+                timeout=timeout,
+                check=False,
+            )
+            if result.returncode != 0:
+                return False
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    observed = _observe_git(root)
+    return observed.error is None and observed.clean is True
+
+
+def _exact_edit_observed(
+    root: Path,
+    edit_path: Path,
+    expected: str,
+    git_after: GitExecutionObservation,
+    environment: Mapping[str, str],
+    timeout: float,
+) -> tuple[bool, str | None, str | None]:
+    if not edit_path.is_file():
+        return False, None, None
+    try:
+        content = edit_path.read_text(encoding="utf-8")
+        after_sha = _file_sha256(edit_path)
+        diff = subprocess.run(
+            ["git", "diff", "--no-ext-diff", "--unified=0", "--", edit_path.name],
+            shell=False,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=dict(environment),
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, UnicodeError, subprocess.TimeoutExpired):
+        return False, None, None
+    removed = [
+        line for line in diff.stdout.splitlines()
+        if line.startswith("-") and not line.startswith("---")
+    ]
+    added = [
+        line for line in diff.stdout.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    before_sha = hashlib.sha256(b"before\n").hexdigest()
+    return (
+        diff.returncode == 0
+        and content == f"{expected}\n"
+        and git_after.error is None
+        and git_after.clean is False
+        and git_after.changed_paths == (edit_path.name,)
+        and removed == ["-before"]
+        and added == [f"+{expected}"],
+        before_sha,
+        after_sha,
+    )
+
+
+def _successful_command_observed(
+    events: tuple[CodexJsonlEvent, ...],
+    *,
+    expected_command: str,
+) -> bool:
     for event in events:
         payload = _event_payload(event)
         item = payload.get("item")
@@ -985,6 +1113,7 @@ def _successful_command_observed(events: tuple[CodexJsonlEvent, ...]) -> bool:
             and item.get("type") == "command_execution"
             and item.get("status") in {"completed", "success", "succeeded"}
             and item.get("exit_code", 0) == 0
+            and item.get("command") == expected_command
         ):
             return True
     return False

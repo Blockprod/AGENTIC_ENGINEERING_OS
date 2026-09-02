@@ -82,7 +82,7 @@ def main() -> int:
 
     if (
         prompt.startswith("Read the repository instruction file")
-        or prompt.startswith("Use the shell tool to ")
+        or prompt.startswith("Use the command execution tool")
         or prompt.startswith("Use the workspace editing tool")
     ):
         emit({"type": "thread.started", "thread_id": "11111111-2222-3333-4444-555555555555"})
@@ -92,37 +92,55 @@ def main() -> int:
             if match is None:
                 return 68
             observed = match.group(1)
-        elif mode == "tool-failure" and prompt.startswith("Use the shell tool"):
+        elif mode == "tool-failure" and prompt.startswith("Use the command execution tool"):
             emit({
                 "type": "item.completed",
-                "item": {"id": "probe-command", "type": "command_execution", "status": "failed"},
+                "item": {"id": "probe-command", "type": "command_execution", "status": "failed", "command": "blocked"},
             })
             observed = "blocked"
-        elif prompt.startswith("Use the shell tool"):
-            match = re.search(r"prints exactly `([0-9a-f]{64})`", prompt)
+        elif prompt.startswith("Use the command execution tool"):
+            match = re.search(r"python -c .*?([0-9a-f]{64})", prompt)
             if match is None:
                 return 68
             observed = match.group(1)
+            command = (
+                f'powershell -Command "python -c print(\'{observed}\')"'
+                if mode == "probe-shell-wrapper"
+                else f'python -c "print(\'{observed}\')"'
+            )
             emit({
                 "type": "item.completed",
-                "item": {"id": "probe-command", "type": "command_execution", "status": "completed", "exit_code": 0},
+                "item": {"id": "probe-command", "type": "command_execution", "status": "completed", "exit_code": 0, "command": command},
             })
         else:
-            match = re.search(r"containing exactly `([0-9a-f]{64})`", prompt)
+            match = re.search(r"with exactly `([0-9a-f]{64})`", prompt)
             if match is None:
                 return 68
             observed = match.group(1)
-            Path("operational-write-proof.txt").write_text(observed, encoding="utf-8")
+            target = (
+                Path("wrong-target.txt")
+                if mode == "probe-wrong-edit-target"
+                else Path("operational-edit-proof.txt")
+            )
+            target.write_text(observed + "\n", encoding="utf-8")
+            if mode == "probe-extra-edit-file":
+                Path("extra.txt").write_text("unexpected\n", encoding="utf-8")
             emit({
                 "type": "item.completed",
                 "item": {"id": "probe-command", "type": "command_execution", "status": "completed", "exit_code": 0},
             })
+        terminal_text = (
+            "not-json"
+            if mode == "probe-invalid-edit-terminal"
+            and prompt.startswith("Use the workspace editing tool")
+            else json.dumps({"observed": observed}, sort_keys=True)
+        )
         emit({
             "type": "item.completed",
             "item": {
                 "id": "probe-result",
                 "type": "agent_message",
-                "text": json.dumps({"observed": observed}, sort_keys=True),
+                "text": terminal_text,
             },
         })
         emit({"type": "turn.completed"})
