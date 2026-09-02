@@ -20,6 +20,7 @@ from agentic_engineering_os.application import (
 )
 from agentic_engineering_os.domain import MissionRole
 from agentic_engineering_os.infrastructure import (
+    CodexCapabilityDiscovery,
     CodexRuntimeAdapter,
     CodexRuntimeConfiguration,
 )
@@ -104,11 +105,65 @@ def configuration(mode: str = "normal", *, maximum: int = 1_000_000) -> CodexRun
         expected_executable_sha256=digest(executable),
         launcher_arguments=(str(FAKE), "--fake-mode", mode),
         max_output_characters=maximum,
+        test_executable_injection=True,
     )
 
 
 def adapter(mode: str = "normal", **kwargs: object) -> CodexRuntimeAdapter:
-    return CodexRuntimeAdapter(configuration(mode, **kwargs))
+    discovery = (
+        CodexCapabilityDiscovery()
+        if mode in {
+            "malformed-help", "help-fail", "help-timeout",
+            "missing-output-schema", "missing-workspace-sandbox",
+        }
+        else None
+    )
+    return CodexRuntimeAdapter(
+        configuration(mode, **kwargs), capability_discovery=discovery
+    )
+
+
+def test_required_capability_unknown_blocks_before_codex_spawn(tmp_path: Path) -> None:
+    root, commit = repository(tmp_path)
+    prompt = compiled(root, commit)
+    observation = adapter("malformed-help").execute(prompt, binding(prompt, root))
+    assert observation.process_id is None
+    assert "REQUIRED_CAPABILITY_NOT_SUPPORTED:NON_INTERACTIVE_EXEC" in observation.issues
+
+
+def test_optional_unknown_capabilities_do_not_block_sequential_execution(tmp_path: Path) -> None:
+    root, commit = repository(tmp_path)
+    prompt = compiled(root, commit)
+    observation = adapter().execute(prompt, binding(prompt, root))
+    assert observation.exit_code == 0
+    assert observation.process_id is not None
+
+
+def test_output_schema_capability_mismatch_blocks_before_spawn(tmp_path: Path) -> None:
+    root, commit = repository(tmp_path)
+    schema = root / "result.schema.json"
+    schema.write_text('{"type":"object"}', encoding="utf-8")
+    git(root, "add", ".")
+    git(root, "commit", "-m", "test: add schema")
+    commit = git(root, "rev-parse", "HEAD").casefold()
+    prompt = compiled(root, commit)
+    observation = adapter("missing-output-schema").execute(
+        prompt, binding(prompt, root, output_schema_path=str(schema.resolve()))
+    )
+    assert observation.process_id is None
+    assert observation.issues == ("REQUIRED_CAPABILITY_NOT_SUPPORTED:OUTPUT_SCHEMA",)
+
+
+def test_workspace_write_sandbox_mismatch_blocks_before_spawn(tmp_path: Path) -> None:
+    root, commit = repository(tmp_path)
+    prompt = compiled(root, commit)
+    observation = adapter("missing-workspace-sandbox").execute(
+        prompt, binding(prompt, root, sandbox=CodexSandboxMode.WORKSPACE_WRITE)
+    )
+    assert observation.process_id is None
+    assert observation.issues == (
+        "REQUIRED_CAPABILITY_NOT_SUPPORTED:SANDBOX_WORKSPACE_WRITE",
+    )
 
 
 def decoded_final(observation) -> dict[str, object]:

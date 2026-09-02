@@ -20,6 +20,11 @@ from agentic_engineering_os.domain import (
 )
 
 from .implementer import ImplementerResult, ImplementerVerdict
+from .codex_capabilities import (
+    CodexCapability,
+    CodexCapabilityAssessment,
+    CodexCapabilityStatus,
+)
 from .parallel_implementer_coordinator import (
     ParallelCoordinationInput,
     ParallelImplementerCoordinator,
@@ -50,6 +55,8 @@ class ParallelMemberExecutorFactory(Protocol):
         context: PreparedImplementerContext,
         mission_store: MissionStateReader,
     ) -> SingleRoleCodexExecutor: ...
+
+    def assess_parallel_capability(self) -> CodexCapabilityAssessment: ...
 
 
 class ParallelCodexGroupStatus(str, Enum):
@@ -159,6 +166,8 @@ class ParallelCodexImplementerExecutor:
             raise ParallelCodexExecutionError(
                 "EMPTY_GROUP", "a parallel Codex group must contain members"
             )
+        if workers > 1 and not self._parallel_supported(workers):
+            workers = 1
 
         results: dict[str, ParallelCodexMemberExecution] = {}
         with ThreadPoolExecutor(
@@ -215,6 +224,23 @@ class ParallelCodexImplementerExecutor:
             ),
             max_concurrency=workers,
             members=ordered,
+        )
+
+    def _parallel_supported(self, workers: int) -> bool:
+        provider = getattr(self._factory, "assess_parallel_capability", None)
+        if not callable(provider):
+            return False
+        try:
+            assessment = provider()
+        except Exception:
+            return False
+        return (
+            isinstance(assessment, CodexCapabilityAssessment)
+            and assessment.authentically_discovered
+            and assessment.status(CodexCapability.INDEPENDENT_PROCESS_PARALLELISM)
+            is CodexCapabilityStatus.SUPPORTED
+            and assessment.tested_parallelism is not None
+            and assessment.tested_parallelism >= workers
         )
 
     def _current_mission(self, group: PreparedParallelGroup) -> MissionState:

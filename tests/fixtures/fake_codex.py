@@ -45,6 +45,29 @@ def main() -> int:
             return 3
         print("fake-codex 2.0" if mode == "bad-version" else "fake-codex 1.0")
         return 0
+    if "--help" in arguments:
+        if mode == "help-timeout":
+            time.sleep(30)
+        if mode == "help-fail":
+            return 6
+        if mode == "malformed-help":
+            print("unparseable")
+            return 0
+        if "resume" in arguments:
+            print("Usage: codex exec resume [OPTIONS] [SESSION_ID] [PROMPT]")
+        elif "exec" in arguments:
+            help_text = "Run Codex non-interactively\nUsage: codex exec [OPTIONS] [PROMPT]\nInitial instructions read from stdin with -\n-C, --cd <DIR>\n--json JSONL\n--output-schema <FILE>\n--sandbox <SANDBOX_MODE> read-only workspace-write\n--ask-for-approval never"
+            if mode == "missing-output-schema":
+                help_text = help_text.replace("--output-schema <FILE>\n", "")
+            if mode == "missing-workspace-sandbox":
+                help_text = help_text.replace(" workspace-write", "")
+            print(help_text)
+        else:
+            help_text = "Usage: codex [OPTIONS] <COMMAND>\n-C, --cd <DIR>\n--sandbox read-only workspace-write\n--ask-for-approval never"
+            if mode == "missing-workspace-sandbox":
+                help_text = help_text.replace(" workspace-write", "")
+            print(help_text)
+        return 0
 
     if "exec" not in arguments or not arguments or arguments[-1] != "-":
         print("invalid invocation", file=sys.stderr)

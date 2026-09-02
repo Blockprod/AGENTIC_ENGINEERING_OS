@@ -283,6 +283,7 @@ def make_case(
                 "--fake-result-file",
                 str(result_file),
             ),
+            test_executable_injection=True,
         )
     )
     runtime = CountingRuntime(adapter)

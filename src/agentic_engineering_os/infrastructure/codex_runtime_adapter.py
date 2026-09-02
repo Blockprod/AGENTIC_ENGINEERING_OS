@@ -24,6 +24,11 @@ from agentic_engineering_os.application.codex_runtime import (
     GitExecutionObservation,
     InvalidJsonlLine,
 )
+from agentic_engineering_os.application.codex_capabilities import (
+    CODEX_V1_ALWAYS_REQUIRED,
+    CodexCapability,
+    CodexCapabilityStatus,
+)
 from agentic_engineering_os.application.prompt_compiler import CompiledPrompt
 from agentic_engineering_os.resources.product import (
     ProductResourceError,
@@ -36,6 +41,7 @@ from .platform_environment import (
     build_bounded_environment,
     discover_executable,
 )
+from .codex_capability_discovery import CodexCapabilityDiscovery
 
 
 _SHA40 = re.compile(r"[0-9a-f]{40}")
@@ -43,6 +49,9 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 _SECRET_ENV_TOKEN = re.compile(
     r"(?:api[_-]?key|token|secret|password|credential)", re.IGNORECASE
 )
+_DEFAULT_CAPABILITY_DISCOVERY = CodexCapabilityDiscovery()
+
+
 @dataclass(frozen=True, slots=True)
 class CodexRuntimeConfiguration:
     """Pinned infrastructure configuration, separate from application bindings."""
@@ -55,6 +64,7 @@ class CodexRuntimeConfiguration:
     environment_allowlist: tuple[str, ...] = RUNTIME_ENVIRONMENT_ALLOWLIST
     max_output_characters: int = 1_000_000
     version_timeout_seconds: float = 10.0
+    test_executable_injection: bool = False
 
     def __post_init__(self) -> None:
         text_values = (
@@ -100,6 +110,8 @@ class CodexRuntimeConfiguration:
             or self.version_timeout_seconds <= 0
         ):
             raise ValueError("version timeout must be positive")
+        if not isinstance(self.test_executable_injection, bool):
+            raise ValueError("test_executable_injection must be boolean")
 
 
 class CodexRuntimeAdapter:
@@ -111,6 +123,7 @@ class CodexRuntimeAdapter:
         *,
         parent_environment: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] | None = None,
+        capability_discovery: CodexCapabilityDiscovery | None = None,
     ) -> None:
         if not isinstance(configuration, CodexRuntimeConfiguration):
             raise TypeError("configuration must use CodexRuntimeConfiguration")
@@ -119,6 +132,7 @@ class CodexRuntimeAdapter:
             os.environ if parent_environment is None else parent_environment
         )
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._capabilities = capability_discovery or _DEFAULT_CAPABILITY_DISCOVERY
 
     def execute(
         self,
@@ -193,6 +207,45 @@ class CodexRuntimeAdapter:
                 ("EXECUTABLE_VERSION_MISMATCH",),
                 executable_path=str(executable),
                 executable_version=version,
+                executable_sha256=executable_sha,
+            )
+
+        assessment = self._capabilities.assess(
+            executable=self._configuration.executable,
+            expected_path=self._configuration.expected_executable_path,
+            expected_sha256=self._configuration.expected_executable_sha256,
+            expected_version=self._configuration.expected_executable_version,
+            launcher_arguments=self._configuration.launcher_arguments,
+            environment=self._parent_environment,
+            project_root=cwd_text,
+            timeout_seconds=self._configuration.version_timeout_seconds,
+            test_injection=self._configuration.test_executable_injection,
+            _observed_identity=(str(executable), executable_sha, version),
+        )
+        if assessment is None or not assessment.authentically_discovered:
+            return _not_started(
+                compiled_prompt, cwd_text, now(), ("CAPABILITY_ASSESSMENT_UNAVAILABLE",),
+                executable_path=str(executable), executable_version=version,
+                executable_sha256=executable_sha,
+            )
+        required = set(CODEX_V1_ALWAYS_REQUIRED)
+        required.add(
+            CodexCapability.SANDBOX_READ_ONLY
+            if binding.sandbox is CodexSandboxMode.READ_ONLY
+            else CodexCapability.SANDBOX_WORKSPACE_WRITE
+        )
+        if schema is not None:
+            required.add(CodexCapability.OUTPUT_SCHEMA)
+        missing = tuple(
+            item.value
+            for item in sorted(required, key=lambda value: value.value)
+            if assessment.status(item) is not CodexCapabilityStatus.SUPPORTED
+        )
+        if missing:
+            return _not_started(
+                compiled_prompt, cwd_text, now(),
+                tuple(f"REQUIRED_CAPABILITY_NOT_SUPPORTED:{item}" for item in missing),
+                executable_path=str(executable), executable_version=version,
                 executable_sha256=executable_sha,
             )
 

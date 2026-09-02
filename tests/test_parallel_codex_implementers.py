@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sys
 from dataclasses import dataclass, replace
@@ -11,6 +12,7 @@ from threading import Event, Lock
 import pytest
 
 from agentic_engineering_os.application import (
+    CodexCapabilityStatus,
     ExecutionExecutableIdentity,
     ExecutionStateError,
     ImplementerResult,
@@ -26,6 +28,7 @@ from agentic_engineering_os.application import (
     SingleRoleCodexExecutor,
     VerificationOutcome,
     VerificationResult,
+    record_parallel_probe,
 )
 from agentic_engineering_os.domain import (
     MissionRole,
@@ -35,6 +38,7 @@ from agentic_engineering_os.domain import (
     to_dict,
 )
 from agentic_engineering_os.infrastructure import (
+    CodexCapabilityDiscovery,
     CodexRuntimeAdapter,
     CodexRuntimeConfiguration,
     ExecutionGitObserver,
@@ -120,6 +124,27 @@ class ExecutorFactory:
         self.barrier = artifact_root / "barrier"
         artifact_root.mkdir(parents=True, exist_ok=True)
 
+    def assess_parallel_capability(self):
+        executable = Path(sys.executable).resolve()
+        digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+        assessment = CodexCapabilityDiscovery().assess(
+            executable=str(executable),
+            expected_path=str(executable),
+            expected_sha256=digest,
+            expected_version="fake-codex 1.0",
+            launcher_arguments=(str(FAKE), "--fake-mode", "normal"),
+            environment=dict(os.environ),
+            project_root=str(self.artifact_root),
+            test_injection=True,
+        )
+        assert assessment is not None
+        return record_parallel_probe(
+            assessment,
+            status=CodexCapabilityStatus.SUPPORTED,
+            tested_concurrency=8,
+            detail="offline subprocess barrier",
+        )
+
     def create(self, context, mission_store) -> SingleRoleCodexExecutor:
         result_file = self.artifact_root / f"{context.assignment_id}.json"
         result_file.write_text(
@@ -157,6 +182,7 @@ class ExecutorFactory:
                 expected_executable_version="fake-codex 1.0",
                 expected_executable_sha256=digest,
                 launcher_arguments=tuple(arguments),
+                test_executable_injection=True,
             )
         )
         runtime = CountingRuntime(

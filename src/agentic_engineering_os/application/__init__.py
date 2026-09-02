@@ -46,6 +46,16 @@ from .codex_runtime import (
     GitExecutionObservation,
     InvalidJsonlLine,
 )
+from .codex_capabilities import (
+    CODEX_V1_ALWAYS_REQUIRED,
+    CodexCapability,
+    CodexCapabilityAssessment,
+    CodexCapabilityFinding,
+    CodexCapabilityStatus,
+    CodexDiscoveryProvenance,
+    record_parallel_probe,
+    record_session_identity_probe,
+)
 from .codex_e2e_runtime import (
     CodexEndToEndRuntime,
     CodexEndToEndRuntimeError,
@@ -261,6 +271,14 @@ from .tester import (
 from .wave_planner import WavePlanner, WavePlanningError
 
 __all__ = [
+    "CODEX_V1_ALWAYS_REQUIRED",
+    "CodexCapability",
+    "CodexCapabilityAssessment",
+    "CodexCapabilityFinding",
+    "CodexCapabilityStatus",
+    "CodexDiscoveryProvenance",
+    "record_parallel_probe",
+    "record_session_identity_probe",
     "MaintenanceGovernanceError",
     "MaintenanceGovernanceService",
     "MaintenanceStateStorePort",

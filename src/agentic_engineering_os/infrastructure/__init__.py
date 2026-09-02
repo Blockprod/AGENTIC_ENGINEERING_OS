@@ -5,6 +5,7 @@ from .codex_runtime_adapter import (
     CodexRuntimeAdapter,
     CodexRuntimeConfiguration,
 )
+from .codex_capability_discovery import CodexCapabilityDiscovery
 from .execution_git_observer import ExecutionGitObserver
 from .execution_state_store import ExecutionStateStore
 from .mission_state_store import MissionStateStore
@@ -83,6 +84,7 @@ from .repository_archetype import (
 )
 
 __all__ = [
+    "CodexCapabilityDiscovery",
     "RepositoryArchetypeError",
     "RepositoryArchetypeEvaluator",
     "RepositoryArchetypeProfiler",
