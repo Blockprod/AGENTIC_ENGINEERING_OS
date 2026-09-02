@@ -11,6 +11,7 @@ from threading import Event
 import pytest
 
 from agentic_engineering_os.application import (
+    CodexSandboxMode,
     CodexRuntimePort,
     ExecutionExecutableIdentity,
     ExecutionStateError,
@@ -81,9 +82,11 @@ class CountingRuntime(CodexRuntimePort):
     def __init__(self, runtime: CodexRuntimeAdapter) -> None:
         self.runtime = runtime
         self.calls = 0
+        self.bindings = []
 
     def execute(self, compiled_prompt, binding, *, cancellation=None):
         self.calls += 1
+        self.bindings.append(binding)
         return self.runtime.execute(compiled_prompt, binding, cancellation=cancellation)
 
 
@@ -339,6 +342,12 @@ def test_five_roles_execute_full_offline_subprocess_pipeline(tmp_path: Path, rol
     assert outcome.validated_result.role is role
     assert outcome.status.value == "VALIDATED"
     assert case.runtime.calls == 1
+    expected_sandbox = (
+        CodexSandboxMode.WORKSPACE_WRITE
+        if role in {MissionRole.IMPLEMENTER, MissionRole.TESTER}
+        else CodexSandboxMode.READ_ONLY
+    )
+    assert case.runtime.bindings[0].sandbox is expected_sandbox
     if role is MissionRole.IMPLEMENTER:
         assignment = case.manager.registry_store.load().assignments[0]
         assert Path(assignment.worktree_path, "src", "feature.py").read_text(encoding="utf-8") == "fake Codex side effect\n"

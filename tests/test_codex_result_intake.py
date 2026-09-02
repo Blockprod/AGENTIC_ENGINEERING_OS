@@ -320,9 +320,13 @@ def intake_case(tmp_path: Path, role: MissionRole) -> IntakeCase:
     role_input, role_result = role_contract(role, commit)
     payload = to_dict(role_result)
     payload_text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    event_payload = {"type": "item.completed", "item": {"type": "agent_message", "text": payload_text}}
-    event_json = json.dumps(event_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    event = CodexJsonlEvent(1, "item.completed", event_json, event_json)
+    event_payloads = (
+        {"type": "turn.started"},
+        {"type": "item.completed", "item": {"id": "result", "type": "agent_message", "text": payload_text}},
+        {"type": "turn.completed"},
+    )
+    event_lines = tuple(json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")) for item in event_payloads)
+    events = tuple(CodexJsonlEvent(index, item["type"], line, line) for index, (item, line) in enumerate(zip(event_payloads, event_lines, strict=True), 1))
     changed = role in {MissionRole.IMPLEMENTER, MissionRole.TESTER}
     before = GitExecutionObservation(commit, True, None, ())
     changed_paths = (
@@ -346,11 +350,11 @@ def intake_case(tmp_path: Path, role: MissionRole) -> IntakeCase:
         123,
         "thread-p4-6",
         0,
-        event_json,
+        "\n".join(event_lines),
         "",
         False,
         False,
-        (event,),
+        events,
         (),
         payload_text,
         False,
@@ -385,10 +389,14 @@ def intake_case(tmp_path: Path, role: MissionRole) -> IntakeCase:
 
 
 def with_payload(case: IntakeCase, payload_text: str) -> IntakeCase:
-    event_payload = {"type": "item.completed", "item": {"type": "agent_message", "text": payload_text}}
-    event_json = json.dumps(event_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    event = CodexJsonlEvent(1, "item.completed", event_json, event_json)
-    return replace(case, observation=replace(case.observation, stdout=event_json, events=(event,), final_output=payload_text))
+    event_payloads = (
+        {"type": "turn.started"},
+        {"type": "item.completed", "item": {"id": "result", "type": "agent_message", "text": payload_text}},
+        {"type": "turn.completed"},
+    )
+    lines = tuple(json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")) for item in event_payloads)
+    events = tuple(CodexJsonlEvent(index, item["type"], line, line) for index, (item, line) in enumerate(zip(event_payloads, lines, strict=True), 1))
+    return replace(case, observation=replace(case.observation, stdout="\n".join(lines), events=events, final_output=payload_text))
 
 
 def codes(outcome) -> set[ResultIntakeRefusalCode]:
@@ -432,11 +440,14 @@ def test_refuses_missing_and_multiple_conflicting_payloads(tmp_path: Path) -> No
     case = intake_case(tmp_path, MissionRole.ARCHITECT)
     missing = replace(case.observation, events=(), final_output=None, stdout="")
     other = with_payload(case, json.dumps({**case.payload, "summary": "contradiction"}))
-    second = replace(other.observation.events[0], line_number=2)
+    second_start = replace(other.observation.events[0], line_number=4)
+    second = replace(other.observation.events[1], line_number=5)
+    second_completion = replace(other.observation.events[2], line_number=6)
     multiple = replace(
         case.observation,
-        events=case.observation.events + (second,),
-        stdout=f"{case.observation.stdout}\n{second.raw_line}",
+        events=case.observation.events + (second_start, second, second_completion),
+        stdout="\n".join(item.raw_line for item in case.observation.events + (second_start, second, second_completion)),
+        final_output=json.loads(second.payload_json)["item"]["text"],
     )
 
     missing_outcome = CodexResultIntake().process(case.compiled, missing, case.context)
@@ -444,6 +455,116 @@ def test_refuses_missing_and_multiple_conflicting_payloads(tmp_path: Path) -> No
 
     assert ResultIntakeRefusalCode.PAYLOAD_MISSING in codes(missing_outcome)
     assert ResultIntakeRefusalCode.PAYLOAD_AMBIGUOUS in codes(multiple_outcome)
+
+
+def test_real_multimessage_pattern_selects_terminal_message_before_turn_completion(
+    tmp_path: Path,
+) -> None:
+    case = intake_case(tmp_path, MissionRole.ARCHITECT)
+    intermediate_text = json.dumps({**case.payload, "summary": "intermediate"})
+    payloads = (
+        {"type": "turn.started"},
+        {
+            "type": "item.completed",
+            "item": {"id": "item_0", "type": "agent_message", "text": intermediate_text},
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "item_1",
+                "type": "agent_message",
+                "text": json.dumps(case.payload, ensure_ascii=False, sort_keys=True),
+            },
+        },
+        {"type": "turn.completed"},
+    )
+    lines = tuple(
+        json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        for item in payloads
+    )
+    events = tuple(
+        CodexJsonlEvent(index, item["type"], line, line)
+        for index, (item, line) in enumerate(zip(payloads, lines, strict=True), 1)
+    )
+    observation = replace(
+        case.observation,
+        stdout="\n".join(lines),
+        events=events,
+        final_output=payloads[-2]["item"]["text"],
+    )
+
+    outcome = CodexResultIntake().process(case.compiled, observation, case.context)
+
+    assert outcome.accepted
+    assert outcome.validated_result == architect_result(case.compiled.observed_commit)
+
+
+@pytest.mark.parametrize(
+    ("earlier", "terminal_mutation", "expected"),
+    [
+        ("progress update", lambda payload: payload, None),
+        (None, lambda payload: "not-json", ResultIntakeRefusalCode.PAYLOAD_MALFORMED),
+        (None, lambda payload: {**payload, "role": "IMPLEMENTER"}, ResultIntakeRefusalCode.ROLE_MISMATCH),
+        (None, lambda payload: {**payload, "unexpected": True}, ResultIntakeRefusalCode.ROLE_VALIDATION_FAILED),
+    ],
+)
+def test_terminal_candidate_never_falls_back_to_an_earlier_message(
+    tmp_path: Path, earlier, terminal_mutation, expected
+) -> None:
+    case = intake_case(tmp_path, MissionRole.ARCHITECT)
+    earlier_text = (
+        json.dumps(case.payload, ensure_ascii=False, sort_keys=True)
+        if earlier is None
+        else earlier
+    )
+    changed = terminal_mutation(case.payload)
+    terminal_text = changed if isinstance(changed, str) else json.dumps(changed, ensure_ascii=False, sort_keys=True)
+    payloads = (
+        {"type": "turn.started"},
+        {"type": "item.completed", "item": {"id": "intermediate", "type": "agent_message", "text": earlier_text}},
+        {"type": "item.completed", "item": {"id": "terminal", "type": "agent_message", "text": terminal_text}},
+        {"type": "turn.completed"},
+    )
+    lines = tuple(json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")) for item in payloads)
+    events = tuple(CodexJsonlEvent(index, item["type"], line, line) for index, (item, line) in enumerate(zip(payloads, lines, strict=True), 1))
+    observation = replace(case.observation, stdout="\n".join(lines), events=events, final_output=terminal_text)
+
+    outcome = CodexResultIntake().process(case.compiled, observation, case.context)
+
+    if expected is None:
+        assert outcome.accepted
+    else:
+        assert not outcome.accepted
+        assert expected in codes(outcome)
+
+
+def test_duplicate_terminal_item_identity_and_out_of_order_turn_are_refused(
+    tmp_path: Path,
+) -> None:
+    case = intake_case(tmp_path, MissionRole.ARCHITECT)
+    agent = json.loads(case.observation.events[1].raw_line)
+    duplicate_payloads = (
+        {"type": "turn.started"},
+        agent,
+        agent,
+        {"type": "turn.completed"},
+    )
+    out_of_order_payloads = (
+        {"type": "turn.started"},
+        {"type": "turn.completed"},
+        agent,
+    )
+
+    outcomes = []
+    for payloads in (duplicate_payloads, out_of_order_payloads):
+        lines = tuple(json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")) for item in payloads)
+        events = tuple(CodexJsonlEvent(index, item["type"], line, line) for index, (item, line) in enumerate(zip(payloads, lines, strict=True), 1))
+        observation = replace(case.observation, stdout="\n".join(lines), events=events)
+        outcomes.append(CodexResultIntake().process(case.compiled, observation, case.context))
+
+    assert all(not item.accepted for item in outcomes)
+    assert ResultIntakeRefusalCode.PAYLOAD_AMBIGUOUS in codes(outcomes[0])
+    assert ResultIntakeRefusalCode.PAYLOAD_MALFORMED in codes(outcomes[1])
 
 
 @pytest.mark.parametrize(
@@ -536,8 +657,8 @@ def test_boolean_and_integer_primitive_types_are_not_interchangeable(tmp_path: P
 
 def test_malformed_stored_jsonl_event_and_contradictory_final_output_are_refused(tmp_path: Path) -> None:
     case = intake_case(tmp_path, MissionRole.ARCHITECT)
-    malformed_event = replace(case.observation.events[0], payload_json="not-json")
-    malformed = replace(case.observation, events=(malformed_event,))
+    malformed_event = replace(case.observation.events[1], payload_json="not-json")
+    malformed = replace(case.observation, events=(case.observation.events[0], malformed_event, case.observation.events[2]))
     contradictory = replace(case.observation, final_output="{}")
 
     malformed_outcome = CodexResultIntake().process(case.compiled, malformed, case.context)

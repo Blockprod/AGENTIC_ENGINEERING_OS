@@ -2,8 +2,10 @@
 
 from .agents_integration import AgentsIntegrationError, AgentsIntegrationService
 from .codex_runtime_adapter import (
+    CodexOperationalCapabilityProver,
     CodexRuntimeAdapter,
     CodexRuntimeConfiguration,
+    OperationalCapabilityProver,
 )
 from .codex_capability_discovery import CodexCapabilityDiscovery
 from .execution_git_observer import ExecutionGitObserver
@@ -104,6 +106,8 @@ __all__ = [
     "AgentsIntegrationService",
     "CodexRuntimeAdapter",
     "CodexRuntimeConfiguration",
+    "CodexOperationalCapabilityProver",
+    "OperationalCapabilityProver",
     "ExecutionGitObserver",
     "ExecutionStateStore",
     "GitAdapter",

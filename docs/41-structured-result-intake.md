@@ -113,6 +113,14 @@ Une observation Git complète est obligatoire avant et après l'exécution. Le
 commit déclaré doit correspondre au HEAD post-exécution. Architect, Reviewer et
 Certifier sont traités comme read-only et toute dérive est refusée.
 
+Le transport peut contenir plusieurs `item.completed/agent_message`. Un seul
+tour strictement ordonné (`turn.started` puis `turn.completed` terminal) doit
+être observable, avec des identités d'items uniques. Le dernier message agent
+à l'intérieur de ce tour est alors le candidat terminal transport ; les
+messages précédents ne sont jamais essayés par le validateur. Le candidat est
+ensuite parsé strictement et soumis à P4.6. Tour absent, rejoué, concurrent,
+malformé ou résultat terminal contradictoire : refus fail-closed.
+
 Pour Implementer et Tester, une déclaration non vide de fichiers modifiés exige
 un état post-exécution dirty ; réciproquement, un état dirty sans fichiers
 déclarés est contradictoire. La P4.5 n'expose pas la liste Git détaillée : P4.6

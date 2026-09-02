@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
+from agentic_engineering_os.domain import MissionRole
+
 
 class CodexCapability(str, Enum):
     NON_INTERACTIVE_EXEC = "NON_INTERACTIVE_EXEC"
@@ -41,6 +43,21 @@ class CodexDiscoveryProvenance(str, Enum):
     EXPLICIT_PATH_STATIC_HELP = "EXPLICIT_PATH_STATIC_HELP"
     PATH_LOOKUP_STATIC_HELP = "PATH_LOOKUP_STATIC_HELP"
     TEST_INJECTION_STATIC_HELP = "TEST_INJECTION_STATIC_HELP"
+
+
+class CodexOperationalCapabilityClass(str, Enum):
+    """Closed runtime primitives which static CLI help cannot prove."""
+
+    REPOSITORY_READ = "REPOSITORY_READ"
+    WORKSPACE_EDIT = "WORKSPACE_EDIT"
+    COMMAND_EXECUTION = "COMMAND_EXECUTION"
+    STRUCTURED_RESULT = "STRUCTURED_RESULT"
+    GIT_OBSERVATION = "GIT_OBSERVATION"
+
+
+class CodexOperationalCapabilityStatus(str, Enum):
+    PROVEN = "PROVEN"
+    UNPROVEN = "UNPROVEN"
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +106,88 @@ class CodexCapabilityAssessment:
         return bool(self._attestation) and hmac.compare_digest(
             self._attestation, _sign(self)
         )
+
+
+@dataclass(frozen=True, slots=True)
+class CodexOperationalCapabilityProof:
+    """Identity- and policy-bound fact from one exact operational probe."""
+
+    executable_path: str
+    executable_sha256: str
+    executable_version: str
+    capability_class: CodexOperationalCapabilityClass
+    sandbox: str
+    approval_policy: str
+    environment_fingerprint: str
+    observed_at: datetime
+    status: CodexOperationalCapabilityStatus
+    detail: str
+    diagnostic_code: str = "OPERATIONAL_PROBE_RESULT"
+    _attestation: str = field(default="", repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not Path(self.executable_path).is_absolute():
+            raise ValueError("executable_path must be absolute")
+        if len(self.executable_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in self.executable_sha256
+        ):
+            raise ValueError("executable_sha256 must be lowercase SHA-256")
+        if (
+            not self.executable_version.strip()
+            or not self.sandbox.strip()
+            or not self.approval_policy.strip()
+            or len(self.environment_fingerprint) != 64
+            or self.observed_at.tzinfo is None
+            or not self.detail.strip()
+            or not self.diagnostic_code.strip()
+        ):
+            raise ValueError("operational proof bindings must be explicit")
+
+    @property
+    def authentically_proven(self) -> bool:
+        return (
+            self.status is CodexOperationalCapabilityStatus.PROVEN
+            and self.authentically_attested
+        )
+
+    @property
+    def authentically_attested(self) -> bool:
+        return bool(self._attestation) and hmac.compare_digest(
+            self._attestation, _sign_operational(self)
+        )
+
+
+def create_operational_capability_proof(
+    *,
+    executable_path: str,
+    executable_sha256: str,
+    executable_version: str,
+    capability_class: CodexOperationalCapabilityClass,
+    sandbox: str,
+    approval_policy: str,
+    environment_fingerprint: str,
+    status: CodexOperationalCapabilityStatus,
+    detail: str,
+    diagnostic_code: str = "OPERATIONAL_PROBE_RESULT",
+    observed_at: datetime | None = None,
+) -> CodexOperationalCapabilityProof:
+    """Infrastructure factory for one active, non-authoritative probe fact."""
+
+    proof = CodexOperationalCapabilityProof(
+        executable_path=executable_path,
+        executable_sha256=executable_sha256,
+        executable_version=executable_version,
+        capability_class=capability_class,
+        sandbox=sandbox,
+        approval_policy=approval_policy,
+        environment_fingerprint=environment_fingerprint,
+        observed_at=observed_at or datetime.now(timezone.utc),
+        status=status,
+        detail=detail,
+        diagnostic_code=diagnostic_code,
+    )
+    object.__setattr__(proof, "_attestation", _sign_operational(proof))
+    return proof
 
 
 def create_discovered_assessment(
@@ -203,6 +302,59 @@ def _sign(assessment: CodexCapabilityAssessment) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hmac.new(_ATTESTATION_KEY, payload, hashlib.sha256).hexdigest()
+
+
+def _sign_operational(proof: CodexOperationalCapabilityProof) -> str:
+    payload = json.dumps(
+        {
+            "path": proof.executable_path,
+            "sha256": proof.executable_sha256,
+            "version": proof.executable_version,
+            "capability_class": proof.capability_class.value,
+            "sandbox": proof.sandbox,
+            "approval_policy": proof.approval_policy,
+            "environment_fingerprint": proof.environment_fingerprint,
+            "observed_at": proof.observed_at.astimezone(timezone.utc).isoformat(),
+            "status": proof.status.value,
+            "detail": proof.detail,
+            "diagnostic_code": proof.diagnostic_code,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hmac.new(_ATTESTATION_KEY, payload, hashlib.sha256).hexdigest()
+
+
+def role_capability_requirements(
+    role: MissionRole,
+) -> tuple[CodexOperationalCapabilityClass, ...]:
+    """Return the closed minimum physical requirements for one role."""
+
+    common = (
+        CodexOperationalCapabilityClass.REPOSITORY_READ,
+        CodexOperationalCapabilityClass.STRUCTURED_RESULT,
+        CodexOperationalCapabilityClass.GIT_OBSERVATION,
+    )
+    if role in {MissionRole.ARCHITECT, MissionRole.REVIEWER, MissionRole.CERTIFIER}:
+        return common
+    if role is MissionRole.IMPLEMENTER:
+        return (
+            CodexOperationalCapabilityClass.REPOSITORY_READ,
+            CodexOperationalCapabilityClass.WORKSPACE_EDIT,
+            CodexOperationalCapabilityClass.COMMAND_EXECUTION,
+            CodexOperationalCapabilityClass.STRUCTURED_RESULT,
+            CodexOperationalCapabilityClass.GIT_OBSERVATION,
+        )
+    if role is MissionRole.TESTER:
+        return (
+            CodexOperationalCapabilityClass.REPOSITORY_READ,
+            CodexOperationalCapabilityClass.WORKSPACE_EDIT,
+            CodexOperationalCapabilityClass.COMMAND_EXECUTION,
+            CodexOperationalCapabilityClass.STRUCTURED_RESULT,
+            CodexOperationalCapabilityClass.GIT_OBSERVATION,
+        )
+    raise ValueError("role has no Codex capability contract")
 
 
 CODEX_V1_ALWAYS_REQUIRED = frozenset(

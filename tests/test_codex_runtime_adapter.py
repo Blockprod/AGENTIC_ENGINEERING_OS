@@ -17,6 +17,9 @@ from agentic_engineering_os.application import (
     CodexExecutionBinding,
     CodexSandboxMode,
     CompiledPrompt,
+    CodexOperationalCapabilityClass,
+    CodexOperationalCapabilityStatus,
+    create_operational_capability_proof,
 )
 from agentic_engineering_os.domain import MissionRole
 from agentic_engineering_os.infrastructure import (
@@ -51,7 +54,8 @@ def repository(tmp_path: Path) -> tuple[Path, str]:
     git(root, "config", "user.name", "P4.5 Test Operator")
     git(root, "config", "user.email", "p4.5@example.invalid")
     (root / "README.md").write_text("fake runtime repository\n", encoding="utf-8")
-    git(root, "add", "README.md")
+    (root / "AGENTS.md").write_text("fake repository authority\n", encoding="utf-8")
+    git(root, "add", "README.md", "AGENTS.md")
     git(root, "commit", "-m", "test: baseline")
     return root.resolve(), git(root, "rev-parse", "HEAD").casefold()
 
@@ -123,12 +127,114 @@ def adapter(mode: str = "normal", **kwargs: object) -> CodexRuntimeAdapter:
     )
 
 
+class MatchingOperationalProver:
+    def prove(self, **values):
+        import agentic_engineering_os.infrastructure.codex_runtime_adapter as runtime_module
+
+        return create_operational_capability_proof(
+            executable_path=str(values["executable"]),
+            executable_sha256=values["executable_sha256"],
+            executable_version=values["executable_version"],
+            capability_class=values["capability_class"],
+            sandbox=values["binding"].sandbox.value,
+            approval_policy=values["binding"].approval_policy.value,
+            environment_fingerprint=runtime_module._environment_fingerprint(values["environment"]),
+            status=CodexOperationalCapabilityStatus.PROVEN,
+            detail="test boundary active proof",
+        )
+
+
+class AlteredOperationalProver(MatchingOperationalProver):
+    def __init__(self, alteration: str) -> None:
+        self.alteration = alteration
+
+    def prove(self, **values):
+        proof = super().prove(**values)
+        if self.alteration == "forged":
+            return replace(proof, _attestation="")
+        if self.alteration == "stale-digest":
+            return create_operational_capability_proof(
+                executable_path=proof.executable_path,
+                executable_sha256="0" * 64,
+                executable_version=proof.executable_version,
+                capability_class=proof.capability_class,
+                sandbox=proof.sandbox,
+                approval_policy=proof.approval_policy,
+                environment_fingerprint=proof.environment_fingerprint,
+                status=CodexOperationalCapabilityStatus.PROVEN,
+                detail="stale test proof",
+            )
+        return create_operational_capability_proof(
+            executable_path=proof.executable_path,
+            executable_sha256=proof.executable_sha256,
+            executable_version=proof.executable_version,
+            capability_class=CodexOperationalCapabilityClass.REPOSITORY_READ,
+            sandbox=CodexSandboxMode.READ_ONLY.value,
+            approval_policy=proof.approval_policy,
+            environment_fingerprint=proof.environment_fingerprint,
+            status=CodexOperationalCapabilityStatus.PROVEN,
+            detail="wrong policy class test proof",
+        )
 def test_required_capability_unknown_blocks_before_codex_spawn(tmp_path: Path) -> None:
     root, commit = repository(tmp_path)
     prompt = compiled(root, commit)
     observation = adapter("malformed-help").execute(prompt, binding(prompt, root))
     assert observation.process_id is None
     assert "REQUIRED_CAPABILITY_NOT_SUPPORTED:NON_INTERACTIVE_EXEC" in observation.issues
+
+
+def test_static_support_does_not_admit_operationally_blocked_tool_execution(
+    tmp_path: Path,
+) -> None:
+    root, commit = repository(tmp_path)
+    prompt = compiled(root, commit)
+
+    observation = adapter("tool-failure").execute(prompt, binding(prompt, root))
+
+    assert observation.process_id is None
+    assert observation.started_at is None
+    assert observation.issues == (
+        "REQUIRED_OPERATIONAL_CAPABILITY_UNPROVEN:COMMAND_EXECUTION:"
+        "CAPABILITY_TOOL_EXECUTION_FAILED:sandbox=read-only:approval=never",
+    )
+
+
+def test_architect_repository_read_admission_does_not_require_command_execution(
+    tmp_path: Path,
+) -> None:
+    root, commit = repository(tmp_path)
+    prompt = replace(compiled(root, commit), role=MissionRole.ARCHITECT)
+    expected = binding(prompt, root)
+
+    observation = adapter("tool-failure").execute(prompt, expected)
+
+    assert observation.process_id is not None
+    assert observation.started_at is not None
+    assert not any(
+        issue.startswith("REQUIRED_OPERATIONAL_CAPABILITY_UNPROVEN")
+        for issue in observation.issues
+    )
+
+
+@pytest.mark.parametrize("alteration", ("forged", "stale-digest", "wrong-class"))
+def test_forged_stale_or_wrong_policy_operational_proof_is_refused_before_spawn(
+    tmp_path: Path, alteration: str
+) -> None:
+    root, commit = repository(tmp_path)
+    prompt = compiled(root, commit)
+    expected = binding(prompt, root, sandbox=CodexSandboxMode.WORKSPACE_WRITE)
+    runtime = CodexRuntimeAdapter(
+        configuration(),
+        operational_capability_prover=AlteredOperationalProver(alteration),
+    )
+
+    observation = runtime.execute(prompt, expected)
+
+    assert observation.process_id is None
+    assert observation.started_at is None
+    assert len(observation.issues) == 1
+    assert observation.issues[0].startswith("REQUIRED_OPERATIONAL_CAPABILITY_UNPROVEN:")
+    assert observation.issues[0].endswith("sandbox=workspace-write:approval=never")
 
 
 def test_optional_unknown_capabilities_do_not_block_sequential_execution(tmp_path: Path) -> None:
@@ -191,7 +297,7 @@ def test_exec_uses_stdin_explicit_cwd_jsonl_and_closed_process_policy(tmp_path: 
     assert observation.git_before == observation.git_after
     assert observation.git_after is not None and observation.git_after.clean is True
     assert observation.issues == ()
-    assert [event.line_number for event in observation.events] == [1, 2, 3]
+    assert [event.line_number for event in observation.events] == [1, 2, 3, 4]
 
 
 def test_models_are_immutable_and_exit_zero_is_not_a_role_verdict(tmp_path: Path) -> None:
@@ -324,8 +430,8 @@ def test_malformed_jsonl_preserves_every_line_and_missing_final(tmp_path: Path) 
 
     observation = adapter("malformed").execute(prompt, binding(prompt, root))
 
-    assert len(observation.events) == 1
-    assert [item.line_number for item in observation.invalid_jsonl_lines] == [2, 3]
+    assert len(observation.events) == 2
+    assert [item.line_number for item in observation.invalid_jsonl_lines] == [3, 4]
     assert "MALFORMED_JSONL" in observation.issues
     assert "MISSING_FINAL_OUTPUT" in observation.issues
     assert observation.exit_code == 0
@@ -335,7 +441,7 @@ def test_zero_exit_with_stderr_and_tool_failure_remains_factual(tmp_path: Path) 
     root, commit = repository(tmp_path)
     prompt = compiled(root, commit)
     warning = adapter("zero-stderr").execute(prompt, binding(prompt, root))
-    tool = adapter("tool-failure").execute(prompt, binding(prompt, root))
+    tool = adapter("execution-tool-failure").execute(prompt, binding(prompt, root))
 
     assert warning.exit_code == 0 and "warning from fake" in warning.stderr
     assert warning.issues == ("STDERR_OBSERVED",)
@@ -480,7 +586,9 @@ def test_spawn_failure_is_returned_as_observation(
         return real_popen(*args, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", fail)
-    observation = adapter().execute(prompt, binding(prompt, root))
+    observation = CodexRuntimeAdapter(
+        configuration(), operational_capability_prover=MatchingOperationalProver()
+    ).execute(prompt, binding(prompt, root))
 
     assert observation.process_id is None
     assert observation.started_at is not None

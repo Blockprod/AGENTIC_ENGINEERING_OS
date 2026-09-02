@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -79,7 +80,56 @@ def main() -> int:
     os.chdir(cwd)
     prompt = sys.stdin.read()
 
+    if (
+        prompt.startswith("Read the repository instruction file")
+        or prompt.startswith("Use the shell tool to ")
+        or prompt.startswith("Use the workspace editing tool")
+    ):
+        emit({"type": "thread.started", "thread_id": "11111111-2222-3333-4444-555555555555"})
+        emit({"type": "turn.started"})
+        if prompt.startswith("Read the repository instruction file"):
+            match = re.search(r"repository marker when explicitly requested: ([0-9a-f]{64})", Path("AGENTS.md").read_text(encoding="utf-8"))
+            if match is None:
+                return 68
+            observed = match.group(1)
+        elif mode == "tool-failure" and prompt.startswith("Use the shell tool"):
+            emit({
+                "type": "item.completed",
+                "item": {"id": "probe-command", "type": "command_execution", "status": "failed"},
+            })
+            observed = "blocked"
+        elif prompt.startswith("Use the shell tool"):
+            match = re.search(r"prints exactly `([0-9a-f]{64})`", prompt)
+            if match is None:
+                return 68
+            observed = match.group(1)
+            emit({
+                "type": "item.completed",
+                "item": {"id": "probe-command", "type": "command_execution", "status": "completed", "exit_code": 0},
+            })
+        else:
+            match = re.search(r"containing exactly `([0-9a-f]{64})`", prompt)
+            if match is None:
+                return 68
+            observed = match.group(1)
+            Path("operational-write-proof.txt").write_text(observed, encoding="utf-8")
+            emit({
+                "type": "item.completed",
+                "item": {"id": "probe-command", "type": "command_execution", "status": "completed", "exit_code": 0},
+            })
+        emit({
+            "type": "item.completed",
+            "item": {
+                "id": "probe-result",
+                "type": "agent_message",
+                "text": json.dumps({"observed": observed}, sort_keys=True),
+            },
+        })
+        emit({"type": "turn.completed"})
+        return 0
+
     emit({"type": "thread.started", "thread_id": "11111111-2222-3333-4444-555555555555"})
+    emit({"type": "turn.started"})
     if mode in {
         "role-result",
         "role-result-side-effect",
@@ -123,13 +173,13 @@ def main() -> int:
             emit(
                 {
                     "type": "item.completed",
-                    "item": {"type": "command_execution", "status": "failed"},
+                    "item": {"id": "role-tool", "type": "command_execution", "status": "failed"},
                 }
             )
         emit(
             {
                 "type": "item.completed",
-                "item": {"type": "agent_message", "text": payload},
+                "item": {"id": "role-result", "type": "agent_message", "text": payload},
             }
         )
         emit({"type": "turn.completed"})
@@ -155,11 +205,12 @@ def main() -> int:
         Path(".git").rename(".git-hidden")
     if mode == "drift-after":
         Path("drift.txt").write_text("drift\n", encoding="utf-8")
-    if mode == "tool-failure":
+    if mode in {"tool-failure", "execution-tool-failure"}:
         emit(
             {
                 "type": "item.completed",
                 "item": {
+                    "id": "tool-failure",
                     "type": "command_execution",
                     "status": "failed",
                     "message": "sandbox blocked command",
@@ -178,6 +229,7 @@ def main() -> int:
         {
             "type": "item.completed",
             "item": {
+                "id": "final-result",
                 "type": "agent_message",
                 "text": json.dumps(
                     {

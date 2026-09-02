@@ -7,13 +7,14 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
-from typing import cast
+from typing import Protocol, cast
 
 from agentic_engineering_os.application.codex_runtime import (
     CodexApprovalPolicy,
@@ -28,6 +29,11 @@ from agentic_engineering_os.application.codex_capabilities import (
     CODEX_V1_ALWAYS_REQUIRED,
     CodexCapability,
     CodexCapabilityStatus,
+    CodexOperationalCapabilityClass,
+    CodexOperationalCapabilityProof,
+    CodexOperationalCapabilityStatus,
+    create_operational_capability_proof,
+    role_capability_requirements,
 )
 from agentic_engineering_os.application.prompt_compiler import CompiledPrompt
 from agentic_engineering_os.resources.product import (
@@ -52,6 +58,206 @@ _SECRET_ENV_TOKEN = re.compile(
 _DEFAULT_CAPABILITY_DISCOVERY = CodexCapabilityDiscovery()
 
 
+class OperationalCapabilityProver(Protocol):
+    def prove(
+        self,
+        *,
+        configuration: "CodexRuntimeConfiguration",
+        executable: Path,
+        executable_sha256: str,
+        executable_version: str,
+        environment: Mapping[str, str],
+        cwd: Path,
+        binding: CodexExecutionBinding,
+        capability_class: CodexOperationalCapabilityClass,
+    ) -> CodexOperationalCapabilityProof: ...
+
+
+class CodexOperationalCapabilityProver:
+    """Actively prove the exact tool class before an engineering role starts."""
+
+    def prove(
+        self,
+        *,
+        configuration: "CodexRuntimeConfiguration",
+        executable: Path,
+        executable_sha256: str,
+        executable_version: str,
+        environment: Mapping[str, str],
+        cwd: Path,
+        binding: CodexExecutionBinding,
+        capability_class: CodexOperationalCapabilityClass,
+    ) -> CodexOperationalCapabilityProof:
+        fingerprint = _environment_fingerprint(environment)
+        status = CodexOperationalCapabilityStatus.UNPROVEN
+        detail = "operational capability probe did not complete"
+        diagnostic_code = "OPERATIONAL_PROBE_INCOMPLETE"
+        if capability_class is CodexOperationalCapabilityClass.GIT_OBSERVATION:
+            observed = _observe_git(cwd)
+            if observed.error is None and observed.head_commit and observed.clean is not None:
+                status = CodexOperationalCapabilityStatus.PROVEN
+                detail = "runtime observed repository HEAD and cleanliness"
+                diagnostic_code = "GIT_OBSERVATION_PROVEN"
+            else:
+                diagnostic_code = "GIT_OBSERVATION_FAILED"
+            return create_operational_capability_proof(
+                executable_path=str(executable), executable_sha256=executable_sha256,
+                executable_version=executable_version, capability_class=capability_class,
+                sandbox=binding.sandbox.value, approval_policy=binding.approval_policy.value,
+                environment_fingerprint=fingerprint, status=status, detail=detail,
+                diagnostic_code=diagnostic_code,
+            )
+        if capability_class is CodexOperationalCapabilityClass.STRUCTURED_RESULT:
+            return create_operational_capability_proof(
+                executable_path=str(executable), executable_sha256=executable_sha256,
+                executable_version=executable_version, capability_class=capability_class,
+                sandbox=binding.sandbox.value, approval_policy=binding.approval_policy.value,
+                environment_fingerprint=fingerprint, status=status,
+                detail="structured result is proven only by the admitted role and P4.6 intake",
+                diagnostic_code="STRUCTURED_RESULT_PENDING_ROLE",
+            )
+        with tempfile.TemporaryDirectory(prefix="agentic-os-codex-probe-") as temporary:
+            probe_root = Path(temporary).resolve(strict=True)
+            try:
+                initialized = subprocess.run(
+                    ["git", "init", "-b", "main"],
+                    shell=False,
+                    cwd=probe_root,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=dict(environment),
+                    timeout=configuration.version_timeout_seconds,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                initialized = None
+            if initialized is None or initialized.returncode != 0:
+                return create_operational_capability_proof(
+                    executable_path=str(executable),
+                    executable_sha256=executable_sha256,
+                    executable_version=executable_version,
+                    capability_class=capability_class,
+                    sandbox=binding.sandbox.value,
+                    approval_policy=binding.approval_policy.value,
+                    environment_fingerprint=fingerprint,
+                    status=status,
+                    detail="disposable probe repository could not be initialized",
+                    diagnostic_code="PROBE_REPOSITORY_INITIALIZATION_FAILED",
+                )
+            expected = hashlib.sha256(os.urandom(32)).hexdigest()
+            if capability_class is CodexOperationalCapabilityClass.REPOSITORY_READ:
+                (probe_root / "AGENTS.md").write_text(
+                    f"Return this repository marker when explicitly requested: {expected}\n",
+                    encoding="utf-8",
+                )
+                prompt = (
+                    "Read the repository instruction file supplied by Codex for this working "
+                    "directory without invoking a shell or modifying files. Return only a JSON "
+                    "object with key `observed` containing its 64-character repository marker."
+                )
+            elif capability_class is CodexOperationalCapabilityClass.COMMAND_EXECUTION:
+                prompt = (
+                    "Use the shell tool to execute a command that prints exactly "
+                    f"`{expected}`. Return only a JSON object with key `observed` containing "
+                    "the command output. Do not create files."
+                )
+            else:
+                prompt = (
+                    "Use the workspace editing tool, not a shell command, to create "
+                    f"`operational-write-proof.txt` containing exactly `{expected}`. "
+                    "Return only a JSON object with key `observed` containing that value."
+                )
+            schema = Path(temporary) / "operational-proof.schema.json"
+            schema.write_text(
+                json.dumps(
+                    {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["observed"],
+                        "properties": {"observed": {"type": "string"}},
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            invocation = _invocation(
+                executable,
+                configuration.launcher_arguments,
+                probe_root,
+                binding.sandbox,
+                binding.approval_policy,
+                schema,
+            )
+            try:
+                process = subprocess.run(
+                    list(invocation),
+                    shell=False,
+                    cwd=probe_root,
+                    input=prompt,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=dict(environment),
+                    timeout=configuration.operational_probe_timeout_seconds,
+                    check=False,
+                )
+                events, invalid = _parse_jsonl(process.stdout)
+                terminal, terminal_issue = _terminal_output(events)
+                value = _strict_observed_value(terminal)
+                command_succeeded = _successful_command_observed(events)
+                write_succeeded = (
+                    capability_class is CodexOperationalCapabilityClass.WORKSPACE_EDIT
+                    and (probe_root / "operational-write-proof.txt").is_file()
+                    and (probe_root / "operational-write-proof.txt").read_text(encoding="utf-8").strip() == expected
+                )
+                primitive_succeeded = {
+                    CodexOperationalCapabilityClass.REPOSITORY_READ: value == expected,
+                    CodexOperationalCapabilityClass.WORKSPACE_EDIT: write_succeeded,
+                    CodexOperationalCapabilityClass.COMMAND_EXECUTION: command_succeeded,
+                }.get(capability_class, False)
+                if (
+                    process.returncode == 0
+                    and not invalid
+                    and terminal_issue is None
+                    and primitive_succeeded
+                    and value == expected
+                ):
+                    status = CodexOperationalCapabilityStatus.PROVEN
+                    detail = "exact active capability probe completed under bound policy"
+                    diagnostic_code = f"{capability_class.value}_PROVEN"
+                else:
+                    detail = "active capability probe was blocked, malformed, or contradicted"
+                    diagnostic_code = _probe_failure_code(
+                        process.returncode,
+                        process.stderr,
+                        invalid,
+                        terminal_issue,
+                        _tool_failure_observed(events),
+                    )
+            except subprocess.TimeoutExpired:
+                detail = "active capability probe timed out"
+                diagnostic_code = "OPERATIONAL_PROBE_TIMEOUT"
+            except (OSError, UnicodeError):
+                detail = "active capability probe could not be completed"
+                diagnostic_code = "OPERATIONAL_PROBE_EXECUTION_FAILED"
+        return create_operational_capability_proof(
+            executable_path=str(executable),
+            executable_sha256=executable_sha256,
+            executable_version=executable_version,
+            capability_class=capability_class,
+            sandbox=binding.sandbox.value,
+            approval_policy=binding.approval_policy.value,
+            environment_fingerprint=fingerprint,
+            status=status,
+            detail=detail,
+            diagnostic_code=diagnostic_code,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CodexRuntimeConfiguration:
     """Pinned infrastructure configuration, separate from application bindings."""
@@ -64,6 +270,7 @@ class CodexRuntimeConfiguration:
     environment_allowlist: tuple[str, ...] = RUNTIME_ENVIRONMENT_ALLOWLIST
     max_output_characters: int = 1_000_000
     version_timeout_seconds: float = 10.0
+    operational_probe_timeout_seconds: float = 180.0
     test_executable_injection: bool = False
 
     def __post_init__(self) -> None:
@@ -110,6 +317,12 @@ class CodexRuntimeConfiguration:
             or self.version_timeout_seconds <= 0
         ):
             raise ValueError("version timeout must be positive")
+        if (
+            not isinstance(self.operational_probe_timeout_seconds, (int, float))
+            or isinstance(self.operational_probe_timeout_seconds, bool)
+            or self.operational_probe_timeout_seconds <= 0
+        ):
+            raise ValueError("operational probe timeout must be positive")
         if not isinstance(self.test_executable_injection, bool):
             raise ValueError("test_executable_injection must be boolean")
 
@@ -124,6 +337,7 @@ class CodexRuntimeAdapter:
         parent_environment: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] | None = None,
         capability_discovery: CodexCapabilityDiscovery | None = None,
+        operational_capability_prover: OperationalCapabilityProver | None = None,
     ) -> None:
         if not isinstance(configuration, CodexRuntimeConfiguration):
             raise TypeError("configuration must use CodexRuntimeConfiguration")
@@ -133,6 +347,10 @@ class CodexRuntimeAdapter:
         )
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._capabilities = capability_discovery or _DEFAULT_CAPABILITY_DISCOVERY
+        self._operational = operational_capability_prover or CodexOperationalCapabilityProver()
+        self._operational_cache: dict[
+            tuple[str, str, str, str, str, str, str], CodexOperationalCapabilityProof
+        ] = {}
 
     def execute(
         self,
@@ -280,6 +498,62 @@ class CodexRuntimeAdapter:
                 interrupted=True,
             )
 
+        environment_fingerprint = _environment_fingerprint(child_environment)
+        prelaunch_requirements = tuple(
+            item
+            for item in role_capability_requirements(binding.role)
+            if item is not CodexOperationalCapabilityClass.STRUCTURED_RESULT
+        )
+        for capability_class in prelaunch_requirements:
+            proof_key = (
+                str(executable), executable_sha, version, binding.sandbox.value,
+                binding.approval_policy.value, capability_class.value,
+                environment_fingerprint,
+            )
+            proof = self._operational_cache.get(proof_key)
+            if proof is None:
+                proof = self._operational.prove(
+                    configuration=self._configuration,
+                    executable=executable,
+                    executable_sha256=executable_sha,
+                    executable_version=version,
+                    environment=child_environment,
+                    cwd=cwd,
+                    binding=binding,
+                    capability_class=capability_class,
+                )
+            if not _operational_proof_matches(
+                proof,
+                executable=executable,
+                executable_sha256=executable_sha,
+                executable_version=version,
+                environment_fingerprint=environment_fingerprint,
+                binding=binding,
+                capability_class=capability_class,
+            ):
+                diagnostic = (
+                    proof.diagnostic_code
+                    if isinstance(proof, CodexOperationalCapabilityProof)
+                    and proof.authentically_attested
+                    else "INVALID_OPERATIONAL_PROOF"
+                )
+                return _not_started(
+                    compiled_prompt,
+                    cwd_text,
+                    now(),
+                    (
+                        "REQUIRED_OPERATIONAL_CAPABILITY_UNPROVEN:"
+                        f"{capability_class.value}:{diagnostic}:"
+                        f"sandbox={binding.sandbox.value}:"
+                        f"approval={binding.approval_policy.value}",
+                    ),
+                    executable_path=str(executable),
+                    executable_version=version,
+                    executable_sha256=executable_sha,
+                    git_before=git_before,
+                )
+            self._operational_cache[proof_key] = proof
+
         invocation = _invocation(
             executable,
             self._configuration.launcher_arguments,
@@ -353,7 +627,7 @@ class CodexRuntimeAdapter:
         )
         events, invalid_lines = _parse_jsonl(stdout)
         thread_id = _thread_id(events)
-        final_output = _final_output(events)
+        final_output, terminal_issue = _terminal_output(events)
         tool_failure = _tool_failure_observed(events)
         git_after = _observe_git(cwd)
 
@@ -371,6 +645,8 @@ class CodexRuntimeAdapter:
             issues.append("STDERR_TRUNCATED")
         if invalid_lines:
             issues.append("MALFORMED_JSONL")
+        if terminal_issue is not None:
+            issues.append(terminal_issue)
         if tool_failure:
             issues.append("TOOL_FAILURE_OBSERVED")
         if final_output is None:
@@ -663,19 +939,133 @@ def _thread_id(events: tuple[CodexJsonlEvent, ...]) -> str | None:
     return None
 
 
-def _final_output(events: tuple[CodexJsonlEvent, ...]) -> str | None:
-    final: str | None = None
+def _terminal_output(
+    events: tuple[CodexJsonlEvent, ...],
+) -> tuple[str | None, str | None]:
+    """Select the message ending one strictly ordered completed turn."""
+
+    payloads = [_event_payload(event) for event in events]
+    turn_started = [index for index, item in enumerate(payloads) if item.get("type") == "turn.started"]
+    turn_completed = [index for index, item in enumerate(payloads) if item.get("type") == "turn.completed"]
+    if len(turn_started) != 1 or len(turn_completed) != 1:
+        return None, "AMBIGUOUS_JSONL_TERMINAL"
+    start, completed = turn_started[0], turn_completed[0]
+    if start >= completed or completed != len(payloads) - 1:
+        return None, "MALFORMED_JSONL_SEQUENCE"
+    messages: list[tuple[str, str]] = []
+    seen_item_ids: set[str] = set()
+    for index, payload in enumerate(payloads):
+        item = payload.get("item")
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        if item_id is not None:
+            if not isinstance(item_id, str) or not item_id or item_id in seen_item_ids:
+                return None, "AMBIGUOUS_JSONL_TERMINAL"
+            seen_item_ids.add(item_id)
+        if payload.get("type") == "item.completed" and item.get("type") == "agent_message":
+            text = item.get("text")
+            if not isinstance(text, str) or not text or not (start < index < completed):
+                return None, "MALFORMED_JSONL_SEQUENCE"
+            if not isinstance(item_id, str) or not item_id:
+                return None, "AMBIGUOUS_JSONL_TERMINAL"
+            messages.append((item_id, text))
+    if not messages:
+        return None, "MISSING_FINAL_OUTPUT"
+    return messages[-1][1], None
+
+
+def _successful_command_observed(events: tuple[CodexJsonlEvent, ...]) -> bool:
     for event in events:
         payload = _event_payload(event)
         item = payload.get("item")
         if (
             payload.get("type") == "item.completed"
             and isinstance(item, dict)
-            and item.get("type") == "agent_message"
-            and isinstance(item.get("text"), str)
+            and item.get("type") == "command_execution"
+            and item.get("status") in {"completed", "success", "succeeded"}
+            and item.get("exit_code", 0) == 0
         ):
-            final = cast(str, item["text"])
-    return final
+            return True
+    return False
+
+
+def _strict_observed_value(payload_text: str | None) -> str | None:
+    if payload_text is None:
+        return None
+    try:
+        value = json.loads(payload_text, object_pairs_hook=_reject_duplicate_keys)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(value, dict) or set(value) != {"observed"}:
+        return None
+    observed = value.get("observed")
+    return observed.strip() if isinstance(observed, str) else None
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate key: {key}")
+        value[key] = item
+    return value
+
+
+def _environment_fingerprint(environment: Mapping[str, str]) -> str:
+    payload = json.dumps(
+        sorted((key.casefold(), value) for key, value in environment.items()),
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _operational_proof_matches(
+    proof: object,
+    *,
+    executable: Path,
+    executable_sha256: str,
+    executable_version: str,
+    environment_fingerprint: str,
+    binding: CodexExecutionBinding,
+    capability_class: CodexOperationalCapabilityClass,
+) -> bool:
+    return (
+        isinstance(proof, CodexOperationalCapabilityProof)
+        and proof.authentically_proven
+        and os.path.normcase(proof.executable_path).casefold()
+        == os.path.normcase(str(executable)).casefold()
+        and proof.executable_sha256 == executable_sha256
+        and proof.executable_version == executable_version
+        and proof.capability_class is capability_class
+        and proof.sandbox == binding.sandbox.value
+        and proof.approval_policy == binding.approval_policy.value
+        and proof.environment_fingerprint == environment_fingerprint
+    )
+
+
+def _probe_failure_code(
+    exit_code: int,
+    stderr: str,
+    invalid_jsonl: tuple[InvalidJsonlLine, ...],
+    terminal_issue: str | None,
+    tool_failure: bool,
+) -> str:
+    lowered = stderr.casefold()
+    if "not inside a trusted directory" in lowered:
+        return "PROBE_REPOSITORY_NOT_TRUSTED"
+    if "rejected" in lowered and "blocked by policy" in lowered:
+        return "CAPABILITY_BLOCKED_BY_HOST_POLICY"
+    if exit_code != 0:
+        return "OPERATIONAL_PROBE_EXIT_NON_ZERO"
+    if invalid_jsonl:
+        return "OPERATIONAL_PROBE_MALFORMED_JSONL"
+    if tool_failure:
+        return "CAPABILITY_TOOL_EXECUTION_FAILED"
+    if terminal_issue is not None:
+        return terminal_issue
+    return "OPERATIONAL_PROBE_RESULT_MISMATCH"
 
 
 def _tool_failure_observed(events: tuple[CodexJsonlEvent, ...]) -> bool:

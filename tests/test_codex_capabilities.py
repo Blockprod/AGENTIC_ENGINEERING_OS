@@ -17,7 +17,10 @@ from agentic_engineering_os.application import (
     record_parallel_probe,
     record_session_identity_probe,
     ParallelCodexImplementerExecutor,
+    CodexOperationalCapabilityClass,
+    role_capability_requirements,
 )
+from agentic_engineering_os.domain import MissionRole
 from agentic_engineering_os.infrastructure import CodexCapabilityDiscovery
 
 
@@ -63,6 +66,33 @@ def test_closed_model_has_no_optimistic_optional_defaults() -> None:
     assert assessment.status(CodexCapability.SESSION_THREAD_IDENTITY) is CodexCapabilityStatus.UNKNOWN
     assert assessment.status(CodexCapability.RELIABLE_SIDE_EFFECT_RECOVERY) is CodexCapabilityStatus.UNKNOWN
     assert assessment.status(CodexCapability.INDEPENDENT_PROCESS_PARALLELISM) is CodexCapabilityStatus.UNKNOWN
+
+
+def test_closed_role_operational_capability_matrix_is_minimal_and_explicit() -> None:
+    read_result_git = (
+        CodexOperationalCapabilityClass.REPOSITORY_READ,
+        CodexOperationalCapabilityClass.STRUCTURED_RESULT,
+        CodexOperationalCapabilityClass.GIT_OBSERVATION,
+    )
+    assert role_capability_requirements(MissionRole.ARCHITECT) == read_result_git
+    assert role_capability_requirements(MissionRole.REVIEWER) == read_result_git
+    assert role_capability_requirements(MissionRole.CERTIFIER) == read_result_git
+    assert role_capability_requirements(MissionRole.IMPLEMENTER) == (
+        CodexOperationalCapabilityClass.REPOSITORY_READ,
+        CodexOperationalCapabilityClass.WORKSPACE_EDIT,
+        CodexOperationalCapabilityClass.COMMAND_EXECUTION,
+        CodexOperationalCapabilityClass.STRUCTURED_RESULT,
+        CodexOperationalCapabilityClass.GIT_OBSERVATION,
+    )
+    assert role_capability_requirements(MissionRole.TESTER) == (
+        CodexOperationalCapabilityClass.REPOSITORY_READ,
+        CodexOperationalCapabilityClass.WORKSPACE_EDIT,
+        CodexOperationalCapabilityClass.COMMAND_EXECUTION,
+        CodexOperationalCapabilityClass.STRUCTURED_RESULT,
+        CodexOperationalCapabilityClass.GIT_OBSERVATION,
+    )
+    assert CodexOperationalCapabilityClass.COMMAND_EXECUTION not in read_result_git
+    assert CodexOperationalCapabilityClass.WORKSPACE_EDIT not in read_result_git
 
 
 @pytest.mark.parametrize("mode", ("malformed-help", "help-fail", "help-timeout"))

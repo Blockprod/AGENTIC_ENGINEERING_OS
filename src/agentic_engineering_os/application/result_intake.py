@@ -513,7 +513,16 @@ def _validate_transport(
 def _structured_payload_text(
     observation: CodexExecutionObservation,
 ) -> tuple[str | None, tuple[ResultIntakeRefusal, ...]]:
-    messages: list[str] = []
+    if not observation.events:
+        return None, (
+            _reason(
+                ResultIntakeRefusalCode.PAYLOAD_MISSING,
+                "no schema-constrained completed agent message was observed",
+            ),
+        )
+    messages: list[tuple[str, str]] = []
+    payloads: list[dict[str, object]] = []
+    seen_item_ids: set[str] = set()
     for event in observation.events:
         try:
             payload = _event_payload(event)
@@ -524,21 +533,57 @@ def _structured_payload_text(
                     f"stored JSONL event is not strict: {error}",
                 ),
             )
+        payloads.append(payload)
+    starts = [index for index, payload in enumerate(payloads) if payload.get("type") == "turn.started"]
+    completions = [index for index, payload in enumerate(payloads) if payload.get("type") == "turn.completed"]
+    if len(starts) != 1 or len(completions) != 1:
+        return None, (
+            _reason(
+                ResultIntakeRefusalCode.PAYLOAD_AMBIGUOUS,
+                "exactly one completed transport turn is required",
+            ),
+        )
+    start, completion = starts[0], completions[0]
+    if start >= completion or completion != len(payloads) - 1:
+        return None, (
+            _reason(
+                ResultIntakeRefusalCode.PAYLOAD_MALFORMED,
+                "JSONL turn ordering does not identify a terminal boundary",
+            ),
+        )
+    for index, payload in enumerate(payloads):
         item = payload.get("item")
+        if isinstance(item, dict) and item.get("id") is not None:
+            item_id = item.get("id")
+            if not isinstance(item_id, str) or not item_id or item_id in seen_item_ids:
+                return None, (
+                    _reason(
+                        ResultIntakeRefusalCode.PAYLOAD_AMBIGUOUS,
+                        "item identity is absent, duplicate, or replayed",
+                    ),
+                )
+            seen_item_ids.add(item_id)
         if (
             payload.get("type") == "item.completed"
             and isinstance(item, dict)
             and item.get("type") == "agent_message"
         ):
+            item_id = item.get("id")
             text = item.get("text")
-            if not isinstance(text, str) or not text:
+            if (
+                not isinstance(item_id, str)
+                or not item_id
+                or not isinstance(text, str)
+                or not text
+                or not (start < index < completion)
+            ):
                 return None, (
                     _reason(
                         ResultIntakeRefusalCode.PAYLOAD_MALFORMED,
-                        "completed agent message must contain non-empty text",
+                        "completed agent message is outside the terminal turn or incomplete",
                     ),
                 )
-            messages.append(text)
+            messages.append((item_id, text))
     if not messages:
         return None, (
             _reason(
@@ -546,21 +591,15 @@ def _structured_payload_text(
                 "no schema-constrained completed agent message was observed",
             ),
         )
-    if len(messages) != 1:
-        return None, (
-            _reason(
-                ResultIntakeRefusalCode.PAYLOAD_AMBIGUOUS,
-                "multiple completed agent messages are not a unique RoleResult source",
-            ),
-        )
-    if observation.final_output != messages[0]:
+    terminal = messages[-1][1]
+    if observation.final_output != terminal:
         return None, (
             _reason(
                 ResultIntakeRefusalCode.PAYLOAD_AMBIGUOUS,
                 "final output contradicts the canonical JSONL message",
             ),
         )
-    return messages[0], ()
+    return terminal, ()
 
 
 def _validate_payload_binding(

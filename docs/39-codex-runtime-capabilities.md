@@ -84,6 +84,47 @@ du statut.
 | Processus indépendants en parallèle | `UNKNOWN` | Techniquement lançables par l'OS, mais concurrence, quotas et isolation Codex n'ont pas été probés afin d'éviter coût et effets inutiles. |
 | VS Code requis pendant `codex exec` | `UNSUPPORTED` | Le mode CLI scripté n'automatise pas l'UI ; seule l'installation observée du binaire provient ici de l'extension. |
 
+`SUPPORTED` dans cette table signifie que l'interface est déclarée par le CLI,
+pas que chaque opération est disponible sous toute politique. L'admission
+utilise les primitives fermées `REPOSITORY_READ`, `WORKSPACE_EDIT`,
+`COMMAND_EXECUTION`, `STRUCTURED_RESULT` et `GIT_OBSERVATION`. La matrice minimale
+est :
+
+| Rôle | Capacités opérationnelles requises |
+|---|---|
+| Architect | `REPOSITORY_READ`, `STRUCTURED_RESULT`, `GIT_OBSERVATION` |
+| Implementer | `REPOSITORY_READ`, `WORKSPACE_EDIT`, `COMMAND_EXECUTION`, `STRUCTURED_RESULT`, `GIT_OBSERVATION` |
+| Tester | `REPOSITORY_READ`, `WORKSPACE_EDIT`, `COMMAND_EXECUTION`, `STRUCTURED_RESULT`, `GIT_OBSERVATION` |
+| Reviewer | `REPOSITORY_READ`, `STRUCTURED_RESULT`, `GIT_OBSERVATION` |
+| Certifier | `REPOSITORY_READ`, `STRUCTURED_RESULT`, `GIT_OBSERVATION` |
+
+La lecture est probée par la restitution d'un marqueur borné fourni à Codex via
+un `AGENTS.md` dans un repository Git jetable, sans shell. L'édition est probée
+séparément par un fichier borné dans ce repository sous `workspace-write`;
+l'exécution de commande par une commande déterministe inoffensive; l'observation
+Git par le parent sur le repository lié. Le résultat structuré n'est prouvé que
+par l'exécution réelle, le transport et l'intake P4.6. Ainsi
+`REPOSITORY_READ` n'implique jamais `COMMAND_EXECUTION`, et `WORKSPACE_EDIT` ne
+la prouve pas non plus.
+
+Une preuve opérationnelle authentique est liée au chemin, digest et version de
+l'exécutable, au sandbox, à la politique d'approbation, à l'environnement borné
+et à la primitive. Seule une preuve positive identique peut être mise en cache.
+Un refus pré-lancement conserve la primitive, une cause bornée, le sandbox et la
+politique sans exposer les valeurs d'environnement.
+
+Le diagnostic R4A sous Windows a observé que `git rev-parse HEAD`, essayé via
+PowerShell puis `cmd.exe`, était rejeté comme « blocked by policy » avec exit
+Codex `0` et sans événement de commande réussi. Il s'agit d'une limitation de
+capacité Codex sous la politique hôte courante, révélant aussi un défaut de
+conception du probe R4 qui utilisait l'exécution de commande comme proxy de
+lecture. Aucune politique Windows n'a été affaiblie.
+
+Le répertoire jetable doit lui-même être initialisé comme repository Git : sans
+cette préparation, le CLI refuse avant le tour avec
+`Not inside a trusted directory`. Ce refus est classé séparément comme défaut de
+préparation du probe et non comme absence de `REPOSITORY_READ`.
+
 `app-server` et `exec-server` sont présents mais marqués expérimentaux par
 l'aide locale. Ils n'ont pas été probés et ne sont pas retenus pour P4.5.
 
