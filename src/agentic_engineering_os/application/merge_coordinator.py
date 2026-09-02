@@ -356,6 +356,50 @@ class MergeCoordinator:
             integration_commit=integration_commit,
         )
 
+    def recover_merged(
+        self,
+        gate_context: IntegrationGateContext,
+        *,
+        expected_gate_fingerprint: str,
+    ) -> tuple[IntegrationGateResult, MergeResult]:
+        """Recognize one exact post-merge result without synthesizing Gate authority."""
+
+        try:
+            primary = self._manager.inspect_primary()
+        except WorktreeManagerError as error:
+            raise MergeCoordinationError(
+                "GIT_STATE_UNKNOWN", "primary repository cannot be inspected"
+            ) from error
+        if not primary.clean:
+            raise MergeCoordinationError(
+                "RECOVERY_REQUIRED", "post-merge primary is not clean"
+            )
+        try:
+            gate = self._gate._reconstruct_after_merge(
+                gate_context,
+                integrated_commit=primary.head_commit,
+                expected_fingerprint=expected_gate_fingerprint,
+            )
+        except IntegrationGateError as error:
+            raise MergeCoordinationError(error.code, error.message) from error
+        if gate.result is not IntegrationGateClassification.PASS:
+            raise MergeCoordinationError(
+                "STALE_INTEGRATION_GATE", "historical Gate is no longer PASS"
+            )
+        result = self.merge(MergeContext(gate_context=gate_context, gate_result=gate))
+        if (
+            result.result is not MergeStatus.MERGED
+            or result.integration_commit != primary.head_commit
+            or not any(
+                finding.code is MergeFindingCode.ALREADY_MERGED
+                for finding in result.findings
+            )
+        ):
+            raise MergeCoordinationError(
+                "RECOVERY_REQUIRED", "current primary is not the exact gated merge"
+            )
+        return gate, result
+
     def _validate_negative_outcome(
         self, context: MergeContext, result: MergeResult
     ) -> None:

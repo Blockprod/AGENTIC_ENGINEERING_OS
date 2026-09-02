@@ -58,6 +58,12 @@ ou ambiguë bloque sans cleanup forcé. Après une promotion réussie, un nouvel
 appel reconnaît le même tip d'intégration déjà présent sur le primary et
 retourne `MERGED` avec `ALREADY_MERGED`, sans créer un second commit.
 
+La reprise composée utilise `recover_merged()` uniquement avec un contexte
+Gate reconstruit par `IntegrationGate` et le fingerprint durable exact. Parent,
+ordre, commits membres, branche temporaire, primary propre et séquence de merge
+restent obligatoires ; un HEAD simplement avancé ne constitue jamais une
+preuve d'intégration.
+
 P3.10 ne lance ni Tester ni Reviewer, ne modifie aucun lifecycle de User Story
 ou `ProjectState`, ne certifie rien et ne progresse pas les Waves. P3.11 pourra
 orchestrer ces responsabilités sur l'état intégré.

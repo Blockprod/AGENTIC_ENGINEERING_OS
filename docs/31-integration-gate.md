@@ -83,3 +83,10 @@ cleanup, transition, Evidence, certification ou invocation Tester/Reviewer
 n'est effectué. Les worktrees et branches restent disponibles pour diagnostic
 et pour P3.10. P3.9 n'exécute pas de suite globale combinée et ne construit pas
 d'environnement d'intégration physique.
+
+La composition de mission persiste uniquement le fingerprint d'un résultat
+Gate PASS. Avant merge, le Gate est réévalué normalement. Après une perte de
+retour post-merge, une reconstruction historique privée reste propriété du
+Gate : elle revalide tous les inputs et son fingerprint, tandis que le
+MergeCoordinator doit encore prouver que le primary est exactement le merge
+attendu. Cette voie ne permet pas de convertir FAIL ou UNKNOWN en PASS.

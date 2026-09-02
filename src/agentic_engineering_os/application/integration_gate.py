@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from enum import Enum
 from itertools import combinations
@@ -148,6 +150,39 @@ class IntegrationGate:
         self._result_validator = result_validator or ImplementerResultValidator()
 
     def evaluate(self, context: IntegrationGateContext) -> IntegrationGateResult:
+        return self._evaluate(context, accepted_integrated_primary=None)
+
+    def _reconstruct_after_merge(
+        self,
+        context: IntegrationGateContext,
+        *,
+        integrated_commit: str,
+        expected_fingerprint: str,
+    ) -> IntegrationGateResult:
+        """Rebuild the historical Gate only for exact post-merge recognition."""
+
+        if (
+            not isinstance(integrated_commit, str)
+            or len(integrated_commit) != 40
+            or any(character not in "0123456789abcdef" for character in integrated_commit)
+        ):
+            raise IntegrationGateError("INVALID_CONTEXT", "integrated commit is invalid")
+        result = self._evaluate(
+            context, accepted_integrated_primary=integrated_commit
+        )
+        if integration_gate_fingerprint(result) != expected_fingerprint:
+            raise IntegrationGateError(
+                "STALE_INTEGRATION_GATE",
+                "reconstructed Gate differs from the durable reference",
+            )
+        return result
+
+    def _evaluate(
+        self,
+        context: IntegrationGateContext,
+        *,
+        accepted_integrated_primary: str | None,
+    ) -> IntegrationGateResult:
         if not isinstance(context, IntegrationGateContext):
             raise IntegrationGateError("INVALID_CONTEXT", "IntegrationGateContext is required")
         coordination = context.coordination_input
@@ -204,7 +239,10 @@ class IntegrationGate:
 
         primary_before = self._observe_primary(observed)
         if primary_before is not None:
-            if primary_before.head_commit != plan.baseline_commit:
+            if primary_before.head_commit not in {
+                plan.baseline_commit,
+                accepted_integrated_primary,
+            }:
                 _add(
                     observed,
                     IntegrationFindingCode.BASELINE_MISMATCH,
@@ -362,7 +400,6 @@ class IntegrationGate:
         if not validation.is_valid:
             raise IntegrationGateError("INVALID_RESULT", "gate result violates its schema")
         return result
-
     def _observe_primary(
         self, observed: list[_ObservedFinding]
     ) -> GitPrimaryState | None:
@@ -832,3 +869,16 @@ def _classification(findings: tuple[IntegrationFinding, ...]) -> IntegrationGate
     if findings:
         return IntegrationGateClassification.UNKNOWN
     return IntegrationGateClassification.PASS
+
+
+def integration_gate_fingerprint(result: IntegrationGateResult) -> str:
+    if not isinstance(result, IntegrationGateResult):
+        raise TypeError("IntegrationGateResult is required")
+    payload = json.dumps(
+        to_dict(result),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()

@@ -545,6 +545,97 @@ class ParallelImplementerCoordinator:
                 ) from error
         return prepared_group
 
+    def reconstruct_group(
+        self,
+        plan: ParallelExecutionPlan,
+        group_index: int,
+        *,
+        coordination_input: ParallelCoordinationInput,
+        assignment_ids: tuple[str, ...],
+    ) -> PreparedParallelGroup:
+        """Rebuild one existing group exclusively from plan and registry authority."""
+
+        canonical = self.plan(coordination_input)
+        if plan != canonical:
+            raise ParallelCoordinationError("PLAN_STALE", "plan is not canonical")
+        group = _group(plan, group_index)
+        registry = self._registry()
+        by_id = {item.assignment_id: item for item in registry.assignments}
+        assignments = tuple(by_id.get(identifier) for identifier in assignment_ids)
+        if (
+            len(assignment_ids) != len(group.user_story_ids)
+            or any(item is None for item in assignments)
+            or tuple(item.user_story_id for item in assignments if item is not None)
+            != group.user_story_ids
+        ):
+            raise ParallelCoordinationError(
+                "ASSIGNMENT_MISMATCH", "durable assignments differ from canonical group"
+            )
+        resolved = tuple(item for item in assignments if item is not None)
+        for item in resolved:
+            if (
+                item.mission_id != plan.mission_id
+                or item.workflow_generation != plan.workflow_generation
+                or item.baseline_commit != plan.baseline_commit
+                or item.status not in {WorktreeStatus.ACTIVE, WorktreeStatus.COMPLETED}
+            ):
+                raise ParallelCoordinationError(
+                    "ASSIGNMENT_MISMATCH", "assignment binding is stale"
+                )
+            try:
+                if item.status is WorktreeStatus.ACTIVE:
+                    self._manager.resume(
+                        item.assignment_id,
+                        current_generation=plan.workflow_generation,
+                    )
+                else:
+                    self._manager.complete(
+                        item.assignment_id,
+                        current_generation=plan.workflow_generation,
+                    )
+            except Exception as error:
+                raise ParallelCoordinationError(
+                    "ASSIGNMENT_MISMATCH",
+                    f"assignment cannot be reconstructed: {getattr(error, 'code', type(error).__name__)}",
+                ) from error
+        contexts = tuple(
+            PreparedImplementerContext(
+                assignment_id=item.assignment_id,
+                user_story_id=item.user_story_id,
+                worktree_path=item.worktree_path,
+                branch_name=item.branch_name,
+                baseline_commit=item.baseline_commit,
+                workflow_generation=item.workflow_generation,
+                handoff=RoleHandoff(
+                    from_role=MissionRole.ORCHESTRATOR,
+                    to_role=MissionRole.IMPLEMENTER,
+                    mission_id=plan.mission_id,
+                    workflow_generation=plan.workflow_generation,
+                    subject=item.user_story_id,
+                    objective=coordination_input.mission_state.objective,
+                    observed_commit=plan.baseline_commit,
+                    operating_step=OperatingStep.ACT,
+                    blockers=(),
+                    instructions=(
+                        "Implement only the assigned User Story scope in the assigned "
+                        f"worktree {item.worktree_path}. This handoff grants no Control Plane authority."
+                    ),
+                ),
+            )
+            for item in resolved
+        )
+        return PreparedParallelGroup(
+            group.group_index,
+            group.wave_index,
+            group.user_story_ids,
+            assignment_ids,
+            tuple(item.worktree_path for item in resolved),
+            tuple(item.branch_name for item in resolved),
+            plan.baseline_commit,
+            plan.workflow_generation,
+            contexts,
+        )
+
     def complete_group(
         self,
         prepared_group: PreparedParallelGroup,

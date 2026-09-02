@@ -367,6 +367,158 @@ class ParallelMissionWorkflow:
         self._require_no_pending_transaction()
         return self._parallel.complete_group(prepared_group, member_results)
 
+    def reconstruct_group(
+        self, assignment_ids: tuple[str, ...]
+    ) -> tuple[ParallelMissionPlan, PreparedParallelGroup]:
+        """Rebuild one claimed group without replaying planning or worktree creation."""
+
+        self._require_no_pending_transaction()
+        if not assignment_ids or len(set(assignment_ids)) != len(assignment_ids):
+            raise ParallelMissionWorkflowError(
+                "ASSIGNMENT_MISMATCH", "exact durable assignment references are required"
+            )
+        mission, state = self._authoritative_context()
+        registry = self._manager.registry_store.load()
+        by_id = {item.assignment_id: item for item in registry.assignments}
+        assignments = tuple(by_id.get(identifier) for identifier in assignment_ids)
+        if any(item is None for item in assignments):
+            raise ParallelMissionWorkflowError(
+                "ASSIGNMENT_MISMATCH", "referenced assignment is absent"
+            )
+        resolved = tuple(item for item in assignments if item is not None)
+        baseline = resolved[0].baseline_commit
+        if any(
+            item.mission_id != mission.mission_id
+            or item.workflow_generation != mission.workflow_generation
+            or item.baseline_commit != baseline
+            or item.status not in {WorktreeStatus.ACTIVE, WorktreeStatus.COMPLETED}
+            for item in resolved
+        ):
+            raise ParallelMissionWorkflowError(
+                "ASSIGNMENT_MISMATCH", "assignment set is stale or heterogeneous"
+            )
+        primary = self._manager.inspect_primary()
+        if not primary.clean or (
+            primary.head_commit != baseline
+            and not all(item.status is WorktreeStatus.COMPLETED for item in resolved)
+        ):
+            raise ParallelMissionWorkflowError(
+                "RECONSTRUCT_REQUIRED", "primary/assignment state cannot be reconstructed"
+            )
+        projected = _candidate_state(state)
+        claimed = {item.user_story_id for item in resolved}
+        for index, story in enumerate(projected.user_stories):
+            if story.id in claimed:
+                if story.status not in {
+                    UserStoryStatus.IN_PROGRESS,
+                    UserStoryStatus.IMPLEMENTED,
+                    UserStoryStatus.TESTING,
+                }:
+                    raise ParallelMissionWorkflowError(
+                        "STORY_NOT_EXECUTABLE", "claimed story has an incompatible status"
+                    )
+                projected.user_stories[index] = replace(
+                    _candidate_story(story), status=UserStoryStatus.READY
+                )
+        projected_mission = replace(mission, observed_commit=baseline)
+        dag = self._dag.build(projected)
+        readiness = self._readiness.evaluate(dag, projected)
+        waves = self._waves.plan(dag, readiness, projected)
+        conflicts = self._conflicts.analyze(waves, projected)
+        wave_index = waves.waves[0].wave_index if waves.waves else 0
+        coordination = ParallelCoordinationInput(
+            mission.mission_id,
+            mission.workflow_generation,
+            wave_index,
+            waves,
+            conflicts,
+            projected,
+            projected_mission,
+            baseline,
+        )
+        execution = self._parallel.plan(coordination)
+        matches = tuple(
+            group
+            for group in execution.groups
+            if group.user_story_ids == tuple(item.user_story_id for item in resolved)
+        )
+        if len(matches) != 1:
+            raise ParallelMissionWorkflowError(
+                "PLAN_STALE", "assignments do not resolve to one canonical SAFE group"
+            )
+        plan = ParallelMissionPlan(
+            mission.mission_id,
+            mission.workflow_generation,
+            baseline,
+            dag,
+            readiness,
+            waves,
+            conflicts,
+            coordination,
+            execution,
+        )
+        prepared = self._parallel.reconstruct_group(
+            execution,
+            matches[0].group_index,
+            coordination_input=coordination,
+            assignment_ids=assignment_ids,
+        )
+        return plan, prepared
+
+    def claimed_assignment_ids(
+        self,
+        *,
+        mission_id: str,
+        workflow_generation: int,
+        baseline_commit: str,
+        user_story_ids: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        """Read the exact current assignment set without granting Git mutation access."""
+
+        registry = self._manager.registry_store.load()
+        by_story = {
+            item.user_story_id: item
+            for item in registry.assignments
+            if item.mission_id == mission_id
+            and item.workflow_generation == workflow_generation
+            and item.baseline_commit == baseline_commit
+            and item.status is not WorktreeStatus.CLEANED
+            and item.user_story_id in user_story_ids
+        }
+        if len(by_story) != len(
+            [
+                item
+                for item in registry.assignments
+                if item.mission_id == mission_id
+                and item.workflow_generation == workflow_generation
+                and item.baseline_commit == baseline_commit
+                and item.status is not WorktreeStatus.CLEANED
+                and item.user_story_id in user_story_ids
+            ]
+        ):
+            raise ParallelMissionWorkflowError(
+                "ASSIGNMENT_MISMATCH", "assignment references are ambiguous"
+            )
+        return tuple(
+            by_story[story].assignment_id
+            for story in user_story_ids
+            if story in by_story
+        )
+
+    def assignment(self, assignment_id: str):
+        """Expose one immutable registry fact for composition revalidation."""
+
+        matches = tuple(
+            item
+            for item in self._manager.registry_store.load().assignments
+            if item.assignment_id == assignment_id
+        )
+        if len(matches) != 1:
+            raise ParallelMissionWorkflowError(
+                "ASSIGNMENT_MISMATCH", "assignment is absent or ambiguous"
+            )
+        return matches[0]
+
     def fail_member(
         self, prepared_group: PreparedParallelGroup, assignment_id: str
     ) -> ParallelGroupResult:
@@ -788,6 +940,16 @@ class ParallelMissionWorkflow:
         *,
         updated_at: datetime,
     ) -> ParallelIntegrationAttempt:
+        attempt = self.evaluate_group(plan, group_result)
+        if attempt.gate_result.result is not IntegrationGateClassification.PASS:
+            return attempt
+        return self.merge_gated_group(attempt, updated_at=updated_at)
+
+    def evaluate_group(
+        self,
+        plan: ParallelMissionPlan,
+        group_result: ParallelGroupResult,
+    ) -> ParallelIntegrationAttempt:
         self._require_no_pending_transaction()
         self._require_plan_identity(plan)
         mission = self._mission_store.load()
@@ -798,23 +960,94 @@ class ParallelMissionWorkflow:
             current_mission_state=mission,
         )
         gate_result = self._gate.evaluate(gate_context)
-        merge_result: MergeResult | None = None
-        if gate_result.result is IntegrationGateClassification.PASS:
-            merge_result = self._merge.merge(
-                MergeContext(gate_context=gate_context, gate_result=gate_result)
-            )
-            if merge_result.result is MergeStatus.MERGED:
-                if merge_result.integration_commit is None:
-                    raise ParallelMissionWorkflowError(
-                        "INVALID_MERGE_RESULT", "MERGED result lacks integration commit"
-                    )
-                self._observe_new_primary(merge_result.integration_commit, updated_at)
         return ParallelIntegrationAttempt(
             plan=plan,
             group_result=group_result,
             gate_context=gate_context,
             gate_result=gate_result,
-            merge_result=merge_result,
+            merge_result=None,
+        )
+
+    def merge_gated_group(
+        self,
+        attempt: ParallelIntegrationAttempt,
+        *,
+        updated_at: datetime,
+    ) -> ParallelIntegrationAttempt:
+        if (
+            not isinstance(attempt, ParallelIntegrationAttempt)
+            or attempt.merge_result is not None
+            or attempt.gate_result.result is not IntegrationGateClassification.PASS
+        ):
+            raise ParallelMissionWorkflowError(
+                "GATE_NOT_PASS", "only one authoritative Gate PASS may reach merge"
+            )
+        merge_result = self._merge.merge(
+            MergeContext(
+                gate_context=attempt.gate_context,
+                gate_result=attempt.gate_result,
+            )
+        )
+        completed = replace(attempt, merge_result=merge_result)
+        if merge_result.result is MergeStatus.MERGED:
+            if merge_result.integration_commit is None:
+                raise ParallelMissionWorkflowError(
+                    "INVALID_MERGE_RESULT", "MERGED result lacks integration commit"
+                )
+            self._observe_new_primary(merge_result.integration_commit, updated_at)
+        return completed
+
+    def recover_merged_group(
+        self,
+        plan: ParallelMissionPlan,
+        group_result: ParallelGroupResult,
+        *,
+        gate_fingerprint: str,
+        updated_at: datetime,
+    ) -> ParallelIntegrationAttempt:
+        mission = replace(self._mission_store.load(), observed_commit=plan.baseline_commit)
+        gate_context = IntegrationGateContext(
+            plan.coordination_input,
+            plan.execution_plan,
+            group_result,
+            mission,
+        )
+        try:
+            gate_result, merge_result = self._merge.recover_merged(
+                gate_context, expected_gate_fingerprint=gate_fingerprint
+            )
+        except MergeCoordinationError as error:
+            raise ParallelMissionWorkflowError(error.code, error.message) from error
+        self._observe_new_primary(merge_result.integration_commit or "", updated_at)
+        return ParallelIntegrationAttempt(
+            plan, group_result, gate_context, gate_result, merge_result
+        )
+
+    def resume_gated_group(
+        self,
+        plan: ParallelMissionPlan,
+        group_result: ParallelGroupResult,
+        *,
+        gate_fingerprint: str,
+        updated_at: datetime,
+    ) -> ParallelIntegrationAttempt:
+        """Resume after a durable Gate reference without bypassing Gate or Merge."""
+
+        primary = self._manager.inspect_primary()
+        if primary.head_commit == plan.baseline_commit:
+            from .integration_gate import integration_gate_fingerprint
+
+            attempt = self.evaluate_group(plan, group_result)
+            if integration_gate_fingerprint(attempt.gate_result) != gate_fingerprint:
+                raise ParallelMissionWorkflowError(
+                    "STALE_INTEGRATION_GATE", "current Gate differs from durable reference"
+                )
+            return self.merge_gated_group(attempt, updated_at=updated_at)
+        return self.recover_merged_group(
+            plan,
+            group_result,
+            gate_fingerprint=gate_fingerprint,
+            updated_at=updated_at,
         )
 
     def accept_integrated_implementer(
@@ -827,18 +1060,25 @@ class ParallelMissionWorkflow:
         integration_commit = self._prove_integration(attempt)
         member = self._member(attempt, user_story_id)
         story = self._story(user_story_id)
-        if story.status is not UserStoryStatus.IN_PROGRESS:
+        if story.status not in {
+            UserStoryStatus.IN_PROGRESS,
+            UserStoryStatus.IMPLEMENTED,
+            UserStoryStatus.TESTING,
+        }:
             raise ParallelMissionWorkflowError(
-                "ROLE_CHAIN_VIOLATION", "integrated Implementer requires IN_PROGRESS"
+                "ROLE_CHAIN_VIOLATION", "integrated Implementer requires IN_PROGRESS or exact TESTING replay"
             )
-        handoff = self._handoff(
-            attempt.plan,
-            user_story_id,
-            MissionRole.IMPLEMENTER,
-            OperatingStep.ACT,
-            integration_commit,
-        )
-        implementer_input = ImplementerInput.from_handoff(handoff, story)
+        if candidate == member.implementer_result:
+            implementer_input = member.implementer_input
+        else:
+            handoff = self._handoff(
+                attempt.plan,
+                user_story_id,
+                MissionRole.IMPLEMENTER,
+                OperatingStep.ACT,
+                integration_commit,
+            )
+            implementer_input = ImplementerInput.from_handoff(handoff, story)
         validation = self._implementer_validator.validate(
             candidate, implementer_input=implementer_input
         )
@@ -857,8 +1097,15 @@ class ParallelMissionWorkflow:
                 "INVALID_INTEGRATED_IMPLEMENTER",
                 "post-merge Implementer artifact is invalid or differs from gated files",
             )
-        self._transition(user_story_id, UserStoryStatus.IMPLEMENTED)
-        self._transition(user_story_id, UserStoryStatus.TESTING)
+        if story.status is UserStoryStatus.IN_PROGRESS:
+            self._transition(user_story_id, UserStoryStatus.IMPLEMENTED)
+            self._transition(user_story_id, UserStoryStatus.TESTING)
+        elif story.status is UserStoryStatus.IMPLEMENTED:
+            self._transition(user_story_id, UserStoryStatus.TESTING)
+        elif story.status is not UserStoryStatus.TESTING:
+            raise ParallelMissionWorkflowError(
+                "ROLE_CHAIN_VIOLATION", "integrated story is not ready for Tester"
+            )
         return ParallelStoryDossier(
             mission_id=attempt.plan.mission_id,
             workflow_generation=attempt.plan.workflow_generation,

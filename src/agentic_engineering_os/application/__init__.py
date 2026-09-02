@@ -233,9 +233,16 @@ from .mission_planning import (
     MissionPlanningResult,
     MissionPlanningStatus,
 )
+from .mission_integration import (
+    MissionIntegrationCoordinator,
+    MissionIntegrationError,
+    MissionIntegrationResult,
+    MissionIntegrationStatus,
+)
 from .orchestration_record import (
     ORCHESTRATION_RECORD_VERSION,
     OrchestrationRecord,
+    ParallelIntegrationReference,
     RoleExecutionReference,
     request_fingerprint,
 )
@@ -409,8 +416,13 @@ __all__ = [
     "MissionPlanningError",
     "MissionPlanningResult",
     "MissionPlanningStatus",
+    "MissionIntegrationCoordinator",
+    "MissionIntegrationError",
+    "MissionIntegrationResult",
+    "MissionIntegrationStatus",
     "ORCHESTRATION_RECORD_VERSION",
     "OrchestrationRecord",
+    "ParallelIntegrationReference",
     "RoleExecutionReference",
     "request_fingerprint",
     "AcceptanceResult",

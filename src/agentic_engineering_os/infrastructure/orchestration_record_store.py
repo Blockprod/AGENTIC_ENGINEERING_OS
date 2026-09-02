@@ -10,6 +10,7 @@ from pathlib import Path
 from agentic_engineering_os.application.orchestration_record import (
     ORCHESTRATION_RECORD_VERSION,
     OrchestrationRecord,
+    ParallelIntegrationReference,
     RoleExecutionReference,
     record_to_data,
 )
@@ -106,7 +107,16 @@ class OrchestrationRecordStore:
 
 
 def _from_data(value: object) -> OrchestrationRecord:
-    if not isinstance(value, dict) or set(value) != {"schema_version", "mission_id", "request", "request_fingerprint", "baseline_commit", "workflow_generation", "plan_fingerprint", "execution_references", "user_story_ids"}:
+    legacy_fields = {"schema_version", "mission_id", "request", "request_fingerprint", "baseline_commit", "workflow_generation", "plan_fingerprint", "execution_references", "user_story_ids"}
+    current_fields = {*legacy_fields, "parallel_integration"}
+    if not isinstance(value, dict):
+        raise ValueError("record has unknown or missing fields")
+    schema_fields = {
+        "1.0": legacy_fields,
+        ORCHESTRATION_RECORD_VERSION: current_fields,
+    }
+    expected_fields = schema_fields.get(value.get("schema_version"))
+    if expected_fields is None or set(value) != expected_fields:
         raise ValueError("record has unknown or missing fields")
     request = value["request"]
     if not isinstance(request, dict) or set(request) != {"objective", "repository_root", "requested_scope", "verification_command_ids"}:
@@ -115,7 +125,7 @@ def _from_data(value: object) -> OrchestrationRecord:
     if not isinstance(references, list):
         raise ValueError("execution_references must be an array")
     return OrchestrationRecord(
-        schema_version=str(value["schema_version"]),
+        schema_version=ORCHESTRATION_RECORD_VERSION,
         mission_id=str(value["mission_id"]),
         request=MissionRequest(str(request["objective"]), str(request["repository_root"]), _strings(request["requested_scope"]), _strings(request["verification_command_ids"])),
         request_fingerprint=str(value["request_fingerprint"]),
@@ -124,6 +134,23 @@ def _from_data(value: object) -> OrchestrationRecord:
         plan_fingerprint=None if value["plan_fingerprint"] is None else str(value["plan_fingerprint"]),
         execution_references=tuple(_reference(item) for item in references),
         user_story_ids=_strings(value["user_story_ids"]),
+        parallel_integration=_parallel_reference(value.get("parallel_integration")),
+    )
+
+
+def _parallel_reference(value: object) -> ParallelIntegrationReference | None:
+    if value is None:
+        return None
+    expected = {"plan_fingerprint", "wave_index", "group_index", "assignment_ids", "gate_fingerprint", "integrated_commit"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError("parallel integration reference has unknown or missing fields")
+    return ParallelIntegrationReference(
+        str(value["plan_fingerprint"]),
+        _integer(value["wave_index"]),
+        _integer(value["group_index"]),
+        _strings(value["assignment_ids"]),
+        None if value["gate_fingerprint"] is None else str(value["gate_fingerprint"]),
+        None if value["integrated_commit"] is None else str(value["integrated_commit"]),
     )
 
 

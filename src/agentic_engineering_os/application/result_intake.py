@@ -142,6 +142,50 @@ def reconstruct_persisted_architect_result(value: str) -> ArchitectResult:
     return candidate
 
 
+def reconstruct_persisted_implementer_result(value: str) -> ImplementerResult:
+    """Rebuild schema-valid canonical ImplementerResult ledger JSON."""
+
+    if not isinstance(value, str) or not value:
+        raise PersistedRoleResultError("validated ImplementerResult JSON is absent")
+    try:
+        payload = json.loads(
+            value,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_non_json_constant,
+        )
+    except (json.JSONDecodeError, ValueError) as error:
+        raise PersistedRoleResultError(
+            "validated ImplementerResult is not strict JSON"
+        ) from error
+    if not isinstance(payload, dict):
+        raise PersistedRoleResultError("validated ImplementerResult must be an object")
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    if value != canonical or payload.get("role") != MissionRole.IMPLEMENTER.value:
+        raise PersistedRoleResultError(
+            "persisted ImplementerResult is non-canonical or has the wrong role"
+        )
+    contracts = ContractValidator()
+    if not contracts.validate("implementer-result", payload).is_valid:
+        raise PersistedRoleResultError("persisted ImplementerResult fails its schema")
+    try:
+        candidate = _build_role_result(MissionRole.IMPLEMENTER, payload)
+    except (KeyError, TypeError, ValueError) as error:
+        raise PersistedRoleResultError(
+            "persisted ImplementerResult cannot rebuild the canonical model"
+        ) from error
+    if not isinstance(candidate, ImplementerResult):
+        raise PersistedRoleResultError(
+            "persisted result did not rebuild as ImplementerResult"
+        )
+    return candidate
+
+
 _CONTRACTS = {
     MissionRole.ARCHITECT: "architect-result@1.0",
     MissionRole.IMPLEMENTER: "implementer-result@1.0",

@@ -12,7 +12,7 @@ from agentic_engineering_os.domain import MissionRole
 from .mission_admission import MissionRequest
 
 
-ORCHESTRATION_RECORD_VERSION = "1.0"
+ORCHESTRATION_RECORD_VERSION = "1.1"
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -38,6 +38,37 @@ class RoleExecutionReference:
 
 
 @dataclass(frozen=True, slots=True)
+class ParallelIntegrationReference:
+    plan_fingerprint: str
+    wave_index: int
+    group_index: int
+    assignment_ids: tuple[str, ...]
+    gate_fingerprint: str | None = None
+    integrated_commit: str | None = None
+
+    def __post_init__(self) -> None:
+        if not _SHA256.fullmatch(self.plan_fingerprint):
+            raise ValueError("parallel plan fingerprint must be lowercase SHA-256")
+        if any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in (self.wave_index, self.group_index)
+        ):
+            raise ValueError("parallel wave/group identity is invalid")
+        if (
+            not self.assignment_ids
+            or len(set(self.assignment_ids)) != len(self.assignment_ids)
+            or any(not isinstance(item, str) or not item.strip() for item in self.assignment_ids)
+        ):
+            raise ValueError("parallel assignment references are invalid")
+        if self.gate_fingerprint is not None and not _SHA256.fullmatch(self.gate_fingerprint):
+            raise ValueError("gate fingerprint must be lowercase SHA-256")
+        if self.integrated_commit is not None and not _SHA40.fullmatch(self.integrated_commit):
+            raise ValueError("integrated commit must be lowercase SHA-1")
+        if self.integrated_commit is not None and self.gate_fingerprint is None:
+            raise ValueError("integrated commit requires a Gate reference")
+
+
+@dataclass(frozen=True, slots=True)
 class OrchestrationRecord:
     schema_version: str
     mission_id: str
@@ -48,6 +79,7 @@ class OrchestrationRecord:
     plan_fingerprint: str | None = None
     execution_references: tuple[RoleExecutionReference, ...] = ()
     user_story_ids: tuple[str, ...] = ()
+    parallel_integration: ParallelIntegrationReference | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != ORCHESTRATION_RECORD_VERSION:
@@ -73,6 +105,15 @@ class OrchestrationRecord:
             raise ValueError(
                 "planning fingerprint, User Story references, and Architect reference must agree"
             )
+        if self.parallel_integration is not None:
+            implementer_subjects = tuple(
+                item.subject
+                for item in self.execution_references
+                if item.role is MissionRole.IMPLEMENTER
+                and item.workflow_generation == self.workflow_generation
+            )
+            if not planned or not set(implementer_subjects).issubset(set(self.user_story_ids)):
+                raise ValueError("parallel integration references differ from planning")
 
     @property
     def fingerprint(self) -> str:
@@ -101,6 +142,13 @@ class OrchestrationRecord:
                 self.user_story_ids if user_story_ids is None else user_story_ids
             ),
         )
+
+    def with_parallel_integration(
+        self, reference: ParallelIntegrationReference
+    ) -> OrchestrationRecord:
+        if not isinstance(reference, ParallelIntegrationReference):
+            raise TypeError("canonical parallel integration reference is required")
+        return replace(self, parallel_integration=reference)
 
 
 def request_fingerprint(request: MissionRequest) -> str:
@@ -143,6 +191,18 @@ def record_to_data(record: OrchestrationRecord) -> dict[str, object]:
             for item in record.execution_references
         ],
         "user_story_ids": list(record.user_story_ids),
+        "parallel_integration": (
+            None
+            if record.parallel_integration is None
+            else {
+                "plan_fingerprint": record.parallel_integration.plan_fingerprint,
+                "wave_index": record.parallel_integration.wave_index,
+                "group_index": record.parallel_integration.group_index,
+                "assignment_ids": list(record.parallel_integration.assignment_ids),
+                "gate_fingerprint": record.parallel_integration.gate_fingerprint,
+                "integrated_commit": record.parallel_integration.integrated_commit,
+            }
+        ),
     }
 
 
