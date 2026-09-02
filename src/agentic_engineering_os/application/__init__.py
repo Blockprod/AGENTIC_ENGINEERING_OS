@@ -211,6 +211,17 @@ from .maintenance_governance import (
     MaintenanceGovernanceService,
     MaintenanceStateStorePort,
 )
+from .mission_admission import (
+    MISSION_CAPABILITY_MAX_AGE,
+    MissionAdmission,
+    MissionAdmissionBlocker,
+    MissionAdmissionStatus,
+    MissionCapabilityProvider,
+    MissionCapabilitySnapshot,
+    MissionMaintenanceProvider,
+    MissionReadinessPrecheck,
+    MissionRequest,
+)
 from .human_approval_service import (
     HumanApprovalError,
     HumanApprovalResult,
@@ -365,6 +376,15 @@ __all__ = [
     "MaintenanceGovernanceError",
     "MaintenanceGovernanceService",
     "MaintenanceStateStorePort",
+    "MISSION_CAPABILITY_MAX_AGE",
+    "MissionAdmission",
+    "MissionAdmissionBlocker",
+    "MissionAdmissionStatus",
+    "MissionCapabilityProvider",
+    "MissionCapabilitySnapshot",
+    "MissionMaintenanceProvider",
+    "MissionReadinessPrecheck",
+    "MissionRequest",
     "AcceptanceResult",
     "AuthoritativeContextEntry",
     "ArchitectDecision",
