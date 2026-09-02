@@ -1,0 +1,308 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mission_id",
+    "workflow_generation",
+    "role",
+    "subject",
+    "user_story_id",
+    "observed_commit",
+    "summary",
+    "test_plan",
+    "acceptance_results",
+    "test_cases",
+    "test_files_changed",
+    "verification_commands",
+    "verification_results",
+    "findings",
+    "blockers",
+    "recommended_next_role",
+    "verdict"
+  ],
+  "properties": {
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow_generation": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "role": {
+      "enum": [
+        "TESTER"
+      ],
+      "type": "string"
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_story_id": {
+      "type": "string",
+      "pattern": "^US-[0-9]{4}$"
+    },
+    "observed_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}$"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "test_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acceptance_criteria",
+        "positive_tests",
+        "negative_tests",
+        "edge_cases",
+        "regressions",
+        "commands"
+      ],
+      "properties": {
+        "acceptance_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "positive_tests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "negative_tests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "edge_cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "regressions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "acceptance_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "acceptance_criterion_id",
+          "result",
+          "evidence",
+          "notes"
+        ],
+        "properties": {
+          "acceptance_criterion_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "UNKNOWN",
+              "NOT_APPLICABLE"
+            ],
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "notes": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "test_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "objective",
+          "expected_result",
+          "observed_result",
+          "required",
+          "executed",
+          "verdict"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "enum": [
+              "POSITIVE",
+              "NEGATIVE",
+              "EDGE",
+              "REGRESSION"
+            ],
+            "type": "string"
+          },
+          "objective": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_result": {
+            "type": "string",
+            "minLength": 1
+          },
+          "observed_result": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "executed": {
+            "type": "boolean"
+          },
+          "verdict": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "UNKNOWN",
+              "NOT_APPLICABLE"
+            ],
+            "type": "string"
+          }
+        }
+      }
+    },
+    "test_files_changed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verification_commands": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verification_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command",
+          "required",
+          "executed",
+          "result",
+          "exit_code",
+          "details"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "executed": {
+            "type": "boolean"
+          },
+          "result": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "UNKNOWN",
+              "NOT_APPLICABLE"
+            ],
+            "type": "string"
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "details": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "recommended_next_role": {
+      "enum": [
+        "ORCHESTRATOR",
+        "ARCHITECT",
+        "IMPLEMENTER",
+        "TESTER",
+        "REVIEWER",
+        "CERTIFIER"
+      ],
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "READY_FOR_REVIEW",
+        "REMEDIATION_REQUIRED",
+        "BLOCKED"
+      ],
+      "type": "string"
+    }
+  }
+}

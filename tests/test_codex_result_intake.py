@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -46,6 +45,9 @@ from agentic_engineering_os.application import (
     TesterVerificationResult,
     VerificationOutcome,
     VerificationResult,
+)
+from agentic_engineering_os.application.codex_output_schema import (
+    codex_output_schema_path,
 )
 from agentic_engineering_os.domain import (
     AcceptanceCriterion,
@@ -304,15 +306,13 @@ def repository(tmp_path: Path, role: MissionRole) -> tuple[Path, str, Path]:
     git(root, "config", "user.name", "P4.6 Test Operator")
     git(root, "config", "user.email", "p4.6@example.invalid")
     (root / "README.md").write_text("intake repository\n", encoding="utf-8")
-    schemas = root / "schemas"
-    schemas.mkdir()
-    contract_name = CONTRACTS[role].removesuffix("@1.0")
-    schema = schemas / f"{contract_name}.schema.json"
-    source = Path(__file__).parents[1] / "schemas" / schema.name
-    shutil.copyfile(source, schema)
     git(root, "add", ".")
     git(root, "commit", "-m", "test: intake baseline")
-    return root.resolve(), git(root, "rev-parse", "HEAD").casefold(), schema.resolve()
+    return (
+        root.resolve(),
+        git(root, "rev-parse", "HEAD").casefold(),
+        codex_output_schema_path(role).resolve(),
+    )
 
 
 def intake_case(tmp_path: Path, role: MissionRole) -> IntakeCase:
@@ -484,6 +484,25 @@ def test_refuses_wrong_request_role_worktree_contract_and_schema_channel(tmp_pat
     assert ResultIntakeRefusalCode.OBSERVATION_BINDING_MISMATCH in codes(outcomes[2])
     assert ResultIntakeRefusalCode.STRUCTURED_CHANNEL_MISSING in codes(outcomes[3])
     assert ResultIntakeRefusalCode.EXPECTED_CONTRACT_MISMATCH in codes(wrong_contract)
+
+
+def test_refuses_stale_checkout_schema_even_with_expected_transport_filename(
+    tmp_path: Path,
+) -> None:
+    case = intake_case(tmp_path, MissionRole.ARCHITECT)
+    stale = Path(case.observation.cwd) / Path(case.context.output_schema_path).name
+    stale.write_bytes(Path(case.context.output_schema_path).read_bytes())
+    invocation = tuple(
+        str(stale) if item == case.context.output_schema_path else item
+        for item in case.observation.invocation
+    )
+    observation = replace(case.observation, invocation=invocation)
+    context = ResultIntakeValidationContext(case.context.role_input, str(stale))
+
+    outcome = CodexResultIntake().process(case.compiled, observation, context)
+
+    assert not outcome.accepted
+    assert ResultIntakeRefusalCode.STRUCTURED_CHANNEL_AMBIGUOUS in codes(outcome)
 
 
 @pytest.mark.parametrize(

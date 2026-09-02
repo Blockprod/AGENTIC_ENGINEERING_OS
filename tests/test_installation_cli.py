@@ -83,6 +83,7 @@ def test_help_and_package_resources_are_available() -> None:
     assert "upgrade" in result.stdout
     assert ContractValidator().validate("user-story", {}).errors
     assert product_resource_path("schemas/architect-result.schema.json").is_file()
+    assert product_resource_path("schemas/architect-result.codex.schema.json").is_file()
     assert "Architect" in product_resource_text("roles/architect.md")
     with pytest.raises(Exception):
         product_resource_text("../README.md")

@@ -1,0 +1,308 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mission_id",
+    "workflow_generation",
+    "role",
+    "subject",
+    "observed_commit",
+    "summary",
+    "assumptions",
+    "decisions",
+    "risks",
+    "blockers",
+    "user_stories",
+    "recommended_next_role",
+    "verdict"
+  ],
+  "properties": {
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow_generation": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "role": {
+      "enum": [
+        "ARCHITECT"
+      ],
+      "type": "string"
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}$"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "description"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "ARCHITECTURAL",
+              "HUMAN_REQUIRED"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "user_stories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "id",
+          "title",
+          "description",
+          "status",
+          "priority",
+          "risk",
+          "depends_on",
+          "scope",
+          "acceptance_criteria",
+          "required_gates",
+          "human_approval",
+          "metadata"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^US-[0-9]{4}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PROPOSED",
+              "PLANNED",
+              "BLOCKED",
+              "READY",
+              "IN_PROGRESS",
+              "IMPLEMENTED",
+              "TESTING",
+              "REVIEW",
+              "CERTIFICATION",
+              "CERTIFIED",
+              "REJECTED",
+              "REMEDIATION_REQUIRED",
+              "CANCELLED"
+            ]
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^US-[0-9]{4}$"
+            }
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "allowed_paths",
+              "forbidden_paths"
+            ],
+            "properties": {
+              "allowed_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "forbidden_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "description",
+                "mandatory"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mandatory": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "required_gates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "human_approval": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "required",
+              "approved",
+              "approved_by",
+              "approved_at",
+              "evidence_ref"
+            ],
+            "properties": {
+              "required": {
+                "type": "boolean"
+              },
+              "approved": {
+                "type": "boolean"
+              },
+              "approved_by": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "approved_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "evidence_ref": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "created_at",
+              "created_by",
+              "updated_at"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "created_by": {
+                "type": "string",
+                "minLength": 1
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      }
+    },
+    "recommended_next_role": {
+      "enum": [
+        "ORCHESTRATOR",
+        "ARCHITECT",
+        "IMPLEMENTER",
+        "TESTER",
+        "REVIEWER",
+        "CERTIFIER"
+      ],
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "READY",
+        "BLOCKED"
+      ],
+      "type": "string"
+    }
+  }
+}

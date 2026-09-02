@@ -19,6 +19,12 @@ Les contrats opérationnels de Phase 2 utilisent le même draft :
 - `reviewer-result.schema.json`
 - `certifier-result.schema.json`
 
+Leurs cinq fichiers `*-result.codex.schema.json` sont des projections de
+transport pré-calculées pour le sous-ensemble Structured Outputs accepté par
+Codex. Ils ne remplacent pas ces contrats canoniques ; P4.6 revalide toujours
+le payload avec le schéma et le validateur de rôle autoritatifs. Voir
+[`docs/41-structured-result-intake.md`](../docs/41-structured-result-intake.md).
+
 La projection DAG de Phase 3 utilise également ce draft :
 
 - `dag-snapshot.schema.json`

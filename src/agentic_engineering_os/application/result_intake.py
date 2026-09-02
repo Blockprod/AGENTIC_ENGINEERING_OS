@@ -22,11 +22,6 @@ from agentic_engineering_os.domain import (
     UserStoryScope,
     UserStoryStatus,
 )
-from agentic_engineering_os.resources.product import (
-    ProductResourceError,
-    product_schema_directory,
-)
-
 from .architect import (
     ArchitectDecision,
     ArchitectDecisionKind,
@@ -48,6 +43,10 @@ from .certifier import (
     HumanApprovalCheck,
 )
 from .codex_runtime import CodexExecutionObservation, CodexJsonlEvent
+from .codex_output_schema import (
+    CodexOutputSchemaError,
+    codex_output_schema_path,
+)
 from .contract_validator import ContractValidator, ValidationIssue, ValidationResult
 from .implementer import (
     ImplementerInput,
@@ -420,7 +419,6 @@ def _validate_schema_channel(
                 "invocation contains multiple output schemas",
             ),
         )
-    expected_name = f"{compiled.expected_result_contract.removesuffix('@1.0')}.schema.json"
     if not isinstance(context.output_schema_path, str):
         return (
             _reason(
@@ -429,30 +427,29 @@ def _validate_schema_channel(
             ),
         )
     supplied = Path(context.output_schema_path)
+    try:
+        expected_schema = codex_output_schema_path(compiled.role)
+    except CodexOutputSchemaError:
+        return (
+            _reason(
+                ResultIntakeRefusalCode.STRUCTURED_CHANNEL_AMBIGUOUS,
+                "role has no canonical Codex transport schema",
+            ),
+        )
     if (
         not supplied.is_absolute()
         or supplied.is_symlink()
         or not supplied.is_file()
-        or supplied.name != expected_name
-        or not _allowed_output_schema(observation.cwd, supplied)
+        or not _same_existing_path(str(supplied), str(expected_schema))
         or not _same_existing_path(values[0], str(supplied))
     ):
         return (
             _reason(
                 ResultIntakeRefusalCode.STRUCTURED_CHANNEL_AMBIGUOUS,
-                "output schema does not match the explicit canonical role schema binding",
+                "output schema does not match the packaged role transport schema binding",
             ),
         )
     return ()
-
-
-def _allowed_output_schema(cwd: str, supplied: Path) -> bool:
-    if _path_is_within(cwd, str(supplied)):
-        return True
-    try:
-        return _path_is_within(str(product_schema_directory()), str(supplied))
-    except ProductResourceError:
-        return False
 
 
 def _validate_git_before(

@@ -48,7 +48,25 @@ Le dernier message libre n'est donc pas automatiquement un résultat structuré.
 L'intake refuse un schéma absent ou multiple, plusieurs messages terminés, une
 contradiction avec `final_output`, une ligne JSONL invalide, une troncature ou
 un payload absent. Le schéma transporté ne devient pas une autorité : le
-payload est revalidé avec le `ContractValidator` repository-local.
+payload est revalidé avec le `ContractValidator` canonique.
+
+## Schémas de transport Codex
+
+Chaque rôle possède un schéma `*-result.codex.schema.json` pré-calculé et
+packagé. P4.8 transmet exactement cette ressource à `--output-schema`; P4.6
+refuse une copie provenant du checkout, même si son nom ou son contenu paraît
+identique. Aucune transformation n'est exécutée sur le chemin chaud.
+
+Ces cinq projections utilisent uniquement le sous-ensemble nécessaire vérifié
+avec le canal Structured Outputs réel : objets imbriqués fermés, propriétés
+toutes requises, types, enums, unions nullables, tableaux, bornes, patterns et
+formats. Les références sont développées sans fusion ambiguë. `allOf`, les
+conditionnelles associées et `uniqueItems`, refusés par le canal, restent dans
+les schémas canoniques et sont donc toujours appliqués lors de l'intake.
+
+Le schéma de transport contraint la génération ; il ne valide ni l'autorité ni
+la sémantique finale. Un payload valide au transport mais incompatible avec une
+règle canonique est refusé par P4.6.
 
 ## Parsing et cinq rôles
 
@@ -109,6 +127,6 @@ L'intake n'appelle jamais `EvidenceRecorder`, `GateEvaluator`,
 Control Loops ou les stores. Les claims Human restent soumis aux validateurs de
 rôle et un Certifier ne peut pas retourner `CERTIFIED`.
 
-Aucun schéma ni dépendance n'est ajouté : les cinq schémas V1 existants sont
-réutilisés. Aucun résultat ou outcome n'est persisté ; l'identité d'attempt, le
-restart et la réconciliation durable restent exclusivement P4.7.
+Aucune dépendance n'est ajoutée. Aucun résultat ou outcome n'est persisté ;
+l'identité d'attempt, le restart et la réconciliation durable restent
+exclusivement P4.7.
