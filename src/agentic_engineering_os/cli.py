@@ -90,6 +90,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             {"code": error.code, "detail": error.message},
             arguments.json,
             stream=sys.stderr,
+            mode=_requested_mode(arguments),
         )
         return error.exit_code
     except OperatorDiagnosticError as error:
@@ -99,6 +100,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             {"code": error.code, "detail": error.message},
             arguments.json,
             stream=sys.stderr,
+            mode=_requested_mode(arguments),
         )
         return EXIT_BLOCKED
     except (OSError, ProjectConfigurationError) as error:
@@ -111,6 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             },
             arguments.json,
             stream=sys.stderr,
+            mode=_requested_mode(arguments),
         )
         return EXIT_BLOCKED
     except Exception as error:  # pragma: no cover - defensive CLI boundary
@@ -120,40 +123,68 @@ def main(argv: Sequence[str] | None = None) -> int:
             {"code": type(error).__name__, "detail": "unexpected product failure"},
             arguments.json,
             stream=sys.stderr,
+            mode=_requested_mode(arguments),
         )
         return EXIT_ERROR
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="agentic-os",
-        description="Inspect, plan, adopt, and explicitly upgrade an Agentic OS repository.",
+        prog="python -m agentic_engineering_os",
+        description=(
+            "Inspect, plan, adopt, diagnose, and explicitly upgrade an Agentic OS "
+            "repository. The optional 'agentic-os' shim may be unavailable under "
+            "Windows App Control / Code Integrity policy."
+        ),
+        epilog=(
+            "Canonical entrypoint: python -m agentic_engineering_os. "
+            "Read-only commands never apply a plan; init and upgrade mutate only "
+            "with --apply."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for name in ("inspect", "status"):
-        command = subparsers.add_parser(name)
+    read_only = {
+        "inspect": "inspect repository facts (read-only)",
+        "status": "show adoption state and next operator action (read-only)",
+    }
+    for name, description in read_only.items():
+        command = subparsers.add_parser(name, help=description, description=description)
         _common_arguments(command)
 
-    plan = subparsers.add_parser("plan")
+    plan = subparsers.add_parser(
+        "plan",
+        help="prepare an adoption plan without applying it (read-only)",
+        description=(
+            "Prepare and display an adoption dry-run (read-only). This command never writes."
+        ),
+    )
     _common_arguments(plan)
     _configuration_argument(plan)
 
-    initialize = subparsers.add_parser("init")
+    initialize = subparsers.add_parser(
+        "init",
+        help="plan adoption, or apply it explicitly with --apply",
+        description="Dry-run adoption by default; repository mutation requires --apply.",
+    )
     _common_arguments(initialize)
     _configuration_argument(initialize)
     initialize.add_argument(
         "--apply",
         action="store_true",
-        help="apply the exact freshly prepared adoption plan",
+        help="MUTATING: apply the exact freshly prepared adoption plan",
     )
     _confirmation_arguments(initialize)
 
-    upgrade = subparsers.add_parser("upgrade")
+    upgrade = subparsers.add_parser(
+        "upgrade",
+        help="inspect migrations (dry-run), or apply with --apply",
+        description="Dry-run registered migrations by default; mutation requires --apply.",
+    )
     _common_arguments(upgrade)
     upgrade.add_argument(
         "--apply",
         action="store_true",
-        help="apply the exact freshly prepared upgrade plan",
+        help="MUTATING: apply the exact freshly prepared upgrade plan",
     )
     _confirmation_arguments(upgrade)
     add_diagnostic_subparsers(subparsers)
@@ -186,11 +217,17 @@ def _confirmation_arguments(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=[],
         metavar="ID",
-        help="confirm one exact operation/step ID; repeat for each required ID",
+        help=(
+            "confirm one exact displayed operation/step ID; repeat for every "
+            "required ID (no universal --yes)"
+        ),
     )
     parser.add_argument(
         "--confirmed-by",
-        help="attributable Human identity bound to each explicit confirmation",
+        help=(
+            "attributable Human identity bound to each confirmation; Codex "
+            "identities are refused"
+        ),
     )
 
 
@@ -234,7 +271,10 @@ def _init(repository: Path, arguments: argparse.Namespace) -> int:
     adoption = ExistingRepositoryAdoption()
     preparation = adoption.prepare_adoption(repository, configuration)
     if not arguments.apply:
-        _emit("init", preparation.status.value, preparation, arguments.json)
+        _emit(
+            "init", preparation.status.value, preparation, arguments.json,
+            mode="DRY_RUN",
+        )
         return (
             EXIT_SUCCESS
             if preparation.status
@@ -248,7 +288,10 @@ def _init(repository: Path, arguments: argparse.Namespace) -> int:
         AdoptionStatus.READY_TO_APPLY,
         AdoptionStatus.NEEDS_HUMAN_CONFIRMATION,
     }:
-        _emit("init", preparation.status.value, preparation, arguments.json)
+        _emit(
+            "init", preparation.status.value, preparation, arguments.json,
+            mode="APPLY_REFUSED",
+        )
         return EXIT_BLOCKED
     confirmations = _initialization_confirmations(
         preparation, arguments.confirm, arguments.confirmed_by
@@ -256,7 +299,7 @@ def _init(repository: Path, arguments: argparse.Namespace) -> int:
     result = adoption.apply_adoption(
         preparation, human_confirmations=confirmations
     )
-    _emit("init", result.status.value, result, arguments.json)
+    _emit("init", result.status.value, result, arguments.json, mode="APPLY_RESULT")
     return EXIT_SUCCESS if result.status is AdoptionStatus.ADOPTED else EXIT_BLOCKED
 
 
@@ -264,16 +307,25 @@ def _upgrade(repository: Path, arguments: argparse.Namespace) -> int:
     planner = UpgradePlanner()
     plan = planner.plan(repository)
     if not arguments.apply:
-        _emit("upgrade", plan.status.value, plan, arguments.json)
+        _emit(
+            "upgrade", plan.status.value, plan, arguments.json,
+            mode="DRY_RUN",
+        )
         return EXIT_BLOCKED if plan.status is UpgradePlanStatus.BLOCKED else EXIT_SUCCESS
     if plan.status is UpgradePlanStatus.BLOCKED:
-        _emit("upgrade", plan.status.value, plan, arguments.json)
+        _emit(
+            "upgrade", plan.status.value, plan, arguments.json,
+            mode="APPLY_REFUSED",
+        )
         return EXIT_BLOCKED
     confirmations = _upgrade_confirmations(
         plan, arguments.confirm, arguments.confirmed_by
     )
     result = RepositoryUpgradeService().apply(plan, confirmations=confirmations)
-    _emit("upgrade", result.status.value, result, arguments.json)
+    _emit(
+        "upgrade", result.status.value, result, arguments.json,
+        mode="APPLY_RESULT",
+    )
     return (
         EXIT_SUCCESS
         if result.status
@@ -430,9 +482,27 @@ def _has_symlink_component(path: Path) -> bool:
     return False
 
 
-def _emit(command: str, status: str, result, json_output: bool, *, stream=None) -> None:
+def _emit(
+    command: str,
+    status: str,
+    result,
+    json_output: bool,
+    *,
+    stream=None,
+    mode: str | None = None,
+) -> None:
     output = sys.stdout if stream is None else stream
-    payload = {"command": command, "result": _json_value(result), "status": status}
+    serialized_result = _json_value(result)
+    confirmations = _confirmation_projection(serialized_result)
+    payload = {
+        "authority_notice": "OPERATOR_GUIDANCE_ONLY_NOT_AUTHORIZATION",
+        "command": command,
+        "confirmations": confirmations,
+        "mode": mode if mode is not None else _operation_mode(command, status),
+        "next_action": _next_action(command, status, confirmations),
+        "result": serialized_result,
+        "status": status,
+    }
     serialized = json.dumps(
         payload,
         ensure_ascii=True,
@@ -444,6 +514,112 @@ def _emit(command: str, status: str, result, json_output: bool, *, stream=None) 
     if len(serialized.encode("utf-8")) > _MAX_OUTPUT_BYTES:
         raise CliError("OUTPUT_LIMIT_EXCEEDED", "serialized CLI output exceeds policy")
     print(serialized, file=output)
+
+
+def _operation_mode(command: str, status: str) -> str:
+    if command not in {"init", "upgrade"}:
+        return "READ_ONLY"
+    if status in {"ADOPTED", "MIGRATED", "REFUSED", "FAILED", "PARTIAL_FAILURE"}:
+        return "APPLY_RESULT"
+    return "DRY_RUN_OR_BLOCKED_APPLY"
+
+
+def _requested_mode(arguments: argparse.Namespace) -> str:
+    if arguments.command not in {"init", "upgrade"}:
+        return "READ_ONLY"
+    return "APPLY_ATTEMPT" if getattr(arguments, "apply", False) else "DRY_RUN"
+
+
+def _confirmation_projection(result: object) -> list[dict[str, str]]:
+    if not isinstance(result, dict):
+        return []
+    identifiers = result.get("required_human_confirmations", [])
+    if not isinstance(identifiers, list):
+        identifiers = []
+    candidates: list[dict[str, object]] = []
+    initialization = result.get("initialization_plan")
+    if isinstance(initialization, dict):
+        operations = initialization.get("operations", [])
+        if isinstance(operations, list):
+            candidates.extend(item for item in operations if isinstance(item, dict))
+    steps = result.get("steps", [])
+    if isinstance(steps, list):
+        candidates.extend(item for item in steps if isinstance(item, dict))
+    derived = [
+        item.get("operation_id", item.get("step_id"))
+        for item in candidates
+        if item.get("human_confirmation_required") is True
+    ]
+    identifiers = list(identifiers) + [
+        item for item in derived if isinstance(item, str) and item not in identifiers
+    ]
+    projected: list[dict[str, str]] = []
+    for identifier in sorted(str(item) for item in identifiers):
+        match = next(
+            (
+                item
+                for item in candidates
+                if item.get("operation_id") == identifier
+                or item.get("step_id") == identifier
+            ),
+            {},
+        )
+        operation = match.get(
+            "operation_type", match.get("artifact", "CONTROLLED_OPERATION")
+        )
+        target = match.get("target_path", "<target unavailable>")
+        projected.append(
+            {
+                "consequence": "permits only this exact controlled apply attempt",
+                "id": identifier,
+                "operation": str(operation),
+                "reason": (
+                    "the persisted target or user-owned content requires Human authority"
+                ),
+                "target": str(target),
+                "usage": f"--confirm {identifier} --confirmed-by Human/<identity>",
+            }
+        )
+    return projected
+
+
+def _next_action(
+    command: str, status: str, confirmations: list[dict[str, str]]
+) -> str:
+    if status == "SUPPORTED":
+        return "Run 'python -m agentic_engineering_os status --repository <path>' to evaluate adoption."
+    if status == "NEEDS_CONFIGURATION":
+        return "Create or select a ProjectConfiguration, then run 'plan --configuration <file>'."
+    if status == "NEEDS_HUMAN_CONFIRMATION":
+        identifiers = " ".join(item["usage"] for item in confirmations)
+        return f"Review each displayed operation and consequence; apply explicitly with {identifiers}."
+    if status == "READY_TO_APPLY":
+        return f"Review the dry-run, then rerun '{command} --apply' only if the exact plan is intended."
+    if status == "ADOPTED":
+        return "Run 'diagnose' for a read-only operational summary; no adoption action is required."
+    if status == "UPGRADE_REQUIRED":
+        return "Run 'upgrade' without --apply to determine whether an explicit registered migration exists."
+    if status == "MIGRATED":
+        return "Run 'status', inspect backups, and verify the repository before further work."
+    if status == "ALREADY_CURRENT":
+        return "No migration is required; run 'status' or 'diagnose' as needed."
+    if status == "HEALTHY":
+        return "No Health remediation is indicated; HEALTHY is not Certification."
+    if status in {
+        "DEGRADED", "UNKNOWN", "ATTENTION_REQUIRED", "INCOMPLETE", "UNAVAILABLE"
+    }:
+        return "Inspect 'diagnose' and 'incidents'; resolve reported facts before controlled work."
+    if status in {"FROZEN", "RECOVERY_REQUIRED"}:
+        return "Do not start new work; inspect incidents and request the explicit operator recovery procedure."
+    if status == "PARTIAL_OR_INCONSISTENT":
+        return "Do not apply automatically; inspect reported findings and run 'diagnose' where available."
+    if status in {"BLOCKED", "REFUSED"}:
+        return "Review the reported code, blockers, and bindings; correct them, then repeat the dry-run."
+    if status == "ERROR":
+        return "Inspect the technical error detail; do not retry mutation until the cause is understood."
+    if status in {"OK", "COMPLETE"}:
+        return "No operator attention is currently indicated by this diagnostic result."
+    return "Inspect the structured result and blockers; no automatic action is authorized."
 
 
 def _json_value(value):

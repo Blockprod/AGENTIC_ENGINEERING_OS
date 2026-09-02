@@ -112,20 +112,35 @@ class _DiagnosticEvaluation:
 def add_diagnostic_subparsers(subparsers: argparse._SubParsersAction) -> None:
     """Register the bounded P6.9 surface on the existing parser."""
 
-    health = subparsers.add_parser("health", help="evaluate operational health")
+    health = subparsers.add_parser(
+        "health", help="evaluate operational health (read-only)",
+        description="Evaluate Health facts read-only; HEALTHY is not Certification.",
+    )
     _base_arguments(health)
     _mission_arguments(health)
 
-    metrics = subparsers.add_parser("metrics", help="compute runtime metrics")
+    metrics = subparsers.add_parser(
+        "metrics", help="compute runtime metrics (read-only)",
+        description="Compute bounded runtime metrics without granting authority.",
+    )
     _base_arguments(metrics)
     _metric_scope_arguments(metrics)
 
-    incidents = subparsers.add_parser("incidents", help="inspect operational incidents")
+    incidents = subparsers.add_parser(
+        "incidents", help="inspect operational incidents (read-only)",
+        description="Inspect incidents read-only; observation does not perform recovery.",
+    )
     _base_arguments(incidents)
     _mission_arguments(incidents)
     incidents.add_argument("--incident", help="inspect one exact incident ID")
 
-    diagnose = subparsers.add_parser("diagnose", help="aggregate read-only diagnostics")
+    diagnose = subparsers.add_parser(
+        "diagnose", help="aggregate operator diagnostics (read-only)",
+        description=(
+            "Aggregate Health, metrics, governance constraints, budgets and incidents. "
+            "Governance ALLOW is not Control Plane authorization."
+        ),
+    )
     _base_arguments(diagnose)
     _mission_arguments(diagnose)
 
