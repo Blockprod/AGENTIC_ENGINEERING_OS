@@ -119,7 +119,7 @@ class MetricsEngine:
                 validation.code,
                 validation.event_ids,
             )
-        ordered = tuple(sorted(events, key=lambda item: (item.occurred_at, item.event_id)))
+        ordered = tuple(sorted(events, key=_event_order_key))
         selected = tuple(item for item in ordered if _matches_scope(item, scope))
         return _compute_snapshot(selected, scope)
 
@@ -348,6 +348,13 @@ def _compute_snapshot(
         metrics=ordered_samples,
         diagnostics=ordered_diagnostics,
     )
+
+
+def _event_order_key(event: OperationalEvent) -> tuple[object, ...]:
+    """Make equal-timestamp lifecycle ordering semantic and deterministic."""
+
+    operation_rank = 0 if event.payload.operation == "STARTED" else 1
+    return event.occurred_at, operation_rank, event.event_id
 
 
 def _validate_corpus(

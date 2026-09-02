@@ -10,6 +10,7 @@ from pathlib import Path
 
 from agentic_engineering_os.application import (
     CodexExecutionStatus,
+    ExecutionOperationalEventReader,
     GovernancePolicyEvaluator,
     HealthEvaluationEngine,
     IncidentManager,
@@ -298,10 +299,16 @@ def _evaluate_repository(repository: Path, arguments: argparse.Namespace) -> _Di
         execution_id=getattr(arguments, "execution", None),
     )
     event_store = OperationalEventStore(repository)
-    metrics = MetricsEngine().compute_from_store(event_store, metrics_scope)
+    observable_events = ExecutionOperationalEventReader(
+        event_store,
+        ExecutionStateStore(repository),
+        project_id=configuration.project_id,
+        repository_root=repository,
+    )
+    metrics = MetricsEngine().compute_from_store(observable_events, metrics_scope)
     metrics_input = MetricsHealthInput(metrics, now, git.head_commit)
 
-    events, event_status, retention = _event_store_facts(event_store)
+    events, event_status, retention = _event_store_facts(observable_events)
     observations, parallel = _health_observations(
         repository,
         configuration.project_id,
@@ -318,7 +325,8 @@ def _evaluate_repository(repository: Path, arguments: argparse.Namespace) -> _Di
         observations,
         MetricsHealthInput(
             MetricsEngine().compute_from_store(
-                event_store, MetricsScope(configuration.project_id, mission_id, generation)
+                observable_events,
+                MetricsScope(configuration.project_id, mission_id, generation),
             ),
             now,
             git.head_commit,
@@ -473,7 +481,13 @@ def _health_observations(repository, project_id, git, now, mission, event_status
         try:
             ledger = ExecutionStateStore(repository).load()
             pending = any(
-                item.status in {CodexExecutionStatus.PLANNED, CodexExecutionStatus.RUNNING}
+                item.status
+                in {
+                    CodexExecutionStatus.PLANNED,
+                    CodexExecutionStatus.RUNNING,
+                    CodexExecutionStatus.FAILED,
+                    CodexExecutionStatus.INTERRUPTED,
+                }
                 for item in ledger.records
                 if (item.mission_id, item.workflow_generation) == (mission_id, generation)
             )

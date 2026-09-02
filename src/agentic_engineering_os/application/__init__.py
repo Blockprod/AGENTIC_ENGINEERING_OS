@@ -185,6 +185,11 @@ from .merge_coordinator import (
     MergeStatus,
 )
 from .metrics_engine import MetricsComputationError, MetricsEngine, OperationalEventReader
+from .execution_observability import (
+    ExecutionObservabilityError,
+    ExecutionOperationalEventReader,
+    project_terminal_execution_events,
+)
 from .health_evaluation import HealthEvaluationEngine, HealthEvaluationError
 from .governance_policy import (
     GovernancePolicyEvaluationError,
@@ -462,11 +467,14 @@ __all__ = [
     "MissionStateReader",
     "MetricsComputationError",
     "MetricsEngine",
+    "ExecutionObservabilityError",
+    "ExecutionOperationalEventReader",
     "MissionStateStorePort",
     "OrchestrationResult",
     "Orchestrator",
     "OrchestratorConfigurationError",
     "OperationalEventReader",
+    "project_terminal_execution_events",
     "ParseError",
     "ParallelCoordinationError",
     "ParallelCoordinationInput",
