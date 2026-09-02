@@ -29,6 +29,7 @@ from agentic_engineering_os.application import (
     ImplementerInput,
     ImplementerResult,
     ImplementerVerdict,
+    ParallelCoordinationError,
     ParallelIntegrationAttempt,
     ParallelMissionWorkflow,
     ParallelMissionWorkflowError,
@@ -72,6 +73,7 @@ from agentic_engineering_os.infrastructure import (
     ProjectStateStore,
     WorktreeManager,
 )
+from tests._validated_execution_ledger import write_validated_implementer_execution
 
 
 NOW = datetime(2026, 8, 28, 23, 0, tzinfo=timezone.utc)
@@ -252,8 +254,6 @@ def implement_group(harness: Harness, workflow: ParallelMissionWorkflow, plan, i
                 f"VALUE = '{story.id}-g{plan.workflow_generation}'\n",
                 encoding="utf-8",
             )
-        git(path, "add", ".")
-        git(path, "commit", "-m", f"feat: implement {story.id}")
         candidate = ImplementerResult(
             mission_id=plan.mission_id,
             workflow_generation=plan.workflow_generation,
@@ -277,6 +277,9 @@ def implement_group(harness: Harness, workflow: ParallelMissionWorkflow, plan, i
             prepared,
             context.assignment_id,
             candidate,
+            execution_id=write_validated_implementer_execution(
+                context, candidate, observed_at=NOW
+            ),
             implementer_input=ImplementerInput.from_handoff(context.handoff, story),
         )
         branch_results[story.id] = candidate
@@ -524,8 +527,6 @@ def implement_group_from_prepared(harness: Harness, workflow, prepared):
                 f"VALUE = '{story.id}-g{prepared.workflow_generation}'\n",
                 encoding="utf-8",
             )
-        git(path, "add", ".")
-        git(path, "commit", "-m", f"feat: implement {story.id}")
         candidate = ImplementerResult(
             mission_id=prepared.contexts[0].handoff.mission_id,
             workflow_generation=prepared.workflow_generation,
@@ -537,7 +538,15 @@ def implement_group_from_prepared(harness: Harness, workflow, prepared):
             assumptions=(), findings=(), blockers=(), recommended_next_role=MissionRole.TESTER,
             verdict=ImplementerVerdict.READY_FOR_TEST,
         )
-        members.append(workflow.submit_member(prepared, context.assignment_id, candidate, implementer_input=ImplementerInput.from_handoff(context.handoff, story)))
+        members.append(workflow.submit_member(
+            prepared,
+            context.assignment_id,
+            candidate,
+            execution_id=write_validated_implementer_execution(
+                context, candidate, observed_at=NOW
+            ),
+            implementer_input=ImplementerInput.from_handoff(context.handoff, story),
+        ))
         branch_results[story.id] = candidate
     return prepared, branch_results, workflow.complete_group(prepared, tuple(members))
 
@@ -715,7 +724,7 @@ def test_post_merge_tester_and_reviewer_failures_require_remediation(tmp_path: P
     assert harness.project_store.load().certifications == []
 
 
-def test_out_of_scope_or_undeclared_diff_fails_gate_without_merge(tmp_path: Path) -> None:
+def test_undeclared_diff_fails_commit_boundary_before_gate_or_merge(tmp_path: Path) -> None:
     harness = make_harness(tmp_path, (make_story("US-0001"),))
     plan = harness.workflow.plan_current()
     prepared = harness.workflow.prepare_group(plan, 0)
@@ -726,8 +735,6 @@ def test_out_of_scope_or_undeclared_diff_fails_gate_without_merge(tmp_path: Path
         target = path / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("VALUE = 1\n", encoding="utf-8")
-    git(path, "add", ".")
-    git(path, "commit", "-m", "feat: incomplete declaration")
     candidate = ImplementerResult(
         mission_id="P3.11",
         workflow_generation=0,
@@ -747,16 +754,17 @@ def test_out_of_scope_or_undeclared_diff_fails_gate_without_merge(tmp_path: Path
         recommended_next_role=MissionRole.TESTER,
         verdict=ImplementerVerdict.READY_FOR_TEST,
     )
-    member = harness.workflow.submit_member(
-        prepared,
-        context.assignment_id,
-        candidate,
-        implementer_input=ImplementerInput.from_handoff(context.handoff, story),
+    execution_id = write_validated_implementer_execution(
+        context, candidate, observed_at=NOW
     )
-    group = harness.workflow.complete_group(prepared, (member,))
-    attempt = harness.workflow.integrate_group(plan, group, updated_at=NOW)
-    assert attempt.gate_result.result.value == "FAIL"
-    assert attempt.merge_result is None
+    with pytest.raises(ParallelCoordinationError, match="GROUP_INCOMPLETE"):
+        harness.workflow.submit_member(
+            prepared,
+            context.assignment_id,
+            candidate,
+            execution_id=execution_id,
+            implementer_input=ImplementerInput.from_handoff(context.handoff, story),
+        )
     assert git(harness.root, "rev-parse", "HEAD").casefold() == harness.baseline
 
 

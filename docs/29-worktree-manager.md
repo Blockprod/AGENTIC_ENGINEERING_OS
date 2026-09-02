@@ -9,6 +9,7 @@ worktree root existante, résolue et disjointe. Il expose uniquement :
 - `plan_assignment(mission, user_story, baseline_commit)` ;
 - `activate(assignment_id, current_generation)` ;
 - `inspect(...)`, `resume(...)` et `inspect_all(...)` ;
+- `commit_validated_implementation(authorization)` ;
 - `complete(...)` et `mark_failed(...)` ;
 - `cleanup(...)`.
 
@@ -80,10 +81,18 @@ mais expose `clean=False`; il n'est jamais nettoyé automatiquement.
 
 ## Completion, échec et cleanup
 
-`complete()` observe lui-même le result commit. Le worktree doit être exact et
-propre, HEAD doit différer de la baseline, en descendre et être le tip de la
-branche. Le manager ne crée aucun commit. Le SHA observé est persisté comme
-`result_commit` avec `COMPLETED`.
+`commit_validated_implementation()` exige une capability privée émise après
+reconstruction du ledger P4. Il résout path, branche et baseline depuis le
+registre, exige les chemins dirty exacts, contrôle l'index, indexe uniquement
+les chemins validés puis crée un commit à message canonique. Le commit lie
+assignment, exécution, fingerprint du résultat, baseline et tree Git.
+
+Un restart reconnaît ce commit uniquement si parent, tree, message, diff et
+bindings concordent exactement. Un commit divergent ou un état partiel ambigu
+impose une recovery ; aucun second commit, reset, amend, stash ou clean n'est
+tenté aveuglément. `complete()` vérifie ensuite le worktree propre et persiste
+le SHA comme `result_commit` avec `COMPLETED`. La reprise exacte d'un assignment
+déjà `COMPLETED` est idempotente.
 
 `mark_failed()` conserve branche, worktree, fichiers dirty et diagnostics ; il
 ne déclenche aucun cleanup. `cleanup()` accepte uniquement `COMPLETED` ou

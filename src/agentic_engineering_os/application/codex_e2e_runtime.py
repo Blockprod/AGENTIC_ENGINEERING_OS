@@ -273,6 +273,7 @@ class CodexEndToEndRuntime:
                 context is None
                 or story is None
                 or context.user_story_id != member.user_story_id
+                or member.execution_id is None
                 or member.implementer_result is None
             ):
                 raise CodexEndToEndRuntimeError(
@@ -284,6 +285,7 @@ class CodexEndToEndRuntime:
                     prepared_group,
                     member.assignment_id,
                     member.implementer_result,
+                    execution_id=member.execution_id,
                     implementer_input=ImplementerInput.from_handoff(
                         context.handoff, story
                     ),

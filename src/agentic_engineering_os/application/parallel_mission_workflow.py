@@ -346,6 +346,7 @@ class ParallelMissionWorkflow:
         assignment_id: str,
         result: ImplementerResult,
         *,
+        execution_id: str,
         implementer_input: ImplementerInput,
     ) -> ParallelMemberResult:
         self._require_no_pending_transaction()
@@ -353,6 +354,7 @@ class ParallelMissionWorkflow:
             prepared_group,
             assignment_id,
             result,
+            execution_id=execution_id,
             implementer_input=implementer_input,
             current_mission=self._mission_store.load(),
         )

@@ -274,8 +274,14 @@ class ParallelWorkflow:
     def __init__(self):
         self.submitted = []
 
-    def submit_member(self, prepared, assignment_id, result, *, implementer_input):
-        marker = SimpleNamespace(assignment_id=assignment_id, result=result)
+    def submit_member(
+        self, prepared, assignment_id, result, *, execution_id, implementer_input
+    ):
+        marker = SimpleNamespace(
+            assignment_id=assignment_id,
+            execution_id=execution_id,
+            result=result,
+        )
         self.submitted.append(marker)
         return marker
 

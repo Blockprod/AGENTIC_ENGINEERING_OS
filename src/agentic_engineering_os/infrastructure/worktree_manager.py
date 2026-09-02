@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
 
+from agentic_engineering_os._validated_implementation_commit import (
+    _consume_validated_implementation_commit,
+)
 from agentic_engineering_os._worktree_registry_write import _issue_registry_write
 from agentic_engineering_os.domain import (
     MissionState,
@@ -71,6 +75,22 @@ class WorktreeReconciliation:
     @property
     def is_consistent(self) -> bool:
         return not self.anomalies
+
+
+class ImplementationCommitStatus(str, Enum):
+    CREATED = "CREATED"
+    ALREADY_CREATED = "ALREADY_CREATED"
+
+
+@dataclass(frozen=True, slots=True)
+class ImplementationCommitResult:
+    status: ImplementationCommitStatus
+    assignment_id: str
+    execution_id: str
+    result_fingerprint: str
+    baseline_commit: str
+    tree_sha: str
+    commit_sha: str
 
 
 class WorktreeManager:
@@ -336,6 +356,11 @@ class WorktreeManager:
         registry = self._load_registry()
         assignment = _require_assignment(registry, assignment_id)
         _require_generation(assignment, current_generation)
+        if assignment.status is WorktreeStatus.COMPLETED:
+            self._verify_completed_assignment(
+                assignment, current_generation=current_generation
+            )
+            return assignment
         if assignment.status is not WorktreeStatus.ACTIVE:
             raise WorktreeManagerError(
                 "INVALID_STATUS", "only an ACTIVE assignment can be completed"
@@ -387,6 +412,114 @@ class WorktreeManager:
             "COMPLETE",
         )
         return candidate_assignment
+
+    def commit_validated_implementation(
+        self, authorization: object
+    ) -> ImplementationCommitResult:
+        """Create or recognize one exact ledger-authorized implementation commit."""
+
+        binding = _consume_validated_implementation_commit(
+            authorization, manager=self
+        )
+        if binding is None:
+            raise WorktreeManagerError(
+                "COMMIT_NOT_AUTHORIZED",
+                "validated implementation authorization is required",
+            )
+        registry = self._load_registry()
+        assignment = _require_assignment(registry, binding.assignment_id)
+        _require_generation(assignment, binding.workflow_generation)
+        if assignment.status not in {
+            WorktreeStatus.ACTIVE,
+            WorktreeStatus.COMPLETED,
+        }:
+            raise WorktreeManagerError(
+                "INVALID_STATUS",
+                "implementation commit requires ACTIVE or COMPLETED assignment",
+            )
+        path = Path(assignment.worktree_path)
+        self._verify_bound_worktree(assignment)
+        head = self._current_head(path)
+        if head != assignment.baseline_commit:
+            return self._recognize_implementation_commit(
+                assignment,
+                execution_id=binding.execution_id,
+                result_fingerprint=binding.result_fingerprint,
+                files_changed=binding.files_changed,
+            )
+        if assignment.status is WorktreeStatus.COMPLETED:
+            raise WorktreeManagerError(
+                "RECOVERY_REQUIRED",
+                "COMPLETED assignment points to its baseline",
+            )
+        observed_paths = self._git.worktree_changed_paths(path)
+        if observed_paths != binding.files_changed:
+            raise WorktreeManagerError(
+                "DIFF_MISMATCH",
+                "physical dirty paths differ from validated files_changed",
+                reasons=observed_paths,
+            )
+        indexed_paths = self._git.index_changed_paths(path)
+        if indexed_paths not in {(), binding.files_changed}:
+            raise WorktreeManagerError(
+                "RECOVERY_REQUIRED",
+                "Git index contains a partial or foreign implementation",
+                reasons=indexed_paths,
+            )
+        try:
+            if not indexed_paths:
+                self._git.stage_paths(path, binding.files_changed)
+            if (
+                self._git.index_changed_paths(path) != binding.files_changed
+                or self._git.worktree_changed_paths(path) != binding.files_changed
+                or self._git.has_unstaged_changes(path)
+            ):
+                raise WorktreeManagerError(
+                    "RECOVERY_REQUIRED",
+                    "staged implementation does not exactly represent the validated diff",
+                )
+            tree_sha = self._git.write_tree(path)
+            message = _implementation_commit_message(
+                assignment,
+                binding.execution_id,
+                binding.result_fingerprint,
+                tree_sha,
+            )
+            commit_sha = self._git.commit_index(path, message=message)
+        except WorktreeManagerError:
+            raise
+        except GitOperationError as error:
+            current = self._current_head(path)
+            if current == assignment.baseline_commit:
+                raise WorktreeManagerError(
+                    "COMMIT_NOT_CREATED",
+                    "Git did not create the authorized commit; exact state must be revalidated",
+                    reasons=(error.code,),
+                ) from error
+            try:
+                return self._recognize_implementation_commit(
+                    assignment,
+                    execution_id=binding.execution_id,
+                    result_fingerprint=binding.result_fingerprint,
+                    files_changed=binding.files_changed,
+                )
+            except WorktreeManagerError as recovery_error:
+                raise WorktreeManagerError(
+                    "RECOVERY_REQUIRED",
+                    "Git may have created an unattributable commit",
+                    reasons=(error.code, recovery_error.code),
+                ) from error
+        recognized = self._recognize_implementation_commit(
+            assignment,
+            execution_id=binding.execution_id,
+            result_fingerprint=binding.result_fingerprint,
+            files_changed=binding.files_changed,
+        )
+        if recognized.commit_sha != commit_sha or recognized.tree_sha != tree_sha:
+            raise WorktreeManagerError(
+                "RECOVERY_REQUIRED", "post-commit identity differs from staged identity"
+            )
+        return replace(recognized, status=ImplementationCommitStatus.CREATED)
 
     def mark_failed(
         self, assignment_id: str, *, current_generation: int
@@ -630,6 +763,92 @@ class WorktreeManager:
             )
         self._require_clean_primary()
 
+    def _verify_bound_worktree(self, assignment: WorktreeAssignment) -> None:
+        path = Path(assignment.worktree_path)
+        worktree = _find_worktree(self._list_worktrees(), path)
+        if worktree is None or not path.exists():
+            raise WorktreeManagerError(
+                "WORKTREE_MISMATCH", "assignment worktree is not physically registered"
+            )
+        if (
+            worktree.branch_name != assignment.branch_name
+            or self._current_branch(path) != assignment.branch_name
+            or self._git.branch_tip(assignment.branch_name) != self._current_head(path)
+        ):
+            raise WorktreeManagerError(
+                "WORKTREE_MISMATCH", "assignment branch, path, HEAD, or tip diverged"
+            )
+
+    def _verify_completed_assignment(
+        self, assignment: WorktreeAssignment, *, current_generation: int
+    ) -> None:
+        _require_generation(assignment, current_generation)
+        self._verify_bound_worktree(assignment)
+        path = Path(assignment.worktree_path)
+        head = self._current_head(path)
+        if (
+            assignment.result_commit is None
+            or head != assignment.result_commit
+            or head == assignment.baseline_commit
+            or not self._is_clean(path)
+            or not self._is_ancestor(assignment.baseline_commit, head)
+        ):
+            raise WorktreeManagerError(
+                "WORKTREE_MISMATCH",
+                "COMPLETED assignment no longer matches its exact clean result commit",
+            )
+
+    def _recognize_implementation_commit(
+        self,
+        assignment: WorktreeAssignment,
+        *,
+        execution_id: str,
+        result_fingerprint: str,
+        files_changed: tuple[str, ...],
+    ) -> ImplementationCommitResult:
+        path = Path(assignment.worktree_path)
+        self._verify_bound_worktree(assignment)
+        head = self._current_head(path)
+        try:
+            parents = self._git.commit_parents(head)
+            tree_sha = self._git.commit_tree(head)
+            message = self._git.commit_message(head)
+            entries = self._git.diff_name_status(assignment.baseline_commit, head)
+        except GitOperationError as error:
+            raise _git_error(error) from error
+        observed_paths = tuple(
+            sorted(
+                {path for entry in entries for path in entry.paths},
+                key=lambda value: (value.casefold(), value),
+            )
+        )
+        expected_message = _implementation_commit_message(
+            assignment, execution_id, result_fingerprint, tree_sha
+        )
+        if (
+            parents != (assignment.baseline_commit,)
+            or observed_paths != files_changed
+            or message != expected_message
+            or not self._is_clean(path)
+            or (
+                assignment.status is WorktreeStatus.COMPLETED
+                and assignment.result_commit != head
+            )
+        ):
+            raise WorktreeManagerError(
+                "RECOVERY_REQUIRED",
+                "preexisting commit does not exactly match the validated implementation binding",
+            )
+        return ImplementationCommitResult(
+            ImplementationCommitStatus.ALREADY_CREATED,
+            assignment.assignment_id,
+            execution_id,
+            result_fingerprint,
+            assignment.baseline_commit,
+            tree_sha,
+            head,
+        )
+
     def _verify_new_worktree(self, assignment: WorktreeAssignment) -> None:
         path = Path(assignment.worktree_path)
         worktree = _find_worktree(self._list_worktrees(), path)
@@ -772,6 +991,25 @@ def _registry_with(
     return WorktreeRegistry(
         schema_version=registry.schema_version,
         assignments=tuple(assignments[key] for key in sorted(assignments)),
+    )
+
+
+def _implementation_commit_message(
+    assignment: WorktreeAssignment,
+    execution_id: str,
+    result_fingerprint: str,
+    tree_sha: str,
+) -> str:
+    return "\n".join(
+        (
+            f"agentic: implement {assignment.user_story_id}",
+            "",
+            f"Agentic-Assignment: {assignment.assignment_id}",
+            f"Agentic-Execution: {execution_id}",
+            f"Agentic-Result-SHA256: {result_fingerprint}",
+            f"Agentic-Baseline: {assignment.baseline_commit}",
+            f"Agentic-Tree: {tree_sha}",
+        )
     )
 
 

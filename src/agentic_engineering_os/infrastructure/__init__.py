@@ -62,6 +62,8 @@ from .project_configuration import (
     ProjectConfigurationValidator,
 )
 from .worktree_manager import (
+    ImplementationCommitResult,
+    ImplementationCommitStatus,
     WorktreeInspection,
     WorktreeManager,
     WorktreeManagerError,
@@ -152,6 +154,8 @@ __all__ = [
     "MAX_ORCHESTRATION_RECORD_BYTES",
     "ORCHESTRATION_RECORD_FILENAME",
     "OrchestrationRecordStore",
+    "ImplementationCommitResult",
+    "ImplementationCommitStatus",
     "WorktreeInspection",
     "WorktreeManager",
     "WorktreeManagerError",

@@ -66,9 +66,13 @@ depuis le handoff préparé.
 `submit_result(...)` lie ensuite le résultat à l'assignment, la story, la
 mission, la génération, la baseline, la branche et le worktree préparés. Il
 réutilise `ImplementerResultValidator`; seul un résultat `READY_FOR_TEST`
-valide peut continuer. `WorktreeManager.complete()` observe lui-même un HEAD
-commité, descendant de la baseline, tip de la branche et un worktree propre.
-Le commit n'est jamais fourni librement comme autorité au coordinateur.
+valide peut continuer. Le coordinateur résout aussi l'`execution_id` dans le
+ledger P4 du worktree et exige un record terminal `VALIDATED`, son résultat
+canonique, son fingerprint et ses observations Git liés exactement au contexte.
+Il émet alors une capability privée vers
+`WorktreeManager.commit_validated_implementation()`, puis appelle
+`WorktreeManager.complete()`. Le SHA n'est jamais fourni librement comme
+autorité au coordinateur.
 
 `complete_group(...)` exige exactement un résultat validé par assignment et
 des records persistants `COMPLETED` dont les commits correspondent. Un résultat
@@ -83,6 +87,9 @@ Après restart, un nouveau coordinateur recharge le registre via
 exactement réconciliées. Les `COMPLETED` restent observables et autorisent le
 passage conservateur au groupe suivant. Une préparation partielle reste donc
 visible sans faux succès et sans dépendance à l'objet Python précédent.
+Un commit créé avant perte du retour ou avant persistance `COMPLETED` est
+reconnu seulement par son binding complet ; une reprise identique ne crée pas
+de second commit.
 
 P3.8 s'arrête aux branches Implementer complétées. Il ne merge, cherry-pick,
 rebase ou supprime aucune branche ; il ne lance ni Tester combiné, Integration

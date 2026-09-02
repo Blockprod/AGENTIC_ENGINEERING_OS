@@ -40,6 +40,7 @@ from agentic_engineering_os.domain import (
     WorktreeStatus,
 )
 from agentic_engineering_os.infrastructure import WorktreeManager, WorktreeManagerError
+from tests._validated_execution_ledger import write_validated_implementer_execution
 
 
 NOW = datetime(2026, 8, 28, 16, 0, tzinfo=timezone.utc)
@@ -69,7 +70,8 @@ def repository(tmp_path: Path) -> tuple[Path, Path, str]:
     git(root, "config", "user.name", "P3.8 Test Operator")
     git(root, "config", "user.email", "p3.8@example.invalid")
     (root / "README.md").write_text("baseline\n", encoding="utf-8")
-    git(root, "add", "README.md")
+    (root / ".gitignore").write_text(".agentic-engineering-os/\n", encoding="utf-8")
+    git(root, "add", "README.md", ".gitignore")
     git(root, "commit", "-m", "test: baseline")
     return root, worktrees, git(root, "rev-parse", "HEAD").casefold()
 
@@ -154,6 +156,14 @@ def commit_result(path: Path, identifier: str) -> str:
     git(path, "add", ".")
     git(path, "commit", "-m", f"feat: {identifier} result")
     return git(path, "rev-parse", "HEAD").casefold()
+
+
+def dirty_result(path: Path, identifier: str) -> str:
+    relative = f"changes/{identifier.casefold()}/result.txt"
+    target = path / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("isolated result\n", encoding="utf-8")
+    return relative
 
 
 def implementer_input(context, assigned_story: UserStory) -> ImplementerInput:
@@ -349,14 +359,16 @@ def test_result_submission_observes_commit_and_completes_group(tmp_path: Path) -
     value = coordination_input(baseline, assigned)
     prepared = service.prepare_group(service.plan(value), 0, coordination_input=value)
     context = prepared.contexts[0]
-    observed = commit_result(Path(context.worktree_path), context.user_story_id)
     input_value = implementer_input(context, assigned)
-    result = implementer_result(context, "changes/us-0001/result.txt")
+    changed = dirty_result(Path(context.worktree_path), context.user_story_id)
+    result = implementer_result(context, changed)
+    execution_id = write_validated_implementer_execution(context, result, observed_at=NOW)
 
     member = service.submit_result(
         prepared,
         context.assignment_id,
         result,
+        execution_id=execution_id,
         implementer_input=input_value,
         current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
     )
@@ -365,8 +377,104 @@ def test_result_submission_observes_commit_and_completes_group(tmp_path: Path) -
     )
     completed = restarted.complete_group(prepared, (member,))
 
-    assert member.result_commit == observed
+    assert member.result_commit == git(Path(context.worktree_path), "rev-parse", "HEAD").casefold()
+    assert member.result_commit != baseline
+    assert git(Path(context.worktree_path), "status", "--porcelain=v1") == ""
     assert completed.status is ParallelGroupStatus.COMPLETED
+    assert manager.registry_store.load().assignments[0].status is WorktreeStatus.COMPLETED
+
+
+def test_submission_rejects_extra_dirty_path_forged_result_and_wrong_execution(
+    tmp_path: Path,
+) -> None:
+    root, worktrees, baseline = repository(tmp_path)
+    service, manager = coordinator(root, worktrees)
+    assigned = story("US-0001")
+    value = coordination_input(baseline, assigned)
+    prepared = service.prepare_group(service.plan(value), 0, coordination_input=value)
+    context = prepared.contexts[0]
+    changed = dirty_result(Path(context.worktree_path), context.user_story_id)
+    result = implementer_result(context, changed)
+    execution_id = write_validated_implementer_execution(context, result, observed_at=NOW)
+    submission = {
+        "execution_id": execution_id,
+        "implementer_input": implementer_input(context, assigned),
+        "current_mission": mission(baseline, role=MissionRole.IMPLEMENTER),
+    }
+
+    with pytest.raises(ParallelCoordinationError, match="EXECUTION_BINDING_MISMATCH"):
+        service.submit_result(
+            prepared,
+            context.assignment_id,
+            replace(result, summary="forged summary"),
+            **submission,
+        )
+    with pytest.raises(ParallelCoordinationError, match="EXECUTION_BINDING_MISMATCH"):
+        service.submit_result(
+            prepared,
+            context.assignment_id,
+            result,
+            **{**submission, "execution_id": "cx-" + "9" * 24},
+        )
+
+    extra = Path(context.worktree_path) / "changes" / "us-0001" / "extra.txt"
+    extra.write_text("extra\n", encoding="utf-8")
+    with pytest.raises(ParallelCoordinationError, match="GROUP_INCOMPLETE"):
+        service.submit_result(
+            prepared,
+            context.assignment_id,
+            result,
+            **submission,
+        )
+    assert manager.registry_store.load().assignments[0].status is WorktreeStatus.ACTIVE
+    assert git(Path(context.worktree_path), "rev-parse", "HEAD").casefold() == baseline
+
+
+def test_registry_persistence_failure_after_commit_resumes_exactly_once(
+    tmp_path: Path,
+) -> None:
+    root, worktrees, baseline = repository(tmp_path)
+    service, manager = coordinator(root, worktrees)
+    assigned = story("US-0001")
+    value = coordination_input(baseline, assigned)
+    prepared = service.prepare_group(service.plan(value), 0, coordination_input=value)
+    context = prepared.contexts[0]
+    changed = dirty_result(Path(context.worktree_path), context.user_story_id)
+    result = implementer_result(context, changed)
+    execution_id = write_validated_implementer_execution(context, result, observed_at=NOW)
+    original_persist = manager._persist
+
+    def fail_complete(before, candidate, operation):
+        if operation == "COMPLETE":
+            raise WorktreeManagerError("INJECTED_PERSISTENCE_FAILURE", "registry unavailable")
+        return original_persist(before, candidate, operation)
+
+    manager._persist = fail_complete
+    with pytest.raises(ParallelCoordinationError, match="GROUP_INCOMPLETE"):
+        service.submit_result(
+            prepared,
+            context.assignment_id,
+            result,
+            execution_id=execution_id,
+            implementer_input=implementer_input(context, assigned),
+            current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
+        )
+    manager._persist = original_persist
+    committed = git(Path(context.worktree_path), "rev-parse", "HEAD").casefold()
+    assert committed != baseline
+    assert manager.registry_store.load().assignments[0].status is WorktreeStatus.ACTIVE
+
+    resumed = service.submit_result(
+        prepared,
+        context.assignment_id,
+        result,
+        execution_id=execution_id,
+        implementer_input=implementer_input(context, assigned),
+        current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
+    )
+
+    assert resumed.result_commit == committed
+    assert git(Path(context.worktree_path), "rev-list", "--count", f"{baseline}..HEAD") == "1"
     assert manager.registry_store.load().assignments[0].status is WorktreeStatus.COMPLETED
 
 
@@ -383,6 +491,7 @@ def test_submission_rejects_cross_story_stale_and_missing_commit(tmp_path: Path)
             prepared,
             left.assignment_id,
             wrong,
+            execution_id="cx-" + "0" * 24,
             implementer_input=implementer_input(right, stories[1]),
             current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
         )
@@ -392,15 +501,17 @@ def test_submission_rejects_cross_story_stale_and_missing_commit(tmp_path: Path)
             prepared,
             right.assignment_id,
             stale,
+            execution_id="cx-" + "0" * 24,
             implementer_input=implementer_input(right, stories[1]),
             current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
         )
     assert all(item.status is WorktreeStatus.ACTIVE for item in manager.registry_store.load().assignments)
-    with pytest.raises(ParallelCoordinationError, match="GROUP_INCOMPLETE"):
+    with pytest.raises(ParallelCoordinationError, match="EXECUTION_LEDGER_UNAVAILABLE"):
         service.submit_result(
             prepared,
             left.assignment_id,
             implementer_result(left, "changes/us-0001/result.txt"),
+            execution_id="cx-" + "0" * 24,
             implementer_input=implementer_input(left, stories[0]),
             current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
         )
@@ -428,6 +539,7 @@ def test_blocked_result_cannot_complete_assignment(tmp_path: Path) -> None:
             prepared,
             context.assignment_id,
             blocked,
+            execution_id="cx-" + "0" * 24,
             implementer_input=implementer_input(context, assigned),
             current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
         )
@@ -444,11 +556,12 @@ def test_dirty_worktree_and_failed_member_block_completion(tmp_path: Path) -> No
     target = Path(context.worktree_path) / "changes" / "us-0001" / "dirty.txt"
     target.parent.mkdir(parents=True)
     target.write_text("dirty\n", encoding="utf-8")
-    with pytest.raises(ParallelCoordinationError, match="GROUP_INCOMPLETE"):
+    with pytest.raises(ParallelCoordinationError, match="EXECUTION_LEDGER_UNAVAILABLE"):
         service.submit_result(
             prepared,
             context.assignment_id,
             implementer_result(context, "changes/us-0001/dirty.txt"),
+            execution_id="cx-" + "0" * 24,
             implementer_input=implementer_input(context, assigned),
             current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
         )
@@ -475,6 +588,7 @@ def test_registry_git_mismatch_blocks_submission_without_registry_mutation(tmp_p
             prepared,
             context.assignment_id,
             implementer_result(context, "changes/us-0001/result.txt"),
+            execution_id="cx-" + "0" * 24,
             implementer_input=implementer_input(context, assigned),
             current_mission=mission(baseline, role=MissionRole.IMPLEMENTER),
         )

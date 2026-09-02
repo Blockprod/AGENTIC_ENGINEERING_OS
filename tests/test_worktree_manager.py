@@ -21,9 +21,14 @@ from agentic_engineering_os.domain import (
     WorktreeStatus,
 )
 from agentic_engineering_os.infrastructure import (
+    GitAdapter,
     GitOperationError,
+    ImplementationCommitStatus,
     WorktreeManager,
     WorktreeManagerError,
+)
+from agentic_engineering_os._validated_implementation_commit import (
+    _issue_validated_implementation_commit,
 )
 import agentic_engineering_os.infrastructure.worktree_registry_store as store_module
 
@@ -126,6 +131,35 @@ def commit_result(path: Path, filename: str = "result.txt") -> str:
     git(path, "add", filename)
     git(path, "commit", "-m", "feat: isolated result")
     return git(path, "rev-parse", "HEAD").casefold()
+
+
+def implementation_authorization(
+    manager: WorktreeManager,
+    assignment_id: str,
+    paths: tuple[str, ...],
+    *,
+    execution_id: str = "cx-" + "1" * 24,
+    result_fingerprint: str = "a" * 64,
+) -> object:
+    return _issue_validated_implementation_commit(
+        manager=manager,
+        assignment_id=assignment_id,
+        workflow_generation=0,
+        execution_id=execution_id,
+        result_fingerprint=result_fingerprint,
+        files_changed=paths,
+    )
+
+
+class FailBeforeCommitAdapter(GitAdapter):
+    def commit_index(self, worktree_path: Path, *, message: str) -> str:
+        raise GitOperationError("INJECTED_FAILURE", "commit did not start")
+
+
+class LoseCommitReturnAdapter(GitAdapter):
+    def commit_index(self, worktree_path: Path, *, message: str) -> str:
+        super().commit_index(worktree_path, message=message)
+        raise GitOperationError("INJECTED_LOST_RETURN", "commit return was lost")
 
 
 def test_real_git_create_inspect_complete_cleanup_and_branch_retention(
@@ -606,6 +640,159 @@ def test_cleanup_refuses_completed_branch_advanced_after_recording(
         )
 
     assert path.exists()
+
+
+def test_validated_commit_is_exact_and_completed_resume_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    root, worktrees, baseline = repository(tmp_path)
+    manager = manager_for(root, worktrees)
+    active = manager.activate(planned(manager, baseline).assignment_id, current_generation=0)
+    path = Path(active.worktree_path)
+    target = path / "src" / "result.py"
+    target.parent.mkdir()
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    authorization = implementation_authorization(
+        manager, active.assignment_id, ("src/result.py",)
+    )
+
+    created = manager.commit_validated_implementation(authorization)
+    completed = manager.complete(active.assignment_id, current_generation=0)
+    replayed = manager.commit_validated_implementation(authorization)
+    completed_again = manager.complete(active.assignment_id, current_generation=0)
+
+    assert created.status is ImplementationCommitStatus.CREATED
+    assert replayed.status is ImplementationCommitStatus.ALREADY_CREATED
+    assert created.commit_sha == replayed.commit_sha == completed.result_commit
+    assert completed_again == completed
+    assert git(path, "rev-list", "--count", f"{baseline}..HEAD") == "1"
+    assert git(path, "status", "--porcelain=v1") == ""
+    message = git(path, "log", "-1", "--format=%B")
+    assert f"Agentic-Assignment: {active.assignment_id}" in message
+    assert f"Agentic-Execution: {created.execution_id}" in message
+    assert f"Agentic-Result-SHA256: {created.result_fingerprint}" in message
+    assert f"Agentic-Baseline: {baseline}" in message
+    assert f"Agentic-Tree: {created.tree_sha}" in message
+    assert git(path, "rev-parse", "HEAD^{tree}").casefold() == created.tree_sha
+
+
+def test_commit_failure_before_creation_is_restartable_without_second_blind_commit(
+    tmp_path: Path,
+) -> None:
+    root, worktrees, baseline = repository(tmp_path)
+    failing = WorktreeManager(
+        repository_root=root,
+        worktree_root=worktrees,
+        git_adapter=FailBeforeCommitAdapter(root),
+    )
+    failing.initialize_registry()
+    active = failing.activate(planned(failing, baseline).assignment_id, current_generation=0)
+    path = Path(active.worktree_path)
+    target = path / "src" / "result.py"
+    target.parent.mkdir()
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+
+    with pytest.raises(WorktreeManagerError, match="COMMIT_NOT_CREATED"):
+        failing.commit_validated_implementation(
+            implementation_authorization(
+                failing, active.assignment_id, ("src/result.py",)
+            )
+        )
+
+    restarted = manager_for(root, worktrees, initialize=False)
+    result = restarted.commit_validated_implementation(
+        implementation_authorization(
+            restarted, active.assignment_id, ("src/result.py",)
+        )
+    )
+    assert result.status is ImplementationCommitStatus.CREATED
+    assert git(path, "rev-list", "--count", f"{baseline}..HEAD") == "1"
+
+
+def test_lost_commit_return_recognizes_exact_commit_without_duplicate(
+    tmp_path: Path,
+) -> None:
+    root, worktrees, baseline = repository(tmp_path)
+    manager = WorktreeManager(
+        repository_root=root,
+        worktree_root=worktrees,
+        git_adapter=LoseCommitReturnAdapter(root),
+    )
+    manager.initialize_registry()
+    active = manager.activate(planned(manager, baseline).assignment_id, current_generation=0)
+    path = Path(active.worktree_path)
+    target = path / "src" / "result.py"
+    target.parent.mkdir()
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+
+    result = manager.commit_validated_implementation(
+        implementation_authorization(manager, active.assignment_id, ("src/result.py",))
+    )
+
+    assert result.status is ImplementationCommitStatus.ALREADY_CREATED
+    assert git(path, "rev-list", "--count", f"{baseline}..HEAD") == "1"
+
+
+def test_validated_commit_indexes_an_exact_deletion(tmp_path: Path) -> None:
+    root, worktrees, baseline = repository(tmp_path)
+    manager = manager_for(root, worktrees)
+    active = manager.activate(planned(manager, baseline).assignment_id, current_generation=0)
+    path = Path(active.worktree_path)
+    (path / "README.md").unlink()
+
+    created = manager.commit_validated_implementation(
+        implementation_authorization(manager, active.assignment_id, ("README.md",))
+    )
+
+    assert created.status is ImplementationCommitStatus.CREATED
+    assert git(path, "diff-tree", "--no-commit-id", "--name-status", "-r", "HEAD") == "D\tREADME.md"
+    assert git(path, "status", "--porcelain=v1") == ""
+
+
+def test_partial_index_and_divergent_preexisting_commit_require_recovery(
+    tmp_path: Path,
+) -> None:
+    root, worktrees, baseline = repository(tmp_path)
+    manager = manager_for(root, worktrees)
+    active = manager.activate(planned(manager, baseline).assignment_id, current_generation=0)
+    path = Path(active.worktree_path)
+    for name in ("left.py", "right.py"):
+        target = path / "src" / name
+        target.parent.mkdir(exist_ok=True)
+        target.write_text(f"NAME = '{name}'\n", encoding="utf-8")
+    git(path, "add", "src/left.py")
+    authorization = implementation_authorization(
+        manager, active.assignment_id, ("src/left.py", "src/right.py")
+    )
+
+    with pytest.raises(WorktreeManagerError, match="RECOVERY_REQUIRED"):
+        manager.commit_validated_implementation(authorization)
+
+    git(path, "add", "src/right.py")
+    git(path, "commit", "-m", "unattributable implementation")
+    with pytest.raises(WorktreeManagerError, match="RECOVERY_REQUIRED"):
+        manager.commit_validated_implementation(authorization)
+
+
+def test_commit_boundary_rejects_unissued_or_cross_manager_authority(
+    tmp_path: Path,
+) -> None:
+    root, worktrees, baseline = repository(tmp_path)
+    manager = manager_for(root, worktrees)
+    active = manager.activate(planned(manager, baseline).assignment_id, current_generation=0)
+    other_base = tmp_path / "other"
+    other_base.mkdir()
+    other_root, other_worktrees, _ = repository(other_base)
+    other = manager_for(other_root, other_worktrees)
+
+    with pytest.raises(WorktreeManagerError, match="COMMIT_NOT_AUTHORIZED"):
+        manager.commit_validated_implementation(object())
+    with pytest.raises(WorktreeManagerError, match="COMMIT_NOT_AUTHORIZED"):
+        manager.commit_validated_implementation(
+            implementation_authorization(
+                other, active.assignment_id, ("src/result.py",)
+            )
+        )
 
 
 def test_manager_source_has_no_unauthorized_merge_or_parallel_execution_primitives() -> None:

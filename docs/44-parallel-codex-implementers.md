@@ -65,6 +65,11 @@ automatiquement à `ParallelImplementerCoordinator.submit_result()`. Il ne crée
 aucun commit, ne complète aucun assignment, n'exécute ni Integration Gate, ni
 merge, Tester, Reviewer, Certifier ou transition Control Plane.
 
+La frontière applicative qui compose ensuite P4.9 avec P3 transmet
+l'`execution_id` observé. P3 reconstruit le record `VALIDATED` depuis le ledger
+du worktree avant d'autoriser son propre commit borné ; le résultat ou le SHA
+déclaré par Codex ne suffit jamais.
+
 ## Limites
 
 Les tests standard prouvent la concurrence de plusieurs subprocess fake avec

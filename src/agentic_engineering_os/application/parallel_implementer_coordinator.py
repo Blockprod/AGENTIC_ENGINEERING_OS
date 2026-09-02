@@ -8,8 +8,12 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Protocol
 
+from agentic_engineering_os._validated_implementation_commit import (
+    _issue_validated_implementation_commit,
+)
 from agentic_engineering_os.domain import (
     ConflictAnalysis,
     ConflictClassification,
@@ -30,6 +34,12 @@ from agentic_engineering_os.domain import (
 
 from .contract_validator import ContractValidator
 from .execution_conflict_analyzer import ExecutionConflictAnalyzer
+from .execution_state import (
+    CodexExecutionLedger,
+    CodexExecutionStatus,
+    canonical_result_json,
+    result_json_fingerprint,
+)
 from .implementer import (
     ImplementerInput,
     ImplementerResult,
@@ -52,6 +62,7 @@ class WorktreeManagerPort(Protocol):
     ) -> WorktreeAssignment: ...
     def activate(self, assignment_id: str, *, current_generation: int) -> WorktreeAssignment: ...
     def resume(self, assignment_id: str, *, current_generation: int) -> object: ...
+    def commit_validated_implementation(self, authorization: object) -> object: ...
     def complete(self, assignment_id: str, *, current_generation: int) -> WorktreeAssignment: ...
     def mark_failed(self, assignment_id: str, *, current_generation: int) -> WorktreeAssignment: ...
 
@@ -310,6 +321,7 @@ class ParallelImplementerCoordinator:
         assignment_id: str,
         result: ImplementerResult | Mapping[str, object],
         *,
+        execution_id: str,
         implementer_input: ImplementerInput,
         current_mission: MissionState,
     ) -> ParallelMemberResult:
@@ -321,7 +333,22 @@ class ParallelImplementerCoordinator:
         if context is None:
             raise ParallelCoordinationError("ASSIGNMENT_MISMATCH", "assignment is not in prepared group")
         self._validate_current_mission(current_mission, prepared_group)
-        self._assignment_for_context(context, expected_status=WorktreeStatus.ACTIVE)
+        assignment = self._assignment_for_context(
+            context,
+            expected_status=(WorktreeStatus.ACTIVE, WorktreeStatus.COMPLETED),
+        )
+        if assignment.status is WorktreeStatus.ACTIVE:
+            try:
+                self._manager.resume(
+                    assignment_id,
+                    current_generation=prepared_group.workflow_generation,
+                )
+            except Exception as error:
+                raise ParallelCoordinationError(
+                    "ASSIGNMENT_MISMATCH",
+                    "assignment/worktree is not resumable: "
+                    f"{getattr(error, 'code', type(error).__name__)}",
+                ) from error
         if (
             implementer_input.mission_id != current_mission.mission_id
             or implementer_input.workflow_generation != prepared_group.workflow_generation
@@ -329,13 +356,6 @@ class ParallelImplementerCoordinator:
             or implementer_input.observed_commit.casefold() != prepared_group.baseline_commit
         ):
             raise ParallelCoordinationError("ASSIGNMENT_MISMATCH", "ImplementerInput differs from worktree context")
-        try:
-            self._manager.resume(assignment_id, current_generation=prepared_group.workflow_generation)
-        except Exception as error:
-            raise ParallelCoordinationError(
-                "ASSIGNMENT_MISMATCH",
-                f"assignment/worktree is not resumable: {getattr(error, 'code', type(error).__name__)}",
-            ) from error
         validation = self._result_validator.validate(result, implementer_input=implementer_input)
         if not validation.is_valid:
             raise ParallelCoordinationError(
@@ -352,10 +372,39 @@ class ParallelImplementerCoordinator:
                 "INVALID_IMPLEMENTER_RESULT",
                 "only READY_FOR_TEST can proceed to Git completion",
             )
+        result_fingerprint = self._validate_execution_binding(
+            context,
+            result,
+            execution_id=execution_id,
+        )
         try:
+            authorization = _issue_validated_implementation_commit(
+                manager=self._manager,
+                assignment_id=assignment_id,
+                workflow_generation=prepared_group.workflow_generation,
+                execution_id=execution_id,
+                result_fingerprint=result_fingerprint,
+                files_changed=result.files_changed,
+            )
+            committed = self._manager.commit_validated_implementation(authorization)
+            commit_sha = getattr(committed, "commit_sha", None)
+            if (
+                not isinstance(commit_sha, str)
+                or not _COMMIT_PATTERN.fullmatch(commit_sha)
+                or getattr(committed, "assignment_id", None) != assignment_id
+                or getattr(committed, "execution_id", None) != execution_id
+                or getattr(committed, "result_fingerprint", None) != result_fingerprint
+                or getattr(committed, "baseline_commit", None) != context.baseline_commit
+            ):
+                raise ParallelCoordinationError(
+                    "GROUP_INCOMPLETE",
+                    "commit boundary returned an invalid implementation binding",
+                )
             completed = self._manager.complete(
                 assignment_id, current_generation=prepared_group.workflow_generation
             )
+        except ParallelCoordinationError:
+            raise
         except Exception as error:
             raise ParallelCoordinationError(
                 "GROUP_INCOMPLETE",
@@ -363,6 +412,10 @@ class ParallelImplementerCoordinator:
             ) from error
         if completed.result_commit is None or completed.status is not WorktreeStatus.COMPLETED:
             raise ParallelCoordinationError("GROUP_INCOMPLETE", "completion lacks an observed result commit")
+        if completed.result_commit != commit_sha:
+            raise ParallelCoordinationError(
+                "GROUP_INCOMPLETE", "registry result commit differs from commit boundary"
+            )
         return ParallelMemberResult(
             assignment_id=assignment_id,
             user_story_id=context.user_story_id,
@@ -370,6 +423,78 @@ class ParallelImplementerCoordinator:
             implementer_input=implementer_input,
             implementer_result=result,
         )
+
+    def _validate_execution_binding(
+        self,
+        context: PreparedImplementerContext,
+        result: ImplementerResult,
+        *,
+        execution_id: str,
+    ) -> str:
+        if not isinstance(execution_id, str):
+            raise ParallelCoordinationError(
+                "EXECUTION_BINDING_MISMATCH", "canonical execution_id is required"
+            )
+        try:
+            from agentic_engineering_os.infrastructure.execution_state_store import (
+                ExecutionStateStore,
+            )
+
+            ledger = ExecutionStateStore(Path(context.worktree_path)).load()
+        except Exception as error:
+            raise ParallelCoordinationError(
+                "EXECUTION_LEDGER_UNAVAILABLE",
+                f"worktree execution ledger is unavailable: {getattr(error, 'code', type(error).__name__)}",
+            ) from error
+        if not isinstance(ledger, CodexExecutionLedger):
+            raise ParallelCoordinationError(
+                "EXECUTION_LEDGER_UNAVAILABLE", "worktree execution ledger is invalid"
+            )
+        matches = tuple(
+            record for record in ledger.records if record.execution_id == execution_id
+        )
+        if len(matches) != 1:
+            raise ParallelCoordinationError(
+                "EXECUTION_BINDING_MISMATCH",
+                "execution_id does not resolve exactly once in the worktree ledger",
+            )
+        record = matches[0]
+        canonical = canonical_result_json(to_dict(result))
+        fingerprint = result_json_fingerprint(canonical)
+        observation = record.observation
+        before = observation.git_before if observation is not None else None
+        after = observation.git_after if observation is not None else None
+        expected_paths = result.files_changed
+        if (
+            record.status is not CodexExecutionStatus.VALIDATED
+            or record.role is not MissionRole.IMPLEMENTER
+            or record.expected_result_contract != "implementer-result@1.0"
+            or record.mission_id != context.handoff.mission_id
+            or record.workflow_generation != context.workflow_generation
+            or record.subject != context.user_story_id
+            or record.expected_commit.casefold() != context.baseline_commit
+            or record.worktree_path is None
+            or _path_key(record.worktree_path) != _path_key(context.worktree_path)
+            or _path_key(record.cwd) != _path_key(context.worktree_path)
+            or record.validated_result_json != canonical
+            or record.validated_result_fingerprint != fingerprint
+            or before is None
+            or before.error is not None
+            or before.head_commit is None
+            or before.head_commit.casefold() != context.baseline_commit
+            or before.clean is not True
+            or after is None
+            or after.error is not None
+            or after.head_commit is None
+            or after.head_commit.casefold() != context.baseline_commit
+            or after.clean is not False
+            or after.changed_paths != expected_paths
+        ):
+            raise ParallelCoordinationError(
+                "EXECUTION_BINDING_MISMATCH",
+                "validated execution ledger differs from result, assignment, baseline, or physical diff",
+            )
+        return fingerprint
 
     def validate_prepared_group(
         self,
@@ -615,7 +740,7 @@ class ParallelImplementerCoordinator:
         self,
         context: PreparedImplementerContext,
         *,
-        expected_status: WorktreeStatus,
+        expected_status: WorktreeStatus | tuple[WorktreeStatus, ...],
     ) -> WorktreeAssignment:
         matches = tuple(
             item
@@ -625,8 +750,11 @@ class ParallelImplementerCoordinator:
         if len(matches) != 1:
             raise ParallelCoordinationError("ASSIGNMENT_MISMATCH", "assignment is absent or ambiguous")
         assignment = matches[0]
+        expected_statuses = (
+            expected_status if isinstance(expected_status, tuple) else (expected_status,)
+        )
         if (
-            assignment.status is not expected_status
+            assignment.status not in expected_statuses
             or assignment.user_story_id != context.user_story_id
             or assignment.mission_id != context.handoff.mission_id
             or assignment.workflow_generation != context.workflow_generation
@@ -733,3 +861,7 @@ def _fingerprint(value: ParallelCoordinationInput) -> str:
     }
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _path_key(value: str) -> str:
+    return str(Path(value).resolve(strict=False)).casefold()

@@ -386,6 +386,52 @@ class GitAdapter:
             raise GitOperationError("INVALID_GIT_OUTPUT", "worktree path is unsafe")
         return normalized
 
+    def index_changed_paths(self, worktree_path: Path) -> tuple[str, ...]:
+        """Return every path represented by the current index delta."""
+
+        output = self._run_at(
+            worktree_path,
+            "diff",
+            "--cached",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            "--diff-filter=ACDMR",
+        ).stdout
+        return _changed_paths_from_name_status(output)
+
+    def has_unstaged_changes(self, worktree_path: Path) -> bool:
+        result = self._execute(
+            worktree_path,
+            (0, 1),
+            "diff",
+            "--quiet",
+            "--exit-code",
+        )
+        return result.returncode == 1
+
+    def stage_paths(self, worktree_path: Path, paths: tuple[str, ...]) -> None:
+        if not paths:
+            raise GitOperationError("INVALID_RELATIVE_PATH", "paths cannot be empty")
+        self._run_at(worktree_path, "add", "--all", "--", *paths)
+
+    def write_tree(self, worktree_path: Path) -> str:
+        tree = self._run_at(worktree_path, "write-tree").stdout.strip().casefold()
+        return _require_object_id(tree, "Git index tree")
+
+    def commit_index(self, worktree_path: Path, *, message: str) -> str:
+        if not isinstance(message, str) or not message.strip() or "\0" in message:
+            raise GitOperationError("INVALID_COMMIT_MESSAGE", "commit message is invalid")
+        self._run_at(worktree_path, "commit", "-m", message)
+        return self.current_head(worktree_path)
+
+    def commit_tree(self, commit: str) -> str:
+        tree = self._run("rev-parse", f"{commit}^{{tree}}").stdout.strip().casefold()
+        return _require_object_id(tree, "commit tree")
+
+    def commit_message(self, commit: str) -> str:
+        return self._run("log", "-1", "--format=%B", commit).stdout.rstrip("\r\n")
+
     def is_ancestor(self, ancestor: str, descendant: str) -> bool:
         result = self._run_allowed(
             (0, 1), "merge-base", "--is-ancestor", ancestor, descendant
@@ -674,6 +720,42 @@ def _parse_status_v2(output: str) -> tuple[str, bool]:
             "INVALID_GIT_OUTPUT", "Git HEAD is not a full commit SHA"
         )
     return head, not dirty
+
+
+def _changed_paths_from_name_status(output: str) -> tuple[str, ...]:
+    tokens = output.split("\0")
+    if tokens and tokens[-1] == "":
+        tokens.pop()
+    paths: list[str] = []
+    index = 0
+    while index < len(tokens):
+        status_token = tokens[index]
+        index += 1
+        status = status_token[:1]
+        path_count = 2 if status in {"C", "R"} else 1
+        if status not in {"A", "C", "D", "M", "R"} or index + path_count > len(tokens):
+            raise GitOperationError(
+                "INVALID_GIT_OUTPUT", "Git name-status output is malformed"
+            )
+        for path in tokens[index : index + path_count]:
+            normalized = path.replace("\\", "/")
+            if (
+                not normalized
+                or normalized.startswith("/")
+                or any(part in {"", ".", ".."} for part in PurePosixPath(normalized).parts)
+            ):
+                raise GitOperationError(
+                    "INVALID_GIT_OUTPUT", "Git returned an unsafe path"
+                )
+            paths.append(normalized)
+        index += path_count
+    return tuple(sorted(set(paths), key=lambda value: (value.casefold(), value)))
+
+
+def _require_object_id(value: str, label: str) -> str:
+    if len(value) != 40 or any(character not in "0123456789abcdef" for character in value):
+        raise GitOperationError("INVALID_GIT_OUTPUT", f"{label} is not a full SHA")
+    return value
 
 
 def _path_key(path: Path) -> str:
