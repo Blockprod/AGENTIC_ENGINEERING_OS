@@ -8,6 +8,7 @@ import os
 from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 
+from agentic_engineering_os import __version__ as _PRODUCT_VERSION
 from agentic_engineering_os.domain import (
     DocumentStatus,
     ManagedSectionStatus,
@@ -42,7 +43,6 @@ from agentic_engineering_os.infrastructure.repository_reconnaissance import (
 from .initialization_planner import InitializationPlanner
 
 
-_PRODUCT_VERSION = "0.1.0"
 _ARTIFACT_BY_RUNTIME_PATH = {
     ".agentic-engineering-os/state.json": MigrationArtifact.PROJECT_STATE,
     ".agentic-engineering-os/mission.json": MigrationArtifact.MISSION_STATE,
