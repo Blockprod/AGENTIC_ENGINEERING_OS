@@ -493,6 +493,22 @@ def test_real_multiwave_mission_reconstructs_after_restarts_and_certifies(tmp_pa
     assert harness.mission_store.load().status is MissionStatus.COMPLETED
 
 
+def test_plan_current_consumes_ready_story_without_relaxing_readiness(
+    tmp_path: Path,
+) -> None:
+    harness = make_harness(tmp_path, (make_story("US-0001"),))
+    harness.control.transition_user_story(
+        "US-0001",
+        UserStoryStatus.READY,
+        context=TransitionContext(preconditions_proven=True),
+    )
+
+    plan = harness.workflow.plan_current()
+
+    assert plan.readiness.ready_ids == ("US-0001",)
+    assert plan.execution_plan.groups[0].user_story_ids == ("US-0001",)
+
+
 def implement_group_from_prepared(harness: Harness, workflow, prepared):
     branch_results = {}
     members = []

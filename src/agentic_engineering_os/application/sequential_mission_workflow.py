@@ -164,6 +164,37 @@ class SequentialMissionWorkflow:
         *,
         updated_at: datetime,
     ) -> SequentialMissionResult:
+        return self._accept_architect(
+            handoff,
+            candidate,
+            updated_at=updated_at,
+            claim_for_implementation=True,
+        )
+
+    def accept_architect_plan(
+        self,
+        handoff: RoleHandoff,
+        candidate: ArchitectResult,
+        *,
+        updated_at: datetime,
+    ) -> SequentialMissionResult:
+        """Accept an Architect plan without claiming its story for execution."""
+
+        return self._accept_architect(
+            handoff,
+            candidate,
+            updated_at=updated_at,
+            claim_for_implementation=False,
+        )
+
+    def _accept_architect(
+        self,
+        handoff: RoleHandoff,
+        candidate: ArchitectResult,
+        *,
+        updated_at: datetime,
+        claim_for_implementation: bool,
+    ) -> SequentialMissionResult:
         mission = self._require_stage(
             handoff,
             MissionRole.ARCHITECT,
@@ -220,11 +251,16 @@ class SequentialMissionWorkflow:
                 self._mission_store.load(),
                 last_validated_role=MissionRole.ARCHITECT,
             )
-        self._transition(handoff.subject, UserStoryStatus.IN_PROGRESS)
+        if claim_for_implementation:
+            self._transition(handoff.subject, UserStoryStatus.IN_PROGRESS)
         advanced = self._advance(
             mission,
             OperatingStep.ACT,
-            "Route the validated User Story to Implementer.",
+            (
+                "Route the validated User Story to Implementer."
+                if claim_for_implementation
+                else "Plan parallel execution for the validated User Story."
+            ),
             updated_at,
         )
         return self._result(advanced, last_validated_role=MissionRole.ARCHITECT)
@@ -235,6 +271,37 @@ class SequentialMissionWorkflow:
         evidence_id: str,
         current_commit: str,
         updated_at: datetime,
+    ) -> SequentialMissionResult:
+        return self._resume_after_human_approval(
+            evidence_id=evidence_id,
+            current_commit=current_commit,
+            updated_at=updated_at,
+            claim_for_implementation=True,
+        )
+
+    def resume_planning_after_human_approval(
+        self,
+        *,
+        evidence_id: str,
+        current_commit: str,
+        updated_at: datetime,
+    ) -> SequentialMissionResult:
+        """Resume planning after Human approval without claiming the story."""
+
+        return self._resume_after_human_approval(
+            evidence_id=evidence_id,
+            current_commit=current_commit,
+            updated_at=updated_at,
+            claim_for_implementation=False,
+        )
+
+    def _resume_after_human_approval(
+        self,
+        *,
+        evidence_id: str,
+        current_commit: str,
+        updated_at: datetime,
+        claim_for_implementation: bool,
     ) -> SequentialMissionResult:
         mission = self._mission_store.load()
         if mission.status is not MissionStatus.BLOCKED or not any(
@@ -261,7 +328,7 @@ class SequentialMissionWorkflow:
                 "HUMAN_APPROVAL_NOT_APPLIED",
                 "Human Evidence did not produce an applied approval",
             )
-        if persisted.status is UserStoryStatus.READY:
+        if claim_for_implementation and persisted.status is UserStoryStatus.READY:
             self._transition(persisted.id, UserStoryStatus.IN_PROGRESS)
         resumed = replace(
             mission,
@@ -269,7 +336,11 @@ class SequentialMissionWorkflow:
             role=MissionRole.ORCHESTRATOR,
             operating_step=OperatingStep.ACT,
             blockers=[],
-            next_action="Route the approved User Story to Implementer.",
+            next_action=(
+                "Route the approved User Story to Implementer."
+                if claim_for_implementation
+                else "Plan parallel execution for the approved User Story."
+            ),
             observed_commit=current_commit,
             updated_at=updated_at,
         )

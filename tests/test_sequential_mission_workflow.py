@@ -1173,6 +1173,64 @@ def test_human_required_blocks_then_applies_persisted_decision_and_resumes(
     assert ProjectStateStore(tmp_path).load().user_stories[0].status is UserStoryStatus.CERTIFIED
 
 
+def test_planning_only_acceptance_stops_at_ready(tmp_path: Path) -> None:
+    workflow = make_workflow(tmp_path)
+
+    result = workflow.accept_architect_plan(
+        route(workflow), architect_result(), updated_at=NOW
+    )
+
+    persisted = ProjectStateStore(tmp_path).load().user_stories[0]
+    assert result.current_step is OperatingStep.ACT
+    assert result.recommended_next_action == (
+        "Plan parallel execution for the validated User Story."
+    )
+    assert persisted.status is UserStoryStatus.READY
+
+
+def test_planning_only_human_resume_keeps_approved_story_ready(
+    tmp_path: Path,
+) -> None:
+    workflow = make_workflow(tmp_path)
+    waiting = workflow.accept_architect_plan(
+        route(workflow), architect_result(human_required=True), updated_at=NOW
+    )
+
+    persisted = ProjectStateStore(tmp_path).load().user_stories[0]
+    assert waiting.status is MissionStatus.BLOCKED
+    assert waiting.blockers == ("HUMAN_REQUIRED",)
+    assert persisted.status is UserStoryStatus.READY
+
+    workflow.record_evidence(
+        EvidenceObservation(
+            EvidenceType.HUMAN_APPROVAL,
+            "US-0001",
+            True,
+            EvidenceProvenance(ProvenanceKind.HUMAN, "Human", "Alice"),
+            True,
+            artifact="operator approval",
+            commit=COMMIT,
+        ),
+        evidence_id="EV-HUMAN",
+        timestamp=NOW,
+    )
+    restarted = make_workflow(tmp_path, initialize=False)
+    resumed = restarted.resume_planning_after_human_approval(
+        evidence_id="EV-HUMAN",
+        current_commit=COMMIT,
+        updated_at=NOW,
+    )
+
+    persisted = ProjectStateStore(tmp_path).load().user_stories[0]
+    assert resumed.status is MissionStatus.ACTIVE
+    assert resumed.recommended_next_action == (
+        "Plan parallel execution for the approved User Story."
+    )
+    assert persisted.human_approval.approved is True
+    assert persisted.human_approval.approved_by == "Alice"
+    assert persisted.status is UserStoryStatus.READY
+
+
 def test_not_applicable_requires_allowance_and_persists_it(tmp_path: Path) -> None:
     workflow = make_workflow(tmp_path)
     artifacts = advance_to_certifier(workflow, record_authoritative_gate=False)

@@ -59,7 +59,7 @@ class MissionPlanningError(RuntimeError):
 
 class PlanningWorkflowPort(Protocol):
     def route(self, *, current_commit: str, updated_at: datetime) -> SequentialMissionResult: ...
-    def accept_architect(self, handoff: RoleHandoff, candidate: ArchitectResult, *, updated_at: datetime) -> SequentialMissionResult: ...
+    def accept_architect_plan(self, handoff: RoleHandoff, candidate: ArchitectResult, *, updated_at: datetime) -> SequentialMissionResult: ...
 
 
 class ArchitectExecutorPort(Protocol):
@@ -169,7 +169,11 @@ class MissionPlanningCoordinator:
         outcome = self._architect.execute(routed.handoff, request_id=request_id)
         if not outcome.validated or not isinstance(outcome.validated_result, ArchitectResult):
             return MissionPlanningResult(MissionPlanningStatus.BLOCKED, mission.mission_id, mission.subject, outcome.blockers or ("ARCHITECT_RESULT_UNAVAILABLE",), None)
-        self._workflow.accept_architect(routed.handoff, outcome.validated_result, updated_at=updated_at)
+        self._workflow.accept_architect_plan(
+            routed.handoff,
+            outcome.validated_result,
+            updated_at=updated_at,
+        )
         current = self._mission()
         reference = self._exact_ledger_reference(outcome.execution_id, request_id, mission)
         plan = _plan_fingerprint(self._project(), mission.subject)

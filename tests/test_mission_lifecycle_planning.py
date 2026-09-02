@@ -271,10 +271,10 @@ class PlanningWorkflow:
         self.missions.value = MissionState(mission.schema_version, mission.mission_id, mission.workflow_generation, mission.status, MissionRole.ARCHITECT, mission.objective, mission.subject, mission.operating_step, mission.next_action, mission.observed_commit, updated_at, [])
         return SequentialMissionResult(mission.mission_id, mission.workflow_generation, mission.status, MissionRole.ARCHITECT, mission.operating_step, (), None, "execute", handoff)
 
-    def accept_architect(self, handoff, candidate, *, updated_at):
+    def accept_architect_plan(self, handoff, candidate, *, updated_at):
         self.accept_calls += 1
         self.projects.value.user_stories.append(
-            replace(deepcopy(candidate.user_stories[0]), status=UserStoryStatus.IN_PROGRESS)
+            replace(deepcopy(candidate.user_stories[0]), status=UserStoryStatus.READY)
         )
         mission = self.missions.value
         self.missions.value = MissionState(mission.schema_version, mission.mission_id, mission.workflow_generation, mission.status, MissionRole.ORCHESTRATOR, mission.objective, mission.subject, OperatingStep.ACT, "implement", mission.observed_commit, updated_at, [])
@@ -325,6 +325,7 @@ def test_planning_coordinator_persists_only_exact_architect_reference(tmp_path: 
     result = coordinator.start(req, admission(tmp_path), updated_at=NOW)
     assert result.status is MissionPlanningStatus.PLANNED
     assert len(projects.value.user_stories) == 1
+    assert projects.value.user_stories[0].status is UserStoryStatus.READY
     assert records.value.execution_references == (result.execution_reference,)
     assert records.value.plan_fingerprint is not None
     assert records.value.user_story_ids == ("US-0001",)
@@ -642,6 +643,7 @@ def test_process_restart_reconstructs_authoritative_plan_without_architect_repla
     execution_before = execution_store.ledger_path.read_bytes()
     record_before = record_store.record_path.read_bytes()
     expected_story = ProjectStateStore(root).load().user_stories[0]
+    assert expected_story.status is UserStoryStatus.READY
     expected_reference = first.execution_reference
     expected_architect = first.architect_result
     mission_id = first.mission_id
