@@ -253,12 +253,19 @@ from .mission_integration import (
     MissionIntegrationResult,
     MissionIntegrationStatus,
 )
+from .mission_certification import (
+    MissionCertificationCoordinator,
+    MissionCertificationError,
+    MissionCertificationResult,
+    MissionCertificationStatus,
+)
 from .integrated_story_context import (
     IntegratedStoryContext,
     IntegratedStoryContextError,
 )
 from .orchestration_record import (
     ORCHESTRATION_RECORD_VERSION,
+    CertificationReference,
     OrchestrationRecord,
     ParallelIntegrationReference,
     RoleExecutionReference,
@@ -438,9 +445,14 @@ __all__ = [
     "MissionIntegrationError",
     "MissionIntegrationResult",
     "MissionIntegrationStatus",
+    "MissionCertificationCoordinator",
+    "MissionCertificationError",
+    "MissionCertificationResult",
+    "MissionCertificationStatus",
     "IntegratedStoryContext",
     "IntegratedStoryContextError",
     "ORCHESTRATION_RECORD_VERSION",
+    "CertificationReference",
     "OrchestrationRecord",
     "ParallelIntegrationReference",
     "RoleExecutionReference",

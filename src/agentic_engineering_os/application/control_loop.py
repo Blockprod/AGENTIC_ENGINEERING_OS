@@ -204,9 +204,71 @@ class ControlLoop:
     ) -> Certification:
         """Produce and persist a verdict without changing UserStory.status."""
 
+        return self._certify_user_story(
+            user_story_id,
+            commit,
+            acceptance_results,
+            certifier=certifier,
+            context=context,
+            certification_id=certification_id,
+            certified_at=certified_at,
+            recognize_exact_replay=False,
+        )
+
+    def certify_user_story_idempotent(
+        self,
+        user_story_id: str,
+        commit: str,
+        acceptance_results: Iterable[AcceptanceResult],
+        *,
+        certifier: str,
+        context: CertificationContext | None = None,
+        certification_id: str,
+        certified_at: datetime | None = None,
+    ) -> Certification:
+        """Persist or recognize one exact deterministic Certification."""
+
+        return self._certify_user_story(
+            user_story_id,
+            commit,
+            acceptance_results,
+            certifier=certifier,
+            context=context,
+            certification_id=certification_id,
+            certified_at=certified_at,
+            recognize_exact_replay=True,
+        )
+
+    def _certify_user_story(
+        self,
+        user_story_id: str,
+        commit: str,
+        acceptance_results: Iterable[AcceptanceResult],
+        *,
+        certifier: str,
+        context: CertificationContext | None,
+        certification_id: str | None,
+        certified_at: datetime | None,
+        recognize_exact_replay: bool,
+    ) -> Certification:
+
         current_state = self.load_state()
         candidate = _candidate_state(current_state)
         _, story = _require_unique_story(candidate, user_story_id)
+        existing = (
+            []
+            if certification_id is None
+            else [
+                item
+                for item in candidate.certifications
+                if item.certification_id == certification_id
+            ]
+        )
+        if len(existing) > 1:
+            raise ControlLoopError(
+                "AMBIGUOUS_CERTIFICATION",
+                "multiple Certifications share the requested deterministic id",
+            )
         certification = self._certification_service.certify(
             story,
             commit,
@@ -216,7 +278,7 @@ class ControlLoop:
             certifier=certifier,
             context=context,
             certification_id=certification_id,
-            certified_at=certified_at,
+            certified_at=(existing[0].certified_at if existing else certified_at),
         )
         if not isinstance(certification, Certification):
             raise ControlLoopError(
@@ -228,6 +290,13 @@ class ControlLoop:
                 "INVALID_SERVICE_RESULT",
                 "CertificationService changed the targeted User Story",
             )
+        if existing and recognize_exact_replay:
+            if existing[0] != certification:
+                raise ControlLoopError(
+                    "CERTIFICATION_COLLISION",
+                    "persisted Certification differs from deterministic recomputation",
+                )
+            return existing[0]
         _require_new_id(
             candidate.certifications,
             "certification_id",

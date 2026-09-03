@@ -96,6 +96,49 @@ class PersistedRoleResultError(ValueError):
     """Persisted validated JSON no longer reconstructs as its declared role."""
 
 
+def reconstruct_persisted_role_result(value: str, role: MissionRole) -> RoleResult:
+    """Rebuild one canonical role result from strict execution-ledger JSON."""
+
+    if not isinstance(role, MissionRole) or role is MissionRole.ORCHESTRATOR:
+        raise PersistedRoleResultError("persisted result role is invalid")
+    if not isinstance(value, str) or not value:
+        raise PersistedRoleResultError("validated RoleResult JSON is absent")
+    try:
+        payload = json.loads(
+            value,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_non_json_constant,
+        )
+    except (json.JSONDecodeError, ValueError) as error:
+        raise PersistedRoleResultError("validated RoleResult is not strict JSON") from error
+    if not isinstance(payload, dict):
+        raise PersistedRoleResultError("validated RoleResult must be an object")
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    if value != canonical or payload.get("role") != role.value:
+        raise PersistedRoleResultError(
+            "persisted RoleResult is non-canonical or has the wrong role"
+        )
+    contract = f"{role.value.casefold()}-result"
+    contracts = ContractValidator()
+    if not contracts.validate(contract, payload).is_valid:
+        raise PersistedRoleResultError("persisted RoleResult fails its schema")
+    try:
+        candidate = _build_role_result(role, payload)
+    except (KeyError, TypeError, ValueError) as error:
+        raise PersistedRoleResultError(
+            "persisted RoleResult cannot rebuild the canonical model"
+        ) from error
+    if getattr(candidate, "role", None) is not role:
+        raise PersistedRoleResultError("persisted RoleResult rebuilt as the wrong role")
+    return candidate
+
+
 def reconstruct_persisted_architect_result(value: str) -> ArchitectResult:
     """Rebuild a canonical ArchitectResult from execution-ledger JSON only."""
 

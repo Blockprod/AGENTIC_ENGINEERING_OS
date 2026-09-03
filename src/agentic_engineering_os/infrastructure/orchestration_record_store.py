@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agentic_engineering_os.application.orchestration_record import (
     ORCHESTRATION_RECORD_VERSION,
+    CertificationReference,
     OrchestrationRecord,
     ParallelIntegrationReference,
     RoleExecutionReference,
@@ -108,11 +109,13 @@ class OrchestrationRecordStore:
 
 def _from_data(value: object) -> OrchestrationRecord:
     legacy_fields = {"schema_version", "mission_id", "request", "request_fingerprint", "baseline_commit", "workflow_generation", "plan_fingerprint", "execution_references", "user_story_ids"}
-    current_fields = {*legacy_fields, "parallel_integration"}
+    version_1_1_fields = {*legacy_fields, "parallel_integration"}
+    current_fields = {*version_1_1_fields, "certification_references"}
     if not isinstance(value, dict):
         raise ValueError("record has unknown or missing fields")
     schema_fields = {
         "1.0": legacy_fields,
+        "1.1": version_1_1_fields,
         ORCHESTRATION_RECORD_VERSION: current_fields,
     }
     expected_fields = schema_fields.get(value.get("schema_version"))
@@ -135,6 +138,29 @@ def _from_data(value: object) -> OrchestrationRecord:
         execution_references=tuple(_reference(item) for item in references),
         user_story_ids=_strings(value["user_story_ids"]),
         parallel_integration=_parallel_reference(value.get("parallel_integration")),
+        certification_references=tuple(
+            _certification_reference(item)
+            for item in value.get("certification_references", [])
+        ),
+    )
+
+
+def _certification_reference(value: object) -> CertificationReference:
+    expected = {
+        "user_story_id",
+        "workflow_generation",
+        "certification_id",
+        "certification_fingerprint",
+        "commit",
+    }
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError("Certification reference has unknown or missing fields")
+    return CertificationReference(
+        str(value["user_story_id"]),
+        _integer(value["workflow_generation"]),
+        str(value["certification_id"]),
+        str(value["certification_fingerprint"]),
+        str(value["commit"]),
     )
 
 

@@ -218,16 +218,28 @@ class MissionIntegrationCoordinator:
                 raise MissionIntegrationError(
                     "INTEGRATED_CONTEXT_INVALID", str(error)
                 ) from error
-            self._workflow.accept_integrated_implementer(
-                attempt,
-                member.user_story_id,
-                member.implementer_result,
-                integrated_context=context,
-            )
+            current_story = _story(self._project(), member.user_story_id)
+            if current_story.status in {
+                UserStoryStatus.IN_PROGRESS,
+                UserStoryStatus.IMPLEMENTED,
+                UserStoryStatus.TESTING,
+            }:
+                self._workflow.accept_integrated_implementer(
+                    attempt,
+                    member.user_story_id,
+                    member.implementer_result,
+                    integrated_context=context,
+                )
             integrated_contexts.append(context)
         project = self._project()
         if any(
-            _story(project, identifier).status is not UserStoryStatus.TESTING
+            _story(project, identifier).status
+            not in {
+                UserStoryStatus.TESTING,
+                UserStoryStatus.REVIEW,
+                UserStoryStatus.CERTIFICATION,
+                UserStoryStatus.CERTIFIED,
+            }
             for identifier in prepared.user_story_ids
         ):
             raise MissionIntegrationError(
@@ -269,6 +281,9 @@ class MissionIntegrationCoordinator:
             if story.status in {
                 UserStoryStatus.IMPLEMENTED,
                 UserStoryStatus.TESTING,
+                UserStoryStatus.REVIEW,
+                UserStoryStatus.CERTIFICATION,
+                UserStoryStatus.CERTIFIED,
             }:
                 story = replace(story, status=UserStoryStatus.IN_PROGRESS)
             implementer_input = ImplementerInput.from_handoff(context.handoff, story)

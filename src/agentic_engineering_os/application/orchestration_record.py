@@ -12,7 +12,7 @@ from agentic_engineering_os.domain import MissionRole
 from .mission_admission import MissionRequest
 
 
-ORCHESTRATION_RECORD_VERSION = "1.1"
+ORCHESTRATION_RECORD_VERSION = "1.2"
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -69,6 +69,32 @@ class ParallelIntegrationReference:
 
 
 @dataclass(frozen=True, slots=True)
+class CertificationReference:
+    user_story_id: str
+    workflow_generation: int
+    certification_id: str
+    certification_fingerprint: str
+    commit: str
+
+    def __post_init__(self) -> None:
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in (self.user_story_id, self.certification_id)
+        ):
+            raise ValueError("Certification reference identities are required")
+        if (
+            not isinstance(self.workflow_generation, int)
+            or isinstance(self.workflow_generation, bool)
+            or self.workflow_generation < 0
+        ):
+            raise ValueError("Certification reference generation is invalid")
+        if not _SHA256.fullmatch(self.certification_fingerprint):
+            raise ValueError("Certification fingerprint must be lowercase SHA-256")
+        if not _SHA40.fullmatch(self.commit):
+            raise ValueError("Certification commit must be lowercase SHA-1")
+
+
+@dataclass(frozen=True, slots=True)
 class OrchestrationRecord:
     schema_version: str
     mission_id: str
@@ -80,6 +106,7 @@ class OrchestrationRecord:
     execution_references: tuple[RoleExecutionReference, ...] = ()
     user_story_ids: tuple[str, ...] = ()
     parallel_integration: ParallelIntegrationReference | None = None
+    certification_references: tuple[CertificationReference, ...] = ()
 
     def __post_init__(self) -> None:
         if self.schema_version != ORCHESTRATION_RECORD_VERSION:
@@ -114,6 +141,18 @@ class OrchestrationRecord:
             )
             if not planned or not set(implementer_subjects).issubset(set(self.user_story_ids)):
                 raise ValueError("parallel integration references differ from planning")
+        certification_keys = tuple(
+            (item.user_story_id, item.workflow_generation)
+            for item in self.certification_references
+        )
+        if certification_keys != tuple(sorted(set(certification_keys))):
+            raise ValueError("Certification references must be unique and canonical")
+        if any(
+            item.user_story_id not in self.user_story_ids
+            or item.workflow_generation != self.workflow_generation
+            for item in self.certification_references
+        ):
+            raise ValueError("Certification references differ from active planning")
 
     @property
     def fingerprint(self) -> str:
@@ -149,6 +188,30 @@ class OrchestrationRecord:
         if not isinstance(reference, ParallelIntegrationReference):
             raise TypeError("canonical parallel integration reference is required")
         return replace(self, parallel_integration=reference)
+
+    def with_certification_reference(
+        self, reference: CertificationReference
+    ) -> OrchestrationRecord:
+        if not isinstance(reference, CertificationReference):
+            raise TypeError("canonical Certification reference is required")
+        retained = tuple(
+            item
+            for item in self.certification_references
+            if (item.user_story_id, item.workflow_generation)
+            != (reference.user_story_id, reference.workflow_generation)
+        )
+        return replace(
+            self,
+            certification_references=tuple(
+                sorted(
+                    (*retained, reference),
+                    key=lambda item: (
+                        item.user_story_id,
+                        item.workflow_generation,
+                    ),
+                )
+            ),
+        )
 
 
 def request_fingerprint(request: MissionRequest) -> str:
@@ -203,6 +266,16 @@ def record_to_data(record: OrchestrationRecord) -> dict[str, object]:
                 "integrated_commit": record.parallel_integration.integrated_commit,
             }
         ),
+        "certification_references": [
+            {
+                "user_story_id": item.user_story_id,
+                "workflow_generation": item.workflow_generation,
+                "certification_id": item.certification_id,
+                "certification_fingerprint": item.certification_fingerprint,
+                "commit": item.commit,
+            }
+            for item in record.certification_references
+        ],
     }
 
 

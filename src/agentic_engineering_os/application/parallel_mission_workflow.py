@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
@@ -11,6 +11,7 @@ from typing import Protocol
 
 from agentic_engineering_os._authoritative_write import _issue_authoritative_write
 from agentic_engineering_os.domain import (
+    Certification,
     CertificationResult,
     ConflictAnalysis,
     DAGSnapshot,
@@ -1259,6 +1260,7 @@ class ParallelMissionWorkflow:
         updated_at: datetime,
         certification_id: str | None = None,
         authorized_not_applicable_gate_ids: frozenset[str] = frozenset(),
+        certification_persisted: Callable[[Certification], None] | None = None,
     ) -> ParallelStoryDossier:
         self._require_no_pending_transaction()
         self._require_dossier(dossier, ParallelStoryStage.CERTIFICATION)
@@ -1307,14 +1309,26 @@ class ParallelMissionWorkflow:
                 certifier_result=candidate,
                 blockers=tuple(candidate.blockers) or ("CERTIFIER_BLOCKED",),
             )
-        certification = self._control_loop.certify_user_story(
-            story.id,
-            dossier.integration_commit,
-            tuple(acceptance_results),
-            certifier=certifier,
-            context=certification_context,
-            certification_id=certification_id,
-            certified_at=updated_at,
+        certification_arguments = {
+            "certifier": certifier,
+            "context": certification_context,
+            "certification_id": certification_id,
+            "certified_at": updated_at,
+        }
+        certification = (
+            self._control_loop.certify_user_story(
+                story.id,
+                dossier.integration_commit,
+                tuple(acceptance_results),
+                **certification_arguments,
+            )
+            if certification_id is None
+            else self._control_loop.certify_user_story_idempotent(
+                story.id,
+                dossier.integration_commit,
+                tuple(acceptance_results),
+                **certification_arguments,
+            )
         )
         if certification.result is not CertificationResult.CERTIFIED:
             return replace(
@@ -1323,6 +1337,8 @@ class ParallelMissionWorkflow:
                 certifier_result=candidate,
                 blockers=(f"CONTROL_PLANE_{certification.result.value}",),
             )
+        if certification_persisted is not None:
+            certification_persisted(certification)
         self._control_loop.transition_user_story(
             story.id,
             UserStoryStatus.CERTIFIED,
