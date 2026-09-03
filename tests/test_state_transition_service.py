@@ -258,7 +258,7 @@ def test_undeclared_transition_is_refused() -> None:
     assert result.refusals[0].code == "TRANSITION_NOT_ALLOWED"
 
 
-@pytest.mark.parametrize("terminal", TERMINAL_STATES)
+@pytest.mark.parametrize("terminal", sorted(TERMINAL_STATES, key=lambda item: item.value))
 def test_terminal_states_have_no_outgoing_transition(
     terminal: UserStoryStatus,
 ) -> None:

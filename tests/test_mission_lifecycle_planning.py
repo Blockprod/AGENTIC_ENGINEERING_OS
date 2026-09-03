@@ -273,8 +273,9 @@ class PlanningWorkflow:
 
     def accept_architect_plan(self, handoff, candidate, *, updated_at):
         self.accept_calls += 1
-        self.projects.value.user_stories.append(
-            replace(deepcopy(candidate.user_stories[0]), status=UserStoryStatus.READY)
+        self.projects.value.user_stories.extend(
+            replace(deepcopy(item), status=UserStoryStatus.PLANNED)
+            for item in candidate.user_stories
         )
         mission = self.missions.value
         self.missions.value = MissionState(mission.schema_version, mission.mission_id, mission.workflow_generation, mission.status, MissionRole.ORCHESTRATOR, mission.objective, mission.subject, OperatingStep.ACT, "implement", mission.observed_commit, updated_at, [])
@@ -286,12 +287,13 @@ class ArchitectExecutor:
         self.missions = missions
         self.ledger = ledger
         self.calls = 0
+        self.candidate = None
 
     def execute(self, handoff, *, request_id):
         self.calls += 1
         mission = self.missions.value
         execution_id = "exec-architect"
-        result = architect_result(mission)
+        result = self.candidate or architect_result(mission)
         result_json = canonical_result_json(to_dict(result))
         record = CodexExecutionRecord(execution_id, "e" * 64, request_id, "f" * 64, mission.mission_id, mission.workflow_generation, MissionRole.ARCHITECT, mission.subject, str(Path.cwd()), None, str(Path.cwd()), mission.observed_commit, "1" * 64, "architect-result@1.0", ExecutionExecutableIdentity(str((Path.cwd() / "codex.exe").resolve()), "1", "2" * 64), CodexExecutionStatus.VALIDATED, NOW, NOW, validated_result_json=result_json, validated_result_fingerprint=result_json_fingerprint(result_json))
         self.ledger.value = CodexExecutionLedger(EXECUTION_LEDGER_VERSION, (record,))
@@ -302,9 +304,15 @@ class MemoryLifecycle:
     def __init__(self, mission: MissionState) -> None:
         self.mission = mission
 
-    def start(self, request, admission, *, updated_at):
+    def prepare(self, request, admission, *, updated_at):
+        from agentic_engineering_os.application import MissionLifecyclePreparation
+
+        return MissionLifecyclePreparation(self.mission, None)
+
+    def commit(self, prepared):
         from agentic_engineering_os.application import MissionLifecycleStart
-        return MissionLifecycleStart(self.mission, False)
+
+        return MissionLifecycleStart(prepared.mission, False)
 
 
 def planning_harness(tmp_path: Path):
@@ -325,11 +333,39 @@ def test_planning_coordinator_persists_only_exact_architect_reference(tmp_path: 
     result = coordinator.start(req, admission(tmp_path), updated_at=NOW)
     assert result.status is MissionPlanningStatus.PLANNED
     assert len(projects.value.user_stories) == 1
-    assert projects.value.user_stories[0].status is UserStoryStatus.READY
+    assert projects.value.user_stories[0].status is UserStoryStatus.PLANNED
     assert records.value.execution_references == (result.execution_reference,)
     assert records.value.plan_fingerprint is not None
     assert records.value.user_story_ids == ("US-0001",)
     assert result.architect_result is not None
+    assert workflow.route_calls == workflow.accept_calls == executor.calls == 1
+
+
+def test_planning_coordinator_persists_complete_multi_story_plan(
+    tmp_path: Path,
+) -> None:
+    req, coordinator, missions, projects, _, records, workflow, executor = planning_harness(
+        tmp_path
+    )
+    executor.candidate = replace(
+        architect_result(missions.value),
+        user_stories=(
+            story("US-0001"),
+            replace(story("US-0002"), depends_on=("US-0001",)),
+        ),
+    )
+
+    result = coordinator.start(req, admission(tmp_path), updated_at=NOW)
+    resumed = coordinator.resume(result.mission_id, updated_at=NOW)
+
+    assert result.status is MissionPlanningStatus.PLANNED
+    assert records.value.user_story_ids == ("US-0001", "US-0002")
+    assert records.value.plan_fingerprint is not None
+    assert tuple(item.id for item in projects.value.user_stories) == (
+        "US-0001",
+        "US-0002",
+    )
+    assert resumed.architect_result == executor.candidate
     assert workflow.route_calls == workflow.accept_calls == executor.calls == 1
 
 
@@ -434,6 +470,43 @@ def test_record_persistence_failure_never_launches_architect(tmp_path: Path) -> 
     with pytest.raises(OSError, match="simulated persistence failure"):
         coordinator.start(req, admission(tmp_path), updated_at=NOW)
     assert workflow.route_calls == executor.calls == 0
+
+
+def test_restart_after_record_intent_reuses_it_before_launching_architect(
+    tmp_path: Path,
+) -> None:
+    req, coordinator, missions, _, _, records, workflow, executor = planning_harness(
+        tmp_path
+    )
+
+    class CrashOnceLifecycle(MemoryLifecycle):
+        def __init__(self, mission):
+            super().__init__(mission)
+            self.commits = 0
+
+        def commit(self, prepared):
+            self.commits += 1
+            if self.commits == 1:
+                raise OSError("simulated mission-state write failure")
+            return super().commit(prepared)
+
+    lifecycle = CrashOnceLifecycle(missions.value)
+    coordinator._lifecycle = lifecycle
+
+    with pytest.raises(OSError, match="simulated mission-state write failure"):
+        coordinator.start(req, admission(tmp_path), updated_at=NOW)
+
+    intent = records.value
+    assert intent is not None
+    assert intent.request == req
+    assert workflow.route_calls == executor.calls == 0
+
+    result = coordinator.start(req, admission(tmp_path), updated_at=NOW)
+
+    assert result.status is MissionPlanningStatus.PLANNED
+    assert records.value.request_fingerprint == intent.request_fingerprint
+    assert lifecycle.commits == 2
+    assert workflow.route_calls == executor.calls == 1
 
 
 def _git(root: Path, *arguments: str) -> str:
@@ -643,7 +716,7 @@ def test_process_restart_reconstructs_authoritative_plan_without_architect_repla
     execution_before = execution_store.ledger_path.read_bytes()
     record_before = record_store.record_path.read_bytes()
     expected_story = ProjectStateStore(root).load().user_stories[0]
-    assert expected_story.status is UserStoryStatus.READY
+    assert expected_story.status is UserStoryStatus.PLANNED
     expected_reference = first.execution_reference
     expected_architect = first.architect_result
     mission_id = first.mission_id

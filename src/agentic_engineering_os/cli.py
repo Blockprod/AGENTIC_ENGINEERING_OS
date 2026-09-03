@@ -7,20 +7,31 @@ import json
 import os
 import sys
 from dataclasses import fields, is_dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Sequence
 
-from agentic_engineering_os.application import ExistingRepositoryAdoption, UpgradePlanner
+from agentic_engineering_os.application import (
+    ExistingRepositoryAdoption,
+    MaintenanceGovernanceService,
+    UpgradePlanner,
+)
 from agentic_engineering_os.domain import (
     AdoptionStatus,
     HumanOperationConfirmation,
     HumanUpgradeConfirmation,
+    InitializationApplyStatus,
+    MaintenanceInitializationRequest,
+    MaintenanceScope,
+    MaintenanceState,
     UpgradePlanStatus,
     UpgradeResultStatus,
 )
+from agentic_engineering_os.domain.identity import is_attributable_human_identity
 from agentic_engineering_os.infrastructure import (
+    MaintenanceStateStore,
+    PersistenceError,
     ProjectConfigurationLoader,
     ProjectConfigurationValidator,
     RepositoryReconnaissance,
@@ -36,6 +47,12 @@ from agentic_engineering_os.diagnostics_cli import (
     OperatorDiagnosticError,
     add_diagnostic_subparsers,
     execute_diagnostic_command,
+)
+from agentic_engineering_os.mission_cli import (
+    MissionCliError,
+    add_mission_parser,
+    emit_mission_error,
+    execute_mission_command,
 )
 
 
@@ -63,6 +80,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         repository = _repository_root(arguments.repository)
+        if arguments.command == "mission":
+            return execute_mission_command(repository, arguments)
         if arguments.command == "inspect":
             return _inspect(repository, arguments.json)
         if arguments.command == "status":
@@ -93,6 +112,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             mode=_requested_mode(arguments),
         )
         return error.exit_code
+    except MissionCliError as error:
+        emit_mission_error(error.code, error.message, arguments.json)
+        return EXIT_BLOCKED
     except OperatorDiagnosticError as error:
         _emit(
             arguments.command,
@@ -188,6 +210,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     _confirmation_arguments(upgrade)
     add_diagnostic_subparsers(subparsers)
+    add_mission_parser(subparsers)
     return parser
 
 
@@ -284,6 +307,24 @@ def _init(repository: Path, arguments: argparse.Namespace) -> int:
             }
             else EXIT_BLOCKED
         )
+    if preparation.status is AdoptionStatus.ADOPTED:
+        if not arguments.confirmed_by:
+            _emit(
+                "init", preparation.status.value, preparation, arguments.json,
+                mode="ALREADY_ADOPTED",
+            )
+            return EXIT_SUCCESS
+        if not is_attributable_human_identity(arguments.confirmed_by):
+            raise CliError(
+                "INVALID_HUMAN_IDENTITY",
+                "maintenance initialization requires an attributable Human identity",
+            )
+        _initialize_maintenance(repository, configuration, str(arguments.confirmed_by))
+        _emit(
+            "init", preparation.status.value, preparation, arguments.json,
+            mode="MAINTENANCE_INITIALIZED",
+        )
+        return EXIT_SUCCESS
     if preparation.status not in {
         AdoptionStatus.READY_TO_APPLY,
         AdoptionStatus.NEEDS_HUMAN_CONFIRMATION,
@@ -296,9 +337,23 @@ def _init(repository: Path, arguments: argparse.Namespace) -> int:
     confirmations = _initialization_confirmations(
         preparation, arguments.confirm, arguments.confirmed_by
     )
+    if arguments.confirmed_by and not is_attributable_human_identity(
+        arguments.confirmed_by
+    ):
+        raise CliError(
+            "INVALID_HUMAN_IDENTITY",
+            "maintenance initialization requires an attributable Human identity",
+        )
     result = adoption.apply_adoption(
         preparation, human_confirmations=confirmations
     )
+    if (
+        result.status is AdoptionStatus.ADOPTED
+        and arguments.confirmed_by
+        and result.initialization_result is not None
+        and result.initialization_result.status is InitializationApplyStatus.NO_OP
+    ):
+        _initialize_maintenance(repository, configuration, str(arguments.confirmed_by))
     _emit("init", result.status.value, result, arguments.json, mode="APPLY_RESULT")
     return EXIT_SUCCESS if result.status is AdoptionStatus.ADOPTED else EXIT_BLOCKED
 
@@ -359,7 +414,10 @@ def _initialization_confirmations(preparation, identifiers, confirmed_by):
         for item in plan.operations
         if item.human_confirmation_required
     }
-    supplied = _confirmation_selection(required, identifiers, confirmed_by)
+    if not required and not identifiers:
+        supplied = ()
+    else:
+        supplied = _confirmation_selection(required, identifiers, confirmed_by)
     return tuple(
         HumanOperationConfirmation(
             plan.input_fingerprint,
@@ -371,6 +429,58 @@ def _initialization_confirmations(preparation, identifiers, confirmed_by):
         )
         for operation in supplied
     )
+
+
+def _initialize_maintenance(repository: Path, configuration, identity: str) -> None:
+    profile = RepositoryReconnaissance().inspect(repository)
+    head = profile.git.head_commit.value
+    if profile.git.clean.value is not True:
+        raise CliError(
+            "MAINTENANCE_REQUIRES_CLEAN_HEAD",
+            "commit the adoption changes, then repeat init --apply with the Human identity",
+        )
+    if not isinstance(head, str):
+        raise CliError(
+            "GIT_HEAD_UNKNOWN", "maintenance initialization requires an exact Git HEAD"
+        )
+    store = MaintenanceStateStore(repository)
+    try:
+        current = store.load()
+    except PersistenceError as error:
+        if error.code != "MAINTENANCE_STATE_ABSENT":
+            raise CliError(error.code, error.message) from error
+    else:
+        expected_scope = MaintenanceScope(
+            configuration.project_id, str(repository.resolve(strict=True))
+        )
+        if (
+            current.scope != expected_scope
+            or current.state is not MaintenanceState.NORMAL
+            or current.repository_head != head.casefold()
+        ):
+            raise CliError(
+                "MAINTENANCE_STATE_NOT_NORMAL",
+                "existing maintenance state is foreign, stale, or does not admit new work",
+            )
+        return
+    try:
+        MaintenanceGovernanceService(store).initialize(
+            MaintenanceInitializationRequest(
+                MaintenanceScope(
+                    configuration.project_id, str(repository.resolve(strict=True))
+                ),
+                head.casefold(),
+                None,
+                None,
+                datetime.now(timezone.utc),
+                identity,
+            )
+        )
+    except (PersistenceError, ValueError) as error:
+        raise CliError(
+            str(getattr(error, "code", "MAINTENANCE_INITIALIZATION_REFUSED")),
+            str(getattr(error, "message", error)),
+        ) from error
 
 
 def _upgrade_confirmations(plan, identifiers, confirmed_by):
@@ -525,6 +635,8 @@ def _operation_mode(command: str, status: str) -> str:
 
 
 def _requested_mode(arguments: argparse.Namespace) -> str:
+    if arguments.command == "mission":
+        return "READ_ONLY" if arguments.mission_command == "status" else "MUTATING"
     if arguments.command not in {"init", "upgrade"}:
         return "READ_ONLY"
     return "APPLY_ATTEMPT" if getattr(arguments, "apply", False) else "DRY_RUN"

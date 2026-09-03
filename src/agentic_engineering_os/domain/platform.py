@@ -49,6 +49,7 @@ class CaseSensitivityObservation(str, Enum):
 
 
 class ProcessTerminationSemantics(str, Enum):
+    WINDOWS_PROCESS_TREE_FORCE_KILL = "WINDOWS_PROCESS_TREE_FORCE_KILL"
     DIRECT_CHILD_FORCE_KILL = "DIRECT_CHILD_FORCE_KILL"
     POSIX_UNCERTIFIED = "POSIX_UNCERTIFIED"
     UNKNOWN = "UNKNOWN"

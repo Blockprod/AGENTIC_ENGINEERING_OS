@@ -70,7 +70,10 @@ def test_windows_capabilities_are_deterministic_and_separate_facts(tmp_path: Pat
     assert first.platform.family is PlatformFamily.WINDOWS
     assert first.platform.certification is PlatformCertification.WINDOWS_V1_TARGET
     assert first.platform.path_semantics is PathSemantics.WINDOWS_LOCAL
-    assert first.platform.process_termination is ProcessTerminationSemantics.DIRECT_CHILD_FORCE_KILL
+    assert (
+        first.platform.process_termination
+        is ProcessTerminationSemantics.WINDOWS_PROCESS_TREE_FORCE_KILL
+    )
     assert first.platform.core_shell_required is False
     assert first.project.repository_root == str(root.resolve())
     assert first.project.filesystem_scope is FilesystemScope.LOCAL

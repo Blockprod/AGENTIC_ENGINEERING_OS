@@ -114,6 +114,7 @@ _RUNTIME_FORMATS = {
     "worktrees.json": ("schema_version", "1.0"),
     "negative-outcomes.json": ("version", "2.0"),
     "executions.json": ("schema_version", "1.1"),
+    "orchestration.json": ("schema_version", "1.2"),
     "maintenance.json": ("schema_version", MAINTENANCE_SCHEMA_VERSION),
 }
 _PACKAGE_SCRIPT_KINDS = {

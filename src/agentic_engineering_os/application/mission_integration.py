@@ -22,7 +22,11 @@ from .integration_gate import IntegrationGateClassification, integration_gate_fi
 from .merge_coordinator import MergeStatus
 from .orchestration_record import OrchestrationRecord, ParallelIntegrationReference, RoleExecutionReference
 from .parallel_implementer_coordinator import ParallelMemberResult, PreparedParallelGroup
-from .parallel_mission_workflow import ParallelMissionPlan, ParallelMissionWorkflow
+from .parallel_mission_workflow import (
+    ParallelIntegrationAttempt,
+    ParallelMissionPlan,
+    ParallelMissionWorkflow,
+)
 from .result_intake import PersistedRoleResultError, reconstruct_persisted_implementer_result
 
 
@@ -42,6 +46,7 @@ class MissionIntegrationResult:
     next_role: MissionRole | None
     implementer_results: tuple[ImplementerResult, ...] = ()
     integrated_contexts: tuple[IntegratedStoryContext, ...] = ()
+    remediation_attempt: ParallelIntegrationAttempt | None = None
 
 
 class MissionIntegrationError(RuntimeError):
@@ -92,6 +97,13 @@ class MissionIntegrationCoordinator:
     def resume(self, mission_id: str, *, updated_at: datetime) -> MissionIntegrationResult:
         record = self._record(mission_id)
         mission = self._mission(mission_id, record)
+        project = self._project()
+        active_story_ids = tuple(
+            identifier
+            for identifier in record.user_story_ids
+            if _story(project, identifier).status
+            not in {UserStoryStatus.CERTIFIED, UserStoryStatus.CANCELLED}
+        )
         progress = record.parallel_integration
         assignment_ids = (
             progress.assignment_ids
@@ -100,11 +112,17 @@ class MissionIntegrationCoordinator:
                 mission_id=record.mission_id,
                 workflow_generation=record.workflow_generation,
                 baseline_commit=record.baseline_commit,
-                user_story_ids=record.user_story_ids,
+                user_story_ids=active_story_ids,
             )
         )
         if not assignment_ids:
-            if mission.observed_commit.casefold() != record.baseline_commit:
+            certified_heads = {
+                item.commit.casefold() for item in record.certification_references
+            }
+            if (
+                mission.observed_commit.casefold() != record.baseline_commit
+                and mission.observed_commit.casefold() not in certified_heads
+            ):
                 raise MissionIntegrationError(
                     "RECOVERY_REQUIRED", "primary advanced without assignment references"
                 )
@@ -166,7 +184,9 @@ class MissionIntegrationCoordinator:
             attempt = self._workflow.evaluate_group(plan, group)
             if attempt.gate_result.result is not IntegrationGateClassification.PASS:
                 return self._blocked(
-                    record, f"INTEGRATION_GATE_{attempt.gate_result.result.value}"
+                    record,
+                    f"INTEGRATION_GATE_{attempt.gate_result.result.value}",
+                    attempt=attempt,
                 )
             progress = replace(
                 progress,
@@ -186,7 +206,12 @@ class MissionIntegrationCoordinator:
             or attempt.merge_result.result is not MergeStatus.MERGED
             or attempt.merge_result.integration_commit is None
         ):
-            return self._blocked(record, "MERGE_NOT_COMPLETED")
+            blocker = (
+                f"MERGE_{attempt.merge_result.result.value}"
+                if attempt.merge_result is not None
+                else "MERGE_NOT_COMPLETED"
+            )
+            return self._blocked(record, blocker, attempt=attempt)
         integrated = attempt.merge_result.integration_commit
         progress = replace(progress, integrated_commit=integrated)
         if record.parallel_integration != progress:
@@ -255,6 +280,7 @@ class MissionIntegrationCoordinator:
             MissionRole.TESTER,
             tuple(member.implementer_result for member in members),
             tuple(integrated_contexts),
+            attempt,
         )
 
     def _reconstruct_members(
@@ -393,7 +419,12 @@ class MissionIntegrationCoordinator:
         return candidate
 
     @staticmethod
-    def _blocked(record: OrchestrationRecord, blocker: str) -> MissionIntegrationResult:
+    def _blocked(
+        record: OrchestrationRecord,
+        blocker: str,
+        *,
+        attempt: ParallelIntegrationAttempt | None = None,
+    ) -> MissionIntegrationResult:
         return MissionIntegrationResult(
             MissionIntegrationStatus.BLOCKED,
             record.mission_id,
@@ -402,6 +433,7 @@ class MissionIntegrationCoordinator:
             None,
             (blocker,),
             None,
+            remediation_attempt=attempt,
         )
 
 

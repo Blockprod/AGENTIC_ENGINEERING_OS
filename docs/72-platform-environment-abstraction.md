@@ -10,7 +10,7 @@ un test ne constitue pas une preuve de support.
 sépare strictement :
 
 - `PlatformFacts` : famille OS, sémantique de chemins, suffixes exécutables et
-  terminaison du processus enfant direct ;
+  terminaison de l'arbre de processus Windows ;
 - `MachineFacts` : TEMP, PowerShell, Git, Codex, Python, symlinks, junctions et
   sensibilité à la casse observables sur la machine ;
 - `ProjectPlatformBinding` : racine du repository et portée filesystem
@@ -26,10 +26,10 @@ filesystem, le reparse point, TEMP ou Git ne sont pas suffisamment prouvés.
 
 | Classe | Dépendances observées | Contrat |
 |---|---|---|
-| A — Windows V1 guarantee | `PATHEXT`, chemins locaux Windows, comparaison casefold, kill du processus enfant direct, shims `.exe` optionnels | Cible Windows 11 x64 uniquement |
+| A — Windows V1 guarantee | `PATHEXT`, chemins locaux Windows, comparaison casefold, terminaison de l'arbre de processus, shims `.exe` optionnels | Cible Windows 11 x64 uniquement |
 | B — Platform-neutral | argv, `shell=False`, cwd explicite, `pathlib`, chemins contractuels POSIX relatifs, containment, UTF-8, fichiers temporaires voisins pour remplacement atomique | Conservé dans le runtime commun |
 | C — Machine-specific fact | chemins/version Git, chemin Python courant, chemin Codex injecté, TEMP/TMP, PowerShell disponible, capacités symlink/junction | Observé, jamais persisté comme autorité |
-| D — Unknown/unsupported | Linux, macOS, UNC, filesystem réseau/remote, répertoire Windows case-sensitive, sémantique junction non observée, terminaison d'un arbre complet de processus | Bloqué lorsque la sûreté en dépend |
+| D — Unknown/unsupported | Linux, macOS, UNC, filesystem réseau/remote, répertoire Windows case-sensitive et sémantique junction non observée | Bloqué lorsque la sûreté en dépend |
 | E — Test-only | drives `D:` de fixtures, faux `codex`, chemins `.exe` synthétiques, PowerShell utilisé par l'opérateur de développement | Aucun contrat produit |
 
 Aucun chemin personnel VS Code, home utilisateur ou drive particulier n'est
@@ -77,8 +77,11 @@ allowlist d'environnement et ajoutent les protections Git non interactif,
 `NO_COLOR` et `PYTHONIOENCODING`; elles ne transmettent pas les variables secrètes non
 autorisées.
 
-Le timeout et l'annulation forcent uniquement le processus enfant direct. La
-terminaison garantie d'un arbre de processus complet n'est pas revendiquée.
+Sous Windows, le timeout et l'annulation terminent l'arbre de processus avec
+`taskkill /T /F`, attendent le processus racine et rapportent explicitement un
+échec de terminaison. Ce contrat est couvert pour les frontières Codex et
+commandes de vérification ; aucune sémantique équivalente n'est revendiquée sur
+Linux ou macOS.
 PowerShell est une commodité développeur/opérateur et n'est pas requis par le
 runtime cœur ; les commandes projet exécutables par le produit interdisent les
 shells.

@@ -105,8 +105,8 @@ class MissionPlanningCoordinator:
         *,
         updated_at: datetime,
     ) -> MissionPlanningResult:
-        started = self._lifecycle.start(request, admission, updated_at=updated_at)
-        mission = started.mission
+        prepared = self._lifecycle.prepare(request, admission, updated_at=updated_at)
+        mission = prepared.mission
         record = OrchestrationRecord(
             ORCHESTRATION_RECORD_VERSION,
             mission.mission_id,
@@ -122,7 +122,16 @@ class MissionPlanningCoordinator:
                 raise MissionPlanningError("ORCHESTRATION_RECORD_UNAVAILABLE", str(getattr(error, "code", error))) from error
             self._records.initialize(record)
         else:
-            self._records.replace(record, expected_fingerprint=current.fingerprint)
+            if current != record:
+                self._records.replace(record, expected_fingerprint=current.fingerprint)
+        self._lifecycle.commit(prepared)
+        durable_record = self._records.load()
+        durable_mission = self._mission()
+        if durable_record != record or durable_mission != mission:
+            raise MissionPlanningError(
+                "MISSION_START_NOT_DURABLE",
+                "mission and orchestration intent differ after guarded start",
+            )
         return self._continue(record, updated_at=updated_at)
 
     def resume(self, mission_id: str, *, updated_at: datetime) -> MissionPlanningResult:
@@ -176,11 +185,12 @@ class MissionPlanningCoordinator:
         )
         current = self._mission()
         reference = self._exact_ledger_reference(outcome.execution_id, request_id, mission)
-        plan = _plan_fingerprint(self._project(), mission.subject)
+        story_ids = tuple(sorted(item.id for item in outcome.validated_result.user_stories))
+        plan = _plan_fingerprint(self._project(), story_ids)
         updated = record.with_reference(
             reference,
             plan_fingerprint=plan,
-            user_story_ids=(mission.subject,),
+            user_story_ids=story_ids,
         )
         self._records.replace(updated, expected_fingerprint=record.fingerprint)
         architect = self._reconstruct_architect(updated, reference, mission)
@@ -201,7 +211,6 @@ class MissionPlanningCoordinator:
     def _recover_reference(
         self, record: OrchestrationRecord, mission: MissionState
     ) -> tuple[RoleExecutionReference, ArchitectResult]:
-        _require_persisted_story(self._project(), mission.subject)
         request_id = _architect_request_id(mission)
         ledger = self._ledger()
         matches = tuple(
@@ -219,10 +228,20 @@ class MissionPlanningCoordinator:
             raise MissionPlanningError("ARCHITECT_EXECUTION_AMBIGUOUS", "exactly one validated Architect execution is required")
         item = matches[0]
         reference = RoleExecutionReference(MissionRole.ARCHITECT, mission.subject, mission.workflow_generation, request_id, item.execution_id, cast(str, item.validated_result_fingerprint))
+        execution = self._exact_ledger_record(item.execution_id, request_id, mission)
+        assert execution.validated_result_json is not None
+        try:
+            architect = reconstruct_persisted_architect_result(
+                execution.validated_result_json
+            )
+        except PersistedRoleResultError as error:
+            raise MissionPlanningError("ARCHITECT_RESULT_INVALID", str(error)) from error
+        story_ids = tuple(sorted(story.id for story in architect.user_stories))
+        _require_persisted_stories(self._project(), story_ids)
         updated = record.with_reference(
             reference,
-            plan_fingerprint=_plan_fingerprint(self._project(), mission.subject),
-            user_story_ids=(mission.subject,),
+            plan_fingerprint=_plan_fingerprint(self._project(), story_ids),
+            user_story_ids=story_ids,
         )
         self._records.replace(updated, expected_fingerprint=record.fingerprint)
         return reference, self._reconstruct_architect(updated, reference, mission)
@@ -309,15 +328,20 @@ class MissionPlanningCoordinator:
                 "reconstructed ArchitectResult differs from authoritative mission",
             )
         project = self._project()
-        persisted = _require_persisted_story(project, mission.subject)
-        matching = tuple(item for item in architect.user_stories if item.id == mission.subject)
-        plan = _plan_fingerprint(project, mission.subject)
+        story_ids = tuple(sorted(item.id for item in architect.user_stories))
+        persisted = _require_persisted_stories(project, story_ids)
+        candidates = {item.id: item for item in architect.user_stories}
+        plan = _plan_fingerprint(project, story_ids)
         if (
-            len(matching) != 1
-            or _story_plan_fingerprint(matching[0])
-            != _story_plan_fingerprint(persisted)
+            mission.subject not in candidates
+            or len(candidates) != len(architect.user_stories)
+            or any(
+                _story_plan_fingerprint(candidates[identifier])
+                != _story_plan_fingerprint(persisted[identifier])
+                for identifier in story_ids
+            )
             or record.plan_fingerprint != plan
-            or record.user_story_ids != (mission.subject,)
+            or record.user_story_ids != story_ids
         ):
             raise MissionPlanningError(
                 "PLANNING_REFERENCE_MISMATCH",
@@ -376,11 +400,30 @@ def _require_persisted_story(project: ProjectState, subject: str):
     return matches[0]
 
 
-def _plan_fingerprint(project: ProjectState, subject: str) -> str:
-    matches = [item for item in project.user_stories if item.id == subject]
-    if len(matches) != 1:
-        raise MissionPlanningError("PLANNED_STORY_UNRESOLVED", "Architect story is not uniquely persisted")
-    return _story_plan_fingerprint(matches[0])
+def _require_persisted_stories(
+    project: ProjectState, subjects: tuple[str, ...]
+) -> dict[str, object]:
+    if not subjects or tuple(sorted(set(subjects))) != subjects:
+        raise MissionPlanningError(
+            "PLANNED_STORY_UNRESOLVED", "planned User Story IDs are not canonical"
+        )
+    resolved = {identifier: _require_persisted_story(project, identifier) for identifier in subjects}
+    return resolved
+
+
+def _plan_fingerprint(project: ProjectState, subjects: tuple[str, ...]) -> str:
+    stories = _require_persisted_stories(project, subjects)
+    payload = json.dumps(
+        {
+            identifier: _story_plan_fingerprint(stories[identifier])
+            for identifier in subjects
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _story_plan_fingerprint(story) -> str:

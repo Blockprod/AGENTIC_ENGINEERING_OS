@@ -382,6 +382,7 @@ def test_all_current_runtime_version_fields_are_observed_compatibly(tmp_path: Pa
         "worktrees.json": {"schema_version": "1.0"},
         "negative-outcomes.json": {"version": "2.0"},
         "executions.json": {"schema_version": "1.1"},
+        "orchestration.json": {"schema_version": "1.2"},
         "maintenance.json": {"schema_version": "1.0"},
     }
     for filename, document in documents.items():

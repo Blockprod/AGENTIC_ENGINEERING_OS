@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from typing import Callable
 
 from agentic_engineering_os.application.execution_state import EXECUTION_LEDGER_VERSION
+from agentic_engineering_os.application.orchestration_record import (
+    ORCHESTRATION_RECORD_VERSION,
+    record_to_data,
+)
 from agentic_engineering_os.domain import (
     AGENTS_MANAGED_SECTION,
     AGENTS_MANAGED_SECTION_VERSION,
@@ -27,6 +31,7 @@ from ._negative_outcome_store import _validate_document as _validate_negative_cu
 from .agents_integration import AgentsIntegrationService
 from .project_configuration import CONFIG_VERSION
 from .project_state_store import SCHEMA_VERSION
+from .orchestration_record_store import _from_data as _orchestration_from_data
 from .worktree_registry_store import WORKTREE_REGISTRY_VERSION
 
 
@@ -108,6 +113,20 @@ class RepositoryMigrationRegistry:
                 _upgrade_negative_v1,
                 _validate_negative_v2,
             ),
+            *(
+                _MigrationDefinition(
+                    MigrationArtifact.ORCHESTRATION_RECORD,
+                    ".agentic-engineering-os/orchestration.json",
+                    source_version,
+                    ORCHESTRATION_RECORD_VERSION,
+                    False,
+                    True,
+                    True,
+                    _upgrade_orchestration,
+                    _validate_orchestration_current,
+                )
+                for source_version in ("1.0", "1.1")
+            ),
         )
         self._definitions = {
             (item.artifact, item.source_version, item.target_version): item
@@ -143,6 +162,7 @@ class RepositoryMigrationRegistry:
             (MigrationArtifact.WORKTREE_REGISTRY, WORKTREE_REGISTRY_VERSION, False, True),
             (MigrationArtifact.NEGATIVE_OUTCOME_LEDGER, "2.0", False, True),
             (MigrationArtifact.EXECUTION_LEDGER, EXECUTION_LEDGER_VERSION, False, True),
+            (MigrationArtifact.ORCHESTRATION_RECORD, ORCHESTRATION_RECORD_VERSION, False, True),
             (MigrationArtifact.MAINTENANCE_STATE, MAINTENANCE_SCHEMA_VERSION, False, True),
         )
 
@@ -190,7 +210,10 @@ class RepositoryMigrationRegistry:
             for item in self._definitions.values()
             if item.artifact is artifact and item.target_version == target_version
         ]
-        if len(matches) != 1:
+        if not matches or any(
+            item.validate_current is not matches[0].validate_current
+            for item in matches[1:]
+        ):
             raise MigrationRegistryError(
                 "UNSUPPORTED_MIGRATION", "current artifact validator is unavailable"
             )
@@ -295,6 +318,37 @@ def _validate_negative_v2(content: bytes) -> None:
     normalized = _validate_negative_current(candidate)
     if content != _canonical_json(normalized).encode("utf-8"):
         raise MigrationRegistryError("POST_VALIDATION_FAILED", "negative ledger is not canonical")
+
+
+def _upgrade_orchestration(source: bytes) -> MigrationCandidate:
+    data = _strict_json(source, maximum=2_000_000)
+    if not isinstance(data, dict) or data.get("schema_version") not in {"1.0", "1.1"}:
+        raise MigrationRegistryError(
+            "CORRUPT_SOURCE", "orchestration source version is not migratable"
+        )
+    try:
+        record = _orchestration_from_data(data)
+        content = _canonical_json(record_to_data(record)).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise MigrationRegistryError(
+            "CORRUPT_SOURCE", "orchestration source violates its historical contract"
+        ) from error
+    return MigrationCandidate(content, None, None)
+
+
+def _validate_orchestration_current(content: bytes) -> None:
+    data = _strict_json(content, maximum=2_000_000)
+    try:
+        record = _orchestration_from_data(data)
+    except (TypeError, ValueError) as error:
+        raise MigrationRegistryError(
+            "POST_VALIDATION_FAILED", "orchestration record is invalid"
+        ) from error
+    expected = _canonical_json(record_to_data(record)).encode("utf-8")
+    if not isinstance(data, dict) or data.get("schema_version") != ORCHESTRATION_RECORD_VERSION or content != expected:
+        raise MigrationRegistryError(
+            "POST_VALIDATION_FAILED", "orchestration record is not canonical v1.2"
+        )
 
 
 def _validate_old_outcomes(candidate: list[object]) -> list[dict[str, object]]:

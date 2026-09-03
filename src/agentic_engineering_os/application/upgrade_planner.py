@@ -50,12 +50,14 @@ _ARTIFACT_BY_RUNTIME_PATH = {
     ".agentic-engineering-os/worktrees.json": MigrationArtifact.WORKTREE_REGISTRY,
     ".agentic-engineering-os/negative-outcomes.json": MigrationArtifact.NEGATIVE_OUTCOME_LEDGER,
     ".agentic-engineering-os/executions.json": MigrationArtifact.EXECUTION_LEDGER,
+    ".agentic-engineering-os/orchestration.json": MigrationArtifact.ORCHESTRATION_RECORD,
     ".agentic-engineering-os/maintenance.json": MigrationArtifact.MAINTENANCE_STATE,
 }
 _ORDER = {
     MigrationArtifact.AGENTS_MANAGED_SECTION: 10,
     MigrationArtifact.GITIGNORE_MANAGED_SECTION: 20,
     MigrationArtifact.NEGATIVE_OUTCOME_LEDGER: 30,
+    MigrationArtifact.ORCHESTRATION_RECORD: 40,
 }
 
 

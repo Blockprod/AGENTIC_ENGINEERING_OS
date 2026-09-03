@@ -49,6 +49,7 @@ class CompatibilityArtifact(str, Enum):
     WORKTREE_REGISTRY = "WORKTREE_REGISTRY"
     NEGATIVE_OUTCOME_LEDGER = "NEGATIVE_OUTCOME_LEDGER"
     EXECUTION_LEDGER = "EXECUTION_LEDGER"
+    ORCHESTRATION_RECORD = "ORCHESTRATION_RECORD"
     OPERATIONAL_EVENT = "OPERATIONAL_EVENT"
     OPERATIONAL_EVENT_STORE = "OPERATIONAL_EVENT_STORE"
     MAINTENANCE_STATE = "MAINTENANCE_STATE"
@@ -80,6 +81,7 @@ ARTIFACT_CONTRACTS = (
     CompatibilityArtifactContract(CompatibilityArtifact.WORKTREE_REGISTRY, "1.0", ".agentic-engineering-os/worktrees.json", "JSON / ignored volatile", "OPERATIONAL_STATE", ArtifactRequirement.LAZY, MigrationArtifact.WORKTREE_REGISTRY),
     CompatibilityArtifactContract(CompatibilityArtifact.NEGATIVE_OUTCOME_LEDGER, "2.0", ".agentic-engineering-os/negative-outcomes.json", "JSON / ignored volatile", "OPERATIONAL_STATE", ArtifactRequirement.LAZY, MigrationArtifact.NEGATIVE_OUTCOME_LEDGER),
     CompatibilityArtifactContract(CompatibilityArtifact.EXECUTION_LEDGER, "1.1", ".agentic-engineering-os/executions.json", "JSON / ignored volatile", "OPERATIONAL_STATE", ArtifactRequirement.LAZY, MigrationArtifact.EXECUTION_LEDGER),
+    CompatibilityArtifactContract(CompatibilityArtifact.ORCHESTRATION_RECORD, "1.2", ".agentic-engineering-os/orchestration.json", "JSON / ignored volatile", "NON_AUTHORITATIVE_ORCHESTRATION", ArtifactRequirement.LAZY, MigrationArtifact.ORCHESTRATION_RECORD),
     CompatibilityArtifactContract(CompatibilityArtifact.OPERATIONAL_EVENT, "1.0", ".agentic-engineering-os/operational-events/*.jsonl:event", "JSONL payload / ignored volatile", "NON_AUTHORITATIVE_OBSERVATION", ArtifactRequirement.LAZY),
     CompatibilityArtifactContract(CompatibilityArtifact.OPERATIONAL_EVENT_STORE, "1.0", ".agentic-engineering-os/operational-events/*.jsonl:record", "JSONL record / ignored volatile", "NON_AUTHORITATIVE_OBSERVATION", ArtifactRequirement.LAZY),
     CompatibilityArtifactContract(CompatibilityArtifact.MAINTENANCE_STATE, "1.0", ".agentic-engineering-os/maintenance.json", "JSON / ignored volatile", "SYSTEM_INVARIANT", ArtifactRequirement.LAZY, MigrationArtifact.MAINTENANCE_STATE),

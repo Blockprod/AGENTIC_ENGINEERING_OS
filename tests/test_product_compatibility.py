@@ -97,7 +97,31 @@ def test_registered_historical_edges_are_explicit(tmp_path: Path) -> None:
         (MigrationArtifact.AGENTS_MANAGED_SECTION, "1", "2"),
         (MigrationArtifact.GITIGNORE_MANAGED_SECTION, "1", "2"),
         (MigrationArtifact.NEGATIVE_OUTCOME_LEDGER, "1.0", "2.0"),
+        (MigrationArtifact.ORCHESTRATION_RECORD, "1.0", "1.2"),
+        (MigrationArtifact.ORCHESTRATION_RECORD, "1.1", "1.2"),
     )
+
+
+@pytest.mark.parametrize("version", ("1.0", "1.1"))
+def test_historical_orchestration_requires_explicit_migration(
+    tmp_path: Path, version: str
+) -> None:
+    values = list(context(tmp_path).artifacts)
+    values.append(
+        observation(
+            tmp_path,
+            CompatibilityArtifact.ORCHESTRATION_RECORD,
+            version=version,
+        )
+    )
+
+    result = CompatibilityEvaluator().evaluate(
+        context(tmp_path, observations=values)
+    )
+    item = assessment_for(result, CompatibilityArtifact.ORCHESTRATION_RECORD)
+
+    assert item.classification is CompatibilityClassification.MIGRATION_REQUIRED
+    assert item.required_migration == (version, "1.2")
 
 
 def test_gitignore_v1_requires_registered_migration(tmp_path: Path) -> None:

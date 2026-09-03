@@ -1,0 +1,75 @@
+name: release-v1
+
+on:
+  push:
+    tags: ['v1.0.0']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-2025
+    environment: production-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require a GitHub-verified signed annotated tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $reference = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:GITHUB_REF_NAME" | ConvertFrom-Json
+          if ($reference.object.type -ne 'tag') { throw 'Release tag must be annotated' }
+          $tag = gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($reference.object.sha)" | ConvertFrom-Json
+          if (-not $tag.verification.verified) { throw "Release tag signature is not verified: $($tag.verification.reason)" }
+      - name: Verify immutable certification inputs
+        shell: pwsh
+        run: |
+          if ((python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])") -ne '1.0.0') { throw 'Version mismatch' }
+          if (-not (Test-Path 'release-certification/v1.0.0.json')) { throw 'Certification dossier absent' }
+          python scripts/validate_release_certification.py release-certification/v1.0.0.json --expected-version 1.0.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - run: python -m pip install -c constraints-ci.txt build cyclonedx-bom
+      - name: Build immutable wheel and deterministic source archive
+        shell: pwsh
+        env:
+          PIP_CONSTRAINT: constraints-ci.txt
+        run: |
+          $env:SOURCE_DATE_EPOCH = python -c "import json; print(json.load(open('release-certification/v1.0.0.json', encoding='utf-8'))['candidate']['source_date_epoch'])"
+          python -m build --wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $wheel = (Get-ChildItem dist/*.whl -File | Select-Object -First 1).FullName
+          python scripts/validate_release_certification.py release-certification/v1.0.0.json --expected-version 1.0.0 --wheel $wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git archive --format=tar.gz --prefix=agentic_engineering_os-1.0.0/ --output=dist/agentic_engineering_os-1.0.0-source.tar.gz HEAD
+      - name: Install certified wheel
+        shell: pwsh
+        run: |
+          $wheel = (Get-ChildItem dist/*.whl -File | Select-Object -First 1).FullName
+          python -m pip install --force-reinstall $wheel
+      - run: python -m pip check
+      - run: cyclonedx-py environment --output-file dist/sbom.cdx.json
+      - name: Checksums and resource inventory
+        shell: pwsh
+        run: |
+          Copy-Item -LiteralPath release-certification/v1.0.0.json -Destination dist/release-certification-v1.0.0.json
+          python scripts/resource_inventory.py dist/resource-inventory.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git rev-parse HEAD | Set-Content -Encoding ascii dist/git-provenance.txt
+          Get-ChildItem dist/* -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content -Encoding ascii dist/SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+      - name: Publish the verified immutable release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME dist/* --verify-tag --title "AGENTIC_ENGINEERING_OS v1.0.0" --generate-notes

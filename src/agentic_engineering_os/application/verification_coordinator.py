@@ -47,6 +47,10 @@ class VerificationProcessResult:
     stdout: bytes
     stderr: bytes
     failure_code: str | None = None
+    stdout_size: int = 0
+    stderr_size: int = 0
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
 
 
 class VerificationCommandRunner(Protocol):
@@ -210,6 +214,10 @@ class VerificationCoordinator:
                 "passed": process.exit_code == 0,
                 "stdout_sha256": hashlib.sha256(process.stdout).hexdigest(),
                 "stderr_sha256": hashlib.sha256(process.stderr).hexdigest(),
+                "stdout_size": process.stdout_size or len(process.stdout),
+                "stderr_size": process.stderr_size or len(process.stderr),
+                "stdout_truncated": process.stdout_truncated,
+                "stderr_truncated": process.stderr_truncated,
             }
             observation = EvidenceObservation(
                 evidence_type=EvidenceType.COMMAND_RESULT,
@@ -413,6 +421,10 @@ def _require_reusable_evidence(
         "passed",
         "stdout_sha256",
         "stderr_sha256",
+        "stdout_size",
+        "stderr_size",
+        "stdout_truncated",
+        "stderr_truncated",
     }
     valid_result = (
         isinstance(result, Mapping)
@@ -435,6 +447,10 @@ def _require_reusable_evidence(
         and result.get("passed") == (evidence.exit_code == 0)
         and _is_sha256(stdout_digest)
         and _is_sha256(stderr_digest)
+        and isinstance(result.get("stdout_size"), int)
+        and isinstance(result.get("stderr_size"), int)
+        and isinstance(result.get("stdout_truncated"), bool)
+        and isinstance(result.get("stderr_truncated"), bool)
         and evidence.artifact
         == f"stdout-sha256:{stdout_digest};stderr-sha256:{stderr_digest}"
     ):

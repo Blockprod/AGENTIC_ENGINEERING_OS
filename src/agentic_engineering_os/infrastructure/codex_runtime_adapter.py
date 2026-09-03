@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import tempfile
 import threading
@@ -14,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
-from typing import Protocol, cast
+from typing import Protocol, TextIO, cast
 
 from agentic_engineering_os.application.codex_runtime import (
     CodexApprovalPolicy,
@@ -615,6 +616,10 @@ class CodexRuntimeAdapter:
                 encoding="utf-8",
                 errors="replace",
                 env=child_environment,
+                creationflags=(
+                    subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+                ),
+                start_new_session=os.name != "nt",
             )
         except OSError as error:
             return _not_started(
@@ -632,39 +637,60 @@ class CodexRuntimeAdapter:
 
         stop_monitor = Event()
         interrupted_by_parent = Event()
+        termination_failed = Event()
         monitor: threading.Thread | None = None
         if cancellation is not None:
             monitor = threading.Thread(
                 target=_monitor_cancellation,
-                args=(process, cancellation, stop_monitor, interrupted_by_parent),
+                args=(
+                    process,
+                    cancellation,
+                    stop_monitor,
+                    interrupted_by_parent,
+                    termination_failed,
+                ),
                 daemon=True,
             )
             monitor.start()
 
+        stdout_collector = _BoundedTextCollector(
+            process.stdout, self._configuration.max_output_characters
+        )
+        stderr_collector = _BoundedTextCollector(
+            process.stderr, self._configuration.max_output_characters
+        )
+        stdout_reader = threading.Thread(target=stdout_collector.drain, daemon=True)
+        stderr_reader = threading.Thread(target=stderr_collector.drain, daemon=True)
+        stdin_writer = threading.Thread(
+            target=_write_process_input,
+            args=(process, compiled_prompt.prompt_text),
+            daemon=True,
+        )
+        stdout_reader.start()
+        stderr_reader.start()
+        stdin_writer.start()
         timed_out = False
         try:
-            stdout, stderr = process.communicate(
-                input=compiled_prompt.prompt_text,
-                timeout=binding.timeout_seconds,
-            )
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            if process.poll() is None:
-                process.kill()
-            stdout, stderr = process.communicate()
+            try:
+                process.wait(timeout=binding.timeout_seconds)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                if not _terminate_process_tree(process):
+                    termination_failed.set()
         finally:
             stop_monitor.set()
             if monitor is not None:
                 monitor.join(timeout=1.0)
+            if process.poll() is None and not _terminate_process_tree(process):
+                termination_failed.set()
+            stdin_writer.join(timeout=5.0)
+            stdout_reader.join(timeout=5.0)
+            stderr_reader.join(timeout=5.0)
 
         ended_at = now()
         interrupted = interrupted_by_parent.is_set()
-        stdout, stdout_truncated = _bounded(
-            stdout, self._configuration.max_output_characters
-        )
-        stderr, stderr_truncated = _bounded(
-            stderr, self._configuration.max_output_characters
-        )
+        stdout, stdout_truncated, stdout_characters = stdout_collector.result()
+        stderr, stderr_truncated, stderr_characters = stderr_collector.result()
         events, invalid_lines = _parse_jsonl(stdout)
         thread_id = _thread_id(events)
         final_output, terminal_issue = _terminal_output(events)
@@ -675,14 +701,18 @@ class CodexRuntimeAdapter:
             issues.append("PROCESS_TIMED_OUT")
         if interrupted:
             issues.append("PROCESS_INTERRUPTED")
+        if termination_failed.is_set():
+            issues.append("PROCESS_TREE_TERMINATION_UNCONFIRMED")
         if process.returncode != 0:
             issues.append("PROCESS_EXIT_NON_ZERO")
         if stderr:
             issues.append("STDERR_OBSERVED")
         if stdout_truncated:
             issues.append("STDOUT_TRUNCATED")
+            issues.append(f"STDOUT_CHARACTER_COUNT:{stdout_characters}")
         if stderr_truncated:
             issues.append("STDERR_TRUNCATED")
+            issues.append(f"STDERR_CHARACTER_COUNT:{stderr_characters}")
         if invalid_lines:
             issues.append("MALFORMED_JSONL")
         if terminal_issue is not None:
@@ -1208,10 +1238,53 @@ def _tool_failure_observed(events: tuple[CodexJsonlEvent, ...]) -> bool:
     return False
 
 
-def _bounded(value: str, maximum: int) -> tuple[str, bool]:
-    if len(value) <= maximum:
-        return value, False
-    return value[:maximum], True
+class _BoundedTextCollector:
+    """Drain a process pipe continuously while retaining a bounded prefix."""
+
+    def __init__(self, stream: TextIO | None, maximum: int) -> None:
+        self._stream = stream
+        self._maximum = maximum
+        self._chunks: list[str] = []
+        self._retained = 0
+        self._observed = 0
+
+    def drain(self) -> None:
+        if self._stream is None:
+            return
+        try:
+            while True:
+                chunk = self._stream.read(64 * 1024)
+                if not chunk:
+                    return
+                self._observed += len(chunk)
+                remaining = self._maximum - self._retained
+                if remaining > 0:
+                    retained = chunk[:remaining]
+                    self._chunks.append(retained)
+                    self._retained += len(retained)
+        except (OSError, ValueError):
+            return
+        finally:
+            try:
+                self._stream.close()
+            except (OSError, ValueError):
+                pass
+
+    def result(self) -> tuple[str, bool, int]:
+        return "".join(self._chunks), self._observed > self._maximum, self._observed
+
+
+def _write_process_input(process: subprocess.Popen[str], value: str) -> None:
+    if process.stdin is None:
+        return
+    try:
+        process.stdin.write(value)
+        process.stdin.close()
+    except (BrokenPipeError, OSError, ValueError):
+        try:
+            process.stdin.close()
+        except (OSError, ValueError):
+            pass
 
 
 def _file_sha256(path: Path) -> str:
@@ -1227,16 +1300,47 @@ def _monitor_cancellation(
     cancellation: Event,
     stop: Event,
     interrupted: Event,
+    termination_failed: Event,
 ) -> None:
     while not stop.wait(0.05):
         if cancellation.is_set():
             if process.poll() is None:
                 interrupted.set()
-                try:
-                    process.kill()
-                except OSError:
-                    pass
+                if not _terminate_process_tree(process):
+                    termination_failed.set()
             return
+
+
+def _terminate_process_tree(process: subprocess.Popen[str]) -> bool:
+    """Terminate the launched process boundary and verify it became terminal."""
+
+    if process.poll() is not None:
+        return True
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                shell=False,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5.0,
+                check=False,
+            )
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (OSError, ProcessLookupError, subprocess.TimeoutExpired):
+        pass
+    if process.poll() is None:
+        try:
+            process.kill()
+        except OSError:
+            pass
+    try:
+        process.wait(timeout=5.0)
+    except subprocess.TimeoutExpired:
+        return False
+    return process.poll() is not None
 
 
 def _not_started(

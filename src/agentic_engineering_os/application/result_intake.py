@@ -347,7 +347,12 @@ class CodexResultIntake:
 
         transport = _validate_transport(compiled_prompt.role, observation)
         if transport:
-            return _refused_many(compiled_prompt.role, diagnostics, transport)
+            _, payload_diagnostics = _structured_payload_text(observation)
+            return _refused_many(
+                compiled_prompt.role,
+                diagnostics,
+                (*transport, *payload_diagnostics),
+            )
 
         payload_text, source_reasons = _structured_payload_text(observation)
         if source_reasons:

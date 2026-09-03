@@ -1,4 +1,5 @@
 import subprocess
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -16,11 +17,23 @@ def test_runner_executes_exact_argv_without_shell(
 ) -> None:
     calls: list[tuple[object, dict[str, object]]] = []
 
-    def fake_run(argv, **kwargs):
-        calls.append((argv, kwargs))
-        return subprocess.CompletedProcess(argv, exit_code, b"out", b"err")
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = BytesIO(b"out")
+            self.stderr = BytesIO(b"err")
+            self.returncode = exit_code
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+    def fake_popen(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
     argv = ("python", "-m", "pytest")
 
     result = SubprocessVerificationCommandRunner().run(argv, tmp_path)
@@ -39,7 +52,7 @@ def test_runner_reports_missing_executable_without_evidence_claim(
     def unavailable(*_args, **_kwargs):
         raise FileNotFoundError
 
-    monkeypatch.setattr(subprocess, "run", unavailable)
+    monkeypatch.setattr(subprocess, "Popen", unavailable)
 
     result = SubprocessVerificationCommandRunner().run(("missing",), tmp_path)
 

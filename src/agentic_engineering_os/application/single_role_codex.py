@@ -64,6 +64,10 @@ class _Reader(Protocol):
     def load(self) -> object: ...
 
 
+class _ExecutionBudgetPort(Protocol):
+    def authorize(self, *, requested: int, repository_head: str) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class SingleRoleArtifacts:
     architect_result: ArchitectResult | None = None
@@ -110,6 +114,7 @@ class SingleRoleCodexExecutor:
         executable_identity: ExecutionExecutableIdentity,
         prompt_compiler: PromptCompiler | None = None,
         timeout_seconds: float = 900.0,
+        execution_budget: _ExecutionBudgetPort | None = None,
     ) -> None:
         if (
             not isinstance(timeout_seconds, (int, float))
@@ -128,6 +133,7 @@ class SingleRoleCodexExecutor:
         self._executions = execution_service
         self._executable = executable_identity
         self._timeout_seconds = float(timeout_seconds)
+        self._execution_budget = execution_budget
 
     def execute(
         self,
@@ -190,6 +196,10 @@ class SingleRoleCodexExecutor:
             timeout_seconds=self._timeout_seconds,
             output_schema_path=str(schema.resolve(strict=False)),
         )
+        if self._execution_budget is not None:
+            self._execution_budget.authorize(
+                requested=1, repository_head=binding.expected_commit
+            )
         record = self._executions.plan(compiled, binding, self._executable)
         inspection = self._executions.inspect_restart(
             record.execution_id,

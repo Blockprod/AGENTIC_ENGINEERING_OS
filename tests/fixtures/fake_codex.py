@@ -237,6 +237,10 @@ def main() -> int:
         )
     if mode == "huge-stderr":
         print("E" * 20_000, file=sys.stderr, flush=True)
+    if mode == "hostile-output":
+        for _ in range(64):
+            print("O" * 65_536, flush=True)
+            print("E" * 65_536, file=sys.stderr, flush=True)
     if mode == "zero-stderr":
         print("warning from fake", file=sys.stderr, flush=True)
     if mode == "nonzero":

@@ -629,6 +629,8 @@ def test_closed_registry_has_only_real_edges_and_no_generic_migrate_api() -> Non
         (MigrationArtifact.AGENTS_MANAGED_SECTION, "1", "2"),
         (MigrationArtifact.GITIGNORE_MANAGED_SECTION, "1", "2"),
         (MigrationArtifact.NEGATIVE_OUTCOME_LEDGER, "1.0", "2.0"),
+        (MigrationArtifact.ORCHESTRATION_RECORD, "1.0", "1.2"),
+        (MigrationArtifact.ORCHESTRATION_RECORD, "1.1", "1.2"),
     )
     assert (
         registry.definition(MigrationArtifact.EXECUTION_LEDGER, "1.0", "1.1")
@@ -639,3 +641,53 @@ def test_closed_registry_has_only_real_edges_and_no_generic_migrate_api() -> Non
         is None
     )
     assert not hasattr(registry, "migrate")
+
+
+@pytest.mark.parametrize("source_version", ("1.0", "1.1"))
+def test_orchestration_history_migrates_explicitly_with_human_confirmation(
+    tmp_path: Path, source_version: str
+) -> None:
+    root = repository(tmp_path)
+    path = root / ".agentic-engineering-os/orchestration.json"
+    document: dict[str, object] = {
+        "schema_version": source_version,
+        "mission_id": "mission-history",
+        "request": {
+            "objective": "Migrate an exact historical orchestration record.",
+            "repository_root": str(root.resolve()),
+            "requested_scope": [],
+            "verification_command_ids": [],
+        },
+        "request_fingerprint": "",
+        "baseline_commit": git(root, "rev-parse", "HEAD").casefold(),
+        "workflow_generation": 0,
+        "plan_fingerprint": None,
+        "execution_references": [],
+        "user_story_ids": [],
+    }
+    from agentic_engineering_os.application import MissionRequest, request_fingerprint
+
+    request = MissionRequest(
+        str(document["request"]["objective"]),  # type: ignore[index]
+        str(root.resolve()),
+    )
+    document["request_fingerprint"] = request_fingerprint(request)
+    if source_version == "1.1":
+        document["parallel_integration"] = None
+    source = (json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
+    path.write_bytes(source)
+
+    plan = UpgradePlanner().plan(root)
+
+    assert plan.status is UpgradePlanStatus.NEEDS_HUMAN_CONFIRMATION
+    assert len(plan.steps) == 1
+    assert plan.steps[0].artifact is MigrationArtifact.ORCHESTRATION_RECORD
+    refused = RepositoryUpgradeService().apply(plan)
+    assert refused.status is UpgradeResultStatus.REFUSED
+    assert path.read_bytes() == source
+
+    result = RepositoryUpgradeService().apply(plan, confirmations=confirmations(plan))
+
+    assert result.status is UpgradeResultStatus.MIGRATED
+    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == "1.2"
+    assert (root / plan.steps[0].backup_path).read_bytes() == source

@@ -59,6 +59,10 @@ class ParallelMemberExecutorFactory(Protocol):
     def assess_parallel_capability(self) -> CodexCapabilityAssessment: ...
 
 
+class ParallelExecutionBudgetPort(Protocol):
+    def authorize(self, *, requested: int, repository_head: str) -> None: ...
+
+
 class ParallelCodexGroupStatus(str, Enum):
     READY_FOR_P3_HANDOFF = "READY_FOR_P3_HANDOFF"
     INCOMPLETE = "INCOMPLETE"
@@ -117,6 +121,7 @@ class ParallelCodexImplementerExecutor:
         project_store: ParallelProjectStateReader,
         executor_factory: ParallelMemberExecutorFactory,
         max_concurrency: int = 4,
+        execution_budget: ParallelExecutionBudgetPort | None = None,
     ) -> None:
         if (
             not isinstance(max_concurrency, int)
@@ -129,6 +134,7 @@ class ParallelCodexImplementerExecutor:
         self._project_store = project_store
         self._factory = executor_factory
         self._max_concurrency = max_concurrency
+        self._execution_budget = execution_budget
 
     def execute_group(
         self,
@@ -168,6 +174,10 @@ class ParallelCodexImplementerExecutor:
             )
         if workers > 1 and not self._parallel_supported(workers):
             workers = 1
+        if self._execution_budget is not None:
+            self._execution_budget.authorize(
+                requested=workers, repository_head=current_mission.observed_commit
+            )
 
         results: dict[str, ParallelCodexMemberExecution] = {}
         with ThreadPoolExecutor(

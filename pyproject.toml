@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,13 +8,29 @@ version = "0.1.0"
 description = "Fondation d'une méthode Agentic Engineering réutilisable."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "AGENTIC_ENGINEERING_OS contributors"}]
+classifiers = [
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3.11",
+]
 dependencies = ["jsonschema==4.25.1"]
 
 [project.scripts]
 agentic-os = "agentic_engineering_os.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest==8.4.2"]
+dev = [
+    "pytest==8.4.2",
+    "pytest-xdist==3.8.0",
+    "ruff==0.12.12",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = ["build", "dist"]
 
 [tool.setuptools.package-data]
 "agentic_engineering_os.resources" = [
@@ -25,3 +41,11 @@ dev = ["pytest==8.4.2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "unit: isolated deterministic tests",
+    "integration: multiple application or persistence boundaries",
+    "real_git: exercises real Git repositories or worktrees",
+    "real_codex: protected canary using the real Codex executable",
+    "clean_room: installed-wheel validation outside the checkout",
+    "soak: repeated stability and failure-injection runs",
+]

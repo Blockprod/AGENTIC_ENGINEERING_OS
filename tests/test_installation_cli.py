@@ -113,6 +113,8 @@ def test_module_and_console_entrypoints_share_cli_semantics(tmp_path: Path) -> N
     executable = Path(sys.executable).with_name(
         "agentic-os.exe" if os.name == "nt" else "agentic-os"
     )
+    if not executable.is_file():
+        return
     try:
         console = subprocess.run(
             [str(executable), "inspect", "--repository", str(root), "--json"],

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from agentic_engineering_os.application import (
     CodexExecutionStatus,
+    ExecutionObservabilityError,
     ExecutionOperationalEventReader,
     GovernancePolicyEvaluator,
     HealthEvaluationEngine,
@@ -411,7 +412,11 @@ def _event_store_facts(store: OperationalEventStore):
         events = store.read()
         retention = store.retention_exhausted()
         return events, "DEGRADED" if retention else "AVAILABLE", retention
-    except OperationalEventStoreError:
+    except (
+        ExecutionObservabilityError,
+        OperationalEventStoreError,
+        PersistenceError,
+    ):
         return (), "UNAVAILABLE", None
 
 

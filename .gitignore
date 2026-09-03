@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+build/
+dist/
 .idea/
 .vscode/
 .DS_Store
@@ -18,6 +20,7 @@ Thumbs.db
 .agentic-engineering-os/maintenance.json
 .agentic-engineering-os/.maintenance.*.tmp
 .agentic-engineering-os/.maintenance.lock
+.agentic-engineering-os/.mission.lock
 .agentic-engineering-os/operational-events/
 .agentic-engineering-os/orchestration.json
 .agentic-engineering-os/.orchestration.*.tmp

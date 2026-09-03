@@ -657,6 +657,25 @@ def test_large_stderr_is_bounded_and_marked(tmp_path: Path) -> None:
     assert "STDERR_TRUNCATED" in observation.issues
 
 
+def test_hostile_dual_stream_output_is_drained_without_unbounded_capture(
+    tmp_path: Path,
+) -> None:
+    root, commit = repository(tmp_path)
+    prompt = compiled(root, commit)
+
+    observation = adapter("hostile-output", maximum=2048).execute(
+        prompt, binding(prompt, root, timeout_seconds=10)
+    )
+
+    assert not observation.timed_out
+    assert observation.exit_code == 0
+    assert len(observation.stdout) == 2048
+    assert len(observation.stderr) == 2048
+    assert observation.stdout_truncated and observation.stderr_truncated
+    assert any(issue.startswith("STDOUT_CHARACTER_COUNT:") for issue in observation.issues)
+    assert any(issue.startswith("STDERR_CHARACTER_COUNT:") for issue in observation.issues)
+
+
 def test_spawn_failure_is_returned_as_observation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

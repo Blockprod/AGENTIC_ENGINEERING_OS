@@ -149,10 +149,10 @@ class OrchestrationRecord:
             raise ValueError("Certification references must be unique and canonical")
         if any(
             item.user_story_id not in self.user_story_ids
-            or item.workflow_generation != self.workflow_generation
+            or item.workflow_generation > self.workflow_generation
             for item in self.certification_references
         ):
-            raise ValueError("Certification references differ from active planning")
+            raise ValueError("Certification references differ from active planning history")
 
     @property
     def fingerprint(self) -> str:
@@ -188,6 +188,27 @@ class OrchestrationRecord:
         if not isinstance(reference, ParallelIntegrationReference):
             raise TypeError("canonical parallel integration reference is required")
         return replace(self, parallel_integration=reference)
+
+    def without_parallel_integration(self) -> OrchestrationRecord:
+        """Close the current integration checkpoint after its stories certify."""
+
+        return replace(self, parallel_integration=None)
+
+    def for_remediation_generation(
+        self, *, workflow_generation: int, baseline_commit: str
+    ) -> OrchestrationRecord:
+        """Advance only to the exact next generation and retain immutable history."""
+
+        if workflow_generation != self.workflow_generation + 1:
+            raise ValueError("remediation generation must be the exact successor")
+        if not _SHA40.fullmatch(baseline_commit):
+            raise ValueError("remediation baseline must be lowercase SHA-1")
+        return replace(
+            self,
+            baseline_commit=baseline_commit,
+            workflow_generation=workflow_generation,
+            parallel_integration=None,
+        )
 
     def with_certification_reference(
         self, reference: CertificationReference

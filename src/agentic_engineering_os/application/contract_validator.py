@@ -103,11 +103,7 @@ class ContractValidator:
                 return ValidationResult(contract=contract, errors=json_issues)
 
             structural_issues = tuple(
-                ValidationIssue(
-                    code="SCHEMA_VIOLATION",
-                    path=tuple(error.absolute_path),
-                    message=error.message,
-                )
+                _structural_issue(contract, error)
                 for error in sorted(
                     validator.iter_errors(candidate), key=_schema_error_sort_key
                 )
@@ -238,6 +234,23 @@ class ContractValidator:
 
 def _default_schema_directory() -> Path:
     return product_schema_directory()
+
+
+def _structural_issue(contract: str, error: object) -> ValidationIssue:
+    path = tuple(getattr(error, "absolute_path", ()))
+    validator = getattr(error, "validator", None)
+    code = (
+        "INVALID_TIMESTAMP"
+        if contract == "mission-state"
+        and path == ("updated_at",)
+        and validator == "format"
+        else "SCHEMA_VIOLATION"
+    )
+    return ValidationIssue(
+        code=code,
+        path=path,
+        message=str(getattr(error, "message", error)),
+    )
 
 
 def _schema_error_sort_key(error: object) -> tuple[tuple[str, ...], str]:

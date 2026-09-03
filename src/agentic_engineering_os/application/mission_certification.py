@@ -322,7 +322,6 @@ class MissionCertificationCoordinator:
             item
             for item in record.execution_references
             if item.role is MissionRole.ARCHITECT
-            and item.workflow_generation == record.workflow_generation
             and item.result_fingerprint == fingerprint
         )
         if len(references) != 1:

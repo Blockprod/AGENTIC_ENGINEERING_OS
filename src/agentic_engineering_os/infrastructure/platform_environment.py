@@ -301,7 +301,7 @@ def _platform_facts(
             PlatformCertification.WINDOWS_V1_TARGET,
             PathSemantics.WINDOWS_LOCAL,
             suffixes,
-            ProcessTerminationSemantics.DIRECT_CHILD_FORCE_KILL,
+            ProcessTerminationSemantics.WINDOWS_PROCESS_TREE_FORCE_KILL,
             False,
         )
     return PlatformFacts(

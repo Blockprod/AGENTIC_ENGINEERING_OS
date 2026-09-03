@@ -138,6 +138,44 @@ def test_certification_reference_is_story_generation_scoped(tmp_path) -> None:
         )
 
 
+def test_orchestration_advances_one_remediation_generation_and_keeps_history(
+    tmp_path,
+) -> None:
+    request = MissionRequest("Objective", str(tmp_path))
+    architect = RoleExecutionReference(
+        MissionRole.ARCHITECT, "US-1", 0, "r", "e", "b" * 64
+    )
+    certification = CertificationReference(
+        "US-1", 0, "CERT-1", "c" * 64, COMMIT
+    )
+    current = OrchestrationRecord(
+        ORCHESTRATION_RECORD_VERSION,
+        "mission-one",
+        request,
+        request_fingerprint(request),
+        COMMIT,
+        0,
+        "a" * 64,
+        (architect,),
+        ("US-1",),
+        certification_references=(certification,),
+    )
+
+    successor = current.for_remediation_generation(
+        workflow_generation=1, baseline_commit="3" * 40
+    )
+
+    assert successor.workflow_generation == 1
+    assert successor.baseline_commit == "3" * 40
+    assert successor.execution_references == (architect,)
+    assert successor.certification_references == (certification,)
+    assert successor.parallel_integration is None
+    with pytest.raises(ValueError, match="exact successor"):
+        current.for_remediation_generation(
+            workflow_generation=2, baseline_commit="3" * 40
+        )
+
+
 def test_certification_reference_round_trips_canonically(tmp_path) -> None:
     request = MissionRequest("Objective", str(tmp_path))
     record = OrchestrationRecord(

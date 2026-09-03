@@ -13,6 +13,8 @@ from threading import Barrier
 
 import pytest
 
+pytestmark = pytest.mark.real_codex
+
 from agentic_engineering_os.application import (
     CodexApprovalPolicy,
     CodexCapability,

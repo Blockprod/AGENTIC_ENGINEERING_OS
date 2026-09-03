@@ -228,6 +228,7 @@ def harness(
     ledger_error="LEDGER_ABSENT",
     maintenance=None,
     capabilities=None,
+    clock=None,
 ):
     config = configuration()
     recon = FakeReconnaissance(profile(tmp_path, config, **(profile_overrides or {})))
@@ -247,7 +248,7 @@ def harness(
         execution_state_store_factory=lambda root: ValueStore(
             CodexExecutionLedger(EXECUTION_LEDGER_VERSION, ()), error=ledger_error
         ),
-        now=lambda: NOW,
+        now=clock or (lambda: NOW),
     )
     return service, recon, maintenance, capabilities
 
@@ -275,6 +276,23 @@ def test_nominal_fake_admission_is_read_only_and_defers_structured_result(tmp_pa
     assert not result.missing_capabilities
     assert recon.calls == maintenance.calls == capabilities.calls == 1
     assert CodexOperationalCapabilityClass.STRUCTURED_RESULT not in result.missing_capabilities
+
+
+def test_capability_freshness_is_evaluated_after_slow_probes(tmp_path: Path) -> None:
+    observed = NOW + timedelta(minutes=1)
+    ticks = iter((NOW, NOW + timedelta(minutes=2)))
+    service, _, _, _ = harness(
+        tmp_path,
+        capabilities=FakeCapabilities(
+            capability_snapshot(tmp_path, observed_at=observed)
+        ),
+        clock=lambda: next(ticks),
+    )
+
+    result = service.evaluate(request(tmp_path))
+
+    assert result.status is MissionAdmissionStatus.ADMITTED
+    assert not result.blockers
 
 
 def test_non_adopted_repository_blocks_before_state_or_capability_work(tmp_path: Path) -> None:

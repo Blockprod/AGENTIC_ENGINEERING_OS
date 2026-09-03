@@ -33,6 +33,7 @@ from agentic_engineering_os.application import (
 )
 from agentic_engineering_os.domain import GateResult, MissionRole, MissionStatus, UserStoryStatus
 from agentic_engineering_os.infrastructure import GitMergeResult, WorktreeManagerError
+from tests._validated_execution_ledger import write_validated_implementer_execution
 
 from test_parallel_mission_workflow import (
     COMMAND,
@@ -84,8 +85,6 @@ def _commit_context(context, story) -> tuple[str, ...]:
             f"VALUE = '{story.id}-g{context.workflow_generation}'\n",
             encoding="utf-8",
         )
-    git(path, "add", ".")
-    git(path, "commit", "-m", f"feat: generation {context.workflow_generation} {story.id}")
     return changed
 
 
@@ -156,10 +155,14 @@ def test_implementer_failure_opens_new_generation_and_preserves_siblings(tmp_pat
     first = prepared.contexts[0]
     story = next(item for item in harness.project_store.load().user_stories if item.id == first.user_story_id)
     changed = _commit_context(first, story)
+    candidate = _candidate(first, story, declared=changed)
     completed = harness.workflow.submit_member(
         prepared,
         first.assignment_id,
-        _candidate(first, story, declared=changed),
+        candidate,
+        execution_id=write_validated_implementer_execution(
+            first, candidate, observed_at=NOW
+        ),
         implementer_input=ImplementerInput.from_handoff(first.handoff, story),
     )
     assert completed.result_commit
@@ -217,16 +220,29 @@ def test_gate_fail_remediation_replays_group_and_rejects_old_gate(tmp_path: Path
     for context in prepared.contexts:
         story = next(item for item in harness.project_store.load().user_stories if item.id == context.user_story_id)
         changed = _commit_context(context, story)
-        declared = changed[:1] if story.id == "US-0001" else changed
+        candidate = _candidate(context, story, declared=changed)
         members.append(
             harness.workflow.submit_member(
                 prepared,
                 context.assignment_id,
-                _candidate(context, story, declared=declared),
+                candidate,
+                execution_id=write_validated_implementer_execution(
+                    context, candidate, observed_at=NOW
+                ),
                 implementer_input=ImplementerInput.from_handoff(context.handoff, story),
             )
         )
     group = harness.workflow.complete_group(prepared, tuple(members))
+    drifted = next(
+        context for context in prepared.contexts if context.user_story_id == "US-0001"
+    )
+    drifted_path = Path(drifted.worktree_path)
+    (drifted_path / "src/0001.py").write_text(
+        "VALUE = 'unrecorded-post-completion-drift'\n",
+        encoding="utf-8",
+    )
+    git(drifted_path, "add", "src/0001.py")
+    git(drifted_path, "commit", "-m", "test: drift completed assignment")
     failed_attempt = harness.workflow.integrate_group(plan, group, updated_at=NOW)
     assert failed_attempt.gate_result.result is IntegrationGateClassification.FAIL
     assert failed_attempt.merge_result is None

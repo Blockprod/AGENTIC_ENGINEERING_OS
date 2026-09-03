@@ -330,6 +330,38 @@ class ControlLoop:
         self._save_candidate(current_state, candidate, operation="ADD_USER_STORY")
         return user_story
 
+    def add_user_stories(self, user_stories: Iterable[UserStory]) -> tuple[UserStory, ...]:
+        """Persist one complete validated Architect batch in a single mutation."""
+
+        if isinstance(user_stories, (str, bytes)):
+            raise ControlLoopError(
+                "INVALID_USER_STORY_BATCH", "User Stories must be an iterable of models"
+            )
+        stories = tuple(user_stories)
+        if not stories or any(not isinstance(item, UserStory) for item in stories):
+            raise ControlLoopError(
+                "INVALID_USER_STORY_BATCH", "a non-empty canonical User Story batch is required"
+            )
+        if any(item.status is not UserStoryStatus.PROPOSED for item in stories):
+            raise ControlLoopError(
+                "INVALID_INITIAL_USER_STORY_STATUS",
+                "new User Stories must enter ProjectState as PROPOSED",
+            )
+        identifiers = tuple(item.id for item in stories)
+        if len(set(identifiers)) != len(identifiers):
+            raise ControlLoopError(
+                "DUPLICATE_USER_STORY_ID", "Architect batch contains duplicate IDs"
+            )
+        current_state = self.load_state()
+        candidate = _candidate_state(current_state)
+        for item in stories:
+            _require_new_id(candidate.user_stories, "id", item.id, "User Story")
+            candidate.user_stories.append(_candidate_story(item))
+        self._save_candidate(
+            current_state, candidate, operation="ADD_USER_STORY_BATCH"
+        )
+        return stories
+
     def transition_user_story(
         self,
         user_story_id: str,

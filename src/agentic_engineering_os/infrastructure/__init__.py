@@ -43,6 +43,7 @@ from .repository_reconnaissance import (
     RepositoryReconnaissance,
     RepositoryReconnaissanceError,
 )
+from .repository_operation_lock import RepositoryOperationLock
 from .repository_initializer import RepositoryInitializer
 from .runtime_state_bootstrap import RuntimeStateBootstrap
 from .migration_registry import MigrationRegistryError, RepositoryMigrationRegistry
@@ -145,6 +146,7 @@ __all__ = [
     "ProjectConfigurationValidator",
     "ProjectStateStore",
     "RepositoryReconnaissance",
+    "RepositoryOperationLock",
     "RepositoryReconnaissanceError",
     "RepositoryInitializer",
     "RuntimeStateBootstrap",

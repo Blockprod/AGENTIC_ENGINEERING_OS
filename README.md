@@ -12,7 +12,7 @@ Statut : Phase 0 — `CERTIFIED / CLOSED` ; Phase 1 — `CERTIFIED / CLOSED` ;
 Phase 2 — `CERTIFIED / CLOSED` ; Phase 3 — `CERTIFIED / CLOSED` ;
 Phase 4 — `CERTIFIED / CLOSED` ; Phase 5 — `CERTIFIED / CLOSED` ;
 Phase 6 — `CERTIFIED / CLOSED` ; Phase 7 —
-`IN PROGRESS — P7.10 ENVIRONMENTALLY BLOCKED`
+`IN PROGRESS — v1 vertical integration and certification pending`
 
 Roadmap canonique :
 
@@ -24,11 +24,13 @@ Roadmap canonique :
 - P5 — Repository Deployment / Installation Kit
 - P6 — Production Governance & Observability
 - P7 — Generalization / Final Product Certification —
-  `IN PROGRESS — P7.10 ENVIRONMENTALLY BLOCKED`
+  `IN PROGRESS — v1 vertical integration and certification pending`
 
 Entrée opérateur canonique : `python -m agentic_engineering_os --help`.
 Le shim `agentic-os` est une commodité optionnelle susceptible d'être bloquée
 par Windows App Control / Code Integrity.
+
+Parcours mission v1 : `python -m agentic_engineering_os mission --help`.
 
 Documentation :
 

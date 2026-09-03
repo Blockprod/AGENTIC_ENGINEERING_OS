@@ -56,6 +56,7 @@ def configuration_candidate(project_id: str = "target") -> dict[str, object]:
         "repository_root_policy": "CONFIG_PARENT_GIT_ROOT",
         "toolchains": [],
         "verification_commands": [],
+        "gate_policies": [],
         "path_policy": {
             "allowed_paths": [],
             "protected_paths": [],

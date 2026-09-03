@@ -39,6 +39,7 @@ from .certifier import (
     CertifierVerdict,
 )
 from .control_loop import ControlLoop
+from .dag_validator import DAGValidationError, DAGValidator
 from .evidence_recorder import EvidenceObservation
 from .gate_evaluator import GateContract, GateEvaluation, GateEvaluationContext
 from .implementer import (
@@ -223,18 +224,36 @@ class SequentialMissionWorkflow:
                 "ARCHITECT_NOT_READY", "Architect did not produce READY"
             )
         matching = [story for story in candidate.user_stories if story.id == handoff.subject]
-        if len(matching) != 1 or len(candidate.user_stories) != 1:
+        if len(matching) != 1:
             raise SequentialMissionWorkflowError(
                 "AMBIGUOUS_ARCHITECT_STORY",
-                "V1 requires exactly one candidate matching the mission subject",
+                "Architect plan requires exactly one root candidate matching the mission subject",
             )
-        if any(story.id == handoff.subject for story in state.user_stories):
+        if claim_for_implementation and len(candidate.user_stories) != 1:
+            raise SequentialMissionWorkflowError(
+                "SEQUENTIAL_PLAN_REQUIRES_ONE_STORY",
+                "direct sequential execution requires exactly one candidate",
+            )
+        candidate_ids = {story.id for story in candidate.user_stories}
+        if any(story.id in candidate_ids for story in state.user_stories):
             raise SequentialMissionWorkflowError(
                 "USER_STORY_ALREADY_EXISTS", "Architect cannot replace a User Story"
             )
-        self._control_loop.add_user_story(deepcopy(matching[0]))
-        self._transition(handoff.subject, UserStoryStatus.PLANNED)
-        self._transition(handoff.subject, UserStoryStatus.READY)
+        projected = deepcopy(state)
+        projected.user_stories.extend(deepcopy(list(candidate.user_stories)))
+        try:
+            DAGValidator().build(projected)
+        except DAGValidationError as error:
+            raise SequentialMissionWorkflowError(
+                "INVALID_ARCHITECT_DAG", f"{error.code}: {error.message}"
+            ) from error
+        self._control_loop.add_user_stories(
+            deepcopy(tuple(candidate.user_stories))
+        )
+        for story in sorted(candidate.user_stories, key=lambda item: item.id):
+            self._transition(story.id, UserStoryStatus.PLANNED)
+        if claim_for_implementation:
+            self._transition(handoff.subject, UserStoryStatus.READY)
         persisted = self._story(handoff.subject)
         if persisted.human_approval.required and not persisted.human_approval.approved:
             waiting = self._advance(

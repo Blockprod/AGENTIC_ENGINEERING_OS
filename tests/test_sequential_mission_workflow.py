@@ -1173,7 +1173,7 @@ def test_human_required_blocks_then_applies_persisted_decision_and_resumes(
     assert ProjectStateStore(tmp_path).load().user_stories[0].status is UserStoryStatus.CERTIFIED
 
 
-def test_planning_only_acceptance_stops_at_ready(tmp_path: Path) -> None:
+def test_planning_only_acceptance_stops_at_planned(tmp_path: Path) -> None:
     workflow = make_workflow(tmp_path)
 
     result = workflow.accept_architect_plan(
@@ -1185,10 +1185,59 @@ def test_planning_only_acceptance_stops_at_ready(tmp_path: Path) -> None:
     assert result.recommended_next_action == (
         "Plan parallel execution for the validated User Story."
     )
-    assert persisted.status is UserStoryStatus.READY
+    assert persisted.status is UserStoryStatus.PLANNED
 
 
-def test_planning_only_human_resume_keeps_approved_story_ready(
+def test_planning_accepts_one_validated_multi_story_dag_atomically(
+    tmp_path: Path,
+) -> None:
+    workflow = make_workflow(tmp_path)
+    root = proposed_story()
+    dependent = replace(
+        proposed_story(),
+        id="US-0002",
+        title="Dependent story",
+        depends_on=("US-0001",),
+        acceptance_criteria=(
+            AcceptanceCriterion("AC-002", "The dependency is consumed.", True),
+        ),
+    )
+    candidate = replace(
+        architect_result(),
+        summary="Two dependent User Stories are specified.",
+        user_stories=(root, dependent),
+    )
+
+    result = workflow.accept_architect_plan(route(workflow), candidate, updated_at=NOW)
+
+    persisted = ProjectStateStore(tmp_path).load().user_stories
+    assert result.current_step is OperatingStep.ACT
+    assert tuple(item.id for item in persisted) == ("US-0001", "US-0002")
+    assert all(item.status is UserStoryStatus.PLANNED for item in persisted)
+
+
+def test_planning_refuses_cyclic_dag_before_project_mutation(tmp_path: Path) -> None:
+    workflow = make_workflow(tmp_path)
+    first = replace(proposed_story(), depends_on=("US-0002",))
+    second = replace(
+        proposed_story(),
+        id="US-0002",
+        title="Cyclic story",
+        depends_on=("US-0001",),
+        acceptance_criteria=(
+            AcceptanceCriterion("AC-002", "The cycle must be refused.", True),
+        ),
+    )
+    candidate = replace(architect_result(), user_stories=(first, second))
+
+    with pytest.raises(SequentialMissionWorkflowError) as captured:
+        workflow.accept_architect_plan(route(workflow), candidate, updated_at=NOW)
+
+    assert captured.value.code == "INVALID_ARCHITECT_DAG"
+    assert ProjectStateStore(tmp_path).load().user_stories == []
+
+
+def test_planning_only_human_resume_keeps_approved_story_planned(
     tmp_path: Path,
 ) -> None:
     workflow = make_workflow(tmp_path)
@@ -1199,7 +1248,7 @@ def test_planning_only_human_resume_keeps_approved_story_ready(
     persisted = ProjectStateStore(tmp_path).load().user_stories[0]
     assert waiting.status is MissionStatus.BLOCKED
     assert waiting.blockers == ("HUMAN_REQUIRED",)
-    assert persisted.status is UserStoryStatus.READY
+    assert persisted.status is UserStoryStatus.PLANNED
 
     workflow.record_evidence(
         EvidenceObservation(
@@ -1228,7 +1277,7 @@ def test_planning_only_human_resume_keeps_approved_story_ready(
     )
     assert persisted.human_approval.approved is True
     assert persisted.human_approval.approved_by == "Alice"
-    assert persisted.status is UserStoryStatus.READY
+    assert persisted.status is UserStoryStatus.PLANNED
 
 
 def test_not_applicable_requires_allowance_and_persists_it(tmp_path: Path) -> None:

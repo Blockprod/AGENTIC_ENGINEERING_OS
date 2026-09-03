@@ -348,7 +348,13 @@ class MissionReadinessPrecheck:
         facts["capabilities"] = _capability_facts(snapshot)
         if not isinstance(snapshot, MissionCapabilitySnapshot):
             return _blocked(request, [MissionAdmissionBlocker("CODEX_CAPABILITY_ASSESSMENT_INVALID", "capability provider returned an invalid value")], facts, head=head, project_id=project_id)
-        capability_blockers, missing = _capability_blockers(snapshot, configuration, evaluated_at)
+        try:
+            capability_evaluated_at = self._utc_now()
+        except Exception as error:
+            return _blocked(request, [_error_blocker("PRECISION_CLOCK_UNAVAILABLE", error)], facts, head=head, project_id=project_id)
+        capability_blockers, missing = _capability_blockers(
+            snapshot, configuration, capability_evaluated_at
+        )
         blockers.extend(capability_blockers)
         if blockers:
             return _result(request, MissionAdmissionStatus.BLOCKED, blockers, missing, facts, head, project_id)

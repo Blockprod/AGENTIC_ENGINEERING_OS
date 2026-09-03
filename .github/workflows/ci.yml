@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -c constraints-ci.txt -e .[dev]
+      - run: python -m compileall -q src tests
+      - run: git diff --check HEAD
+      - run: python -m ruff check --select E9,F63,F7,F82 src tests
+      - run: python -m pytest -q -m "unit or integration"
+
+  full-windows:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -c constraints-ci.txt -e .[dev]
+      - run: git --version
+      - name: Complete deterministic suite within the v1 performance budget
+        shell: pwsh
+        run: |
+          # 115% of the 527.12 s optimized median, rounded up.
+          $maximumSeconds = 607
+          $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+          python -m pytest -q -n 8 --dist loadfile -m "not real_codex and not clean_room and not soak" --durations=40
+          $pytestExit = $LASTEXITCODE
+          $stopwatch.Stop()
+          "full_suite_seconds=$($stopwatch.Elapsed.TotalSeconds)"
+          if ($pytestExit -ne 0) { exit $pytestExit }
+          if ($stopwatch.Elapsed.TotalSeconds -gt $maximumSeconds) {
+            throw "Full suite exceeded the v1 budget of $maximumSeconds seconds"
+          }
+
+  build-wheel:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -c constraints-ci.txt build
+      - run: python -m build
+        env:
+          PIP_CONSTRAINT: constraints-ci.txt
+      - name: Install and inspect wheel outside checkout
+        shell: pwsh
+        run: |
+          $wheel = (Get-ChildItem dist/*.whl -File | Select-Object -First 1).FullName
+          python -m pip install --force-reinstall $wheel
+          Push-Location $env:RUNNER_TEMP
+          try {
+            python -c "import agentic_engineering_os; from agentic_engineering_os.resources.product import product_schema_directory; print(agentic_engineering_os.__version__); print(product_schema_directory())"
+            python -m agentic_engineering_os mission --help
+          } finally { Pop-Location }
+      - run: python -m pip check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/*

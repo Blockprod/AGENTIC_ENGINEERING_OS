@@ -488,7 +488,14 @@ class ConfigurationResolver:
 def project_configuration_fingerprint(configuration: ProjectConfiguration) -> str:
     if not isinstance(configuration, ProjectConfiguration):
         raise TypeError("canonical ProjectConfiguration is required")
-    return _sha256_json(to_dict(configuration))
+    canonical = json.dumps(
+        to_dict(configuration),
+        ensure_ascii=False,
+        sort_keys=True,
+        indent=2,
+        separators=(",", ": "),
+    ) + "\n"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _hard_values(policy: HardSafetyPolicy) -> tuple[dict[ConfigurationKey, object], dict[ConfigurationKey, object]]:

@@ -1,0 +1,84 @@
+name: protected-canaries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-codex-clean-room:
+    runs-on: windows-2025
+    environment: protected-canary
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -c constraints-ci.txt -e .[dev] build
+      - name: Build and provision immutable clean-room wheel
+        shell: pwsh
+        run: |
+          $env:SOURCE_DATE_EPOCH = git show -s --format=%ct HEAD
+          $env:PIP_CONSTRAINT = (Resolve-Path constraints-ci.txt).Path
+          python -m build --wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $venv = Join-Path $env:RUNNER_TEMP 'agentic-os-clean-room'
+          python -m venv $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          $wheel = (Get-ChildItem dist/*.whl -File | Select-Object -First 1).FullName
+          & $python -m pip install -c constraints-ci.txt $wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "P79_INSTALLED_PYTHON=$python" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $provenance = [ordered]@{
+            schema_version = '1.0'
+            commit = (git rev-parse HEAD)
+            source_date_epoch = [int64]$env:SOURCE_DATE_EPOCH
+            wheel = [IO.Path]::GetFileName($wheel)
+            wheel_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $wheel).Hash.ToLower()
+            python = (python --version)
+            git = (git --version)
+            codex = (codex --version)
+          }
+          $provenance | ConvertTo-Json | Set-Content -Encoding utf8 dist/candidate-provenance.json
+      - name: Require explicitly provisioned Codex capability
+        shell: pwsh
+        run: |
+          if (-not (Get-Command codex -ErrorAction SilentlyContinue)) { throw 'Codex unavailable' }
+          $env:AGENTIC_OS_RUN_CODEX_CANARY = '1'
+          $env:AGENTIC_OS_RUN_P7_5_CODEX_PROBES = '1'
+          $env:AGENTIC_OS_RUN_INSTALLED_MISSION_CANARY = '1'
+          python -m pytest -q -m "real_codex or clean_room" --junitxml=dist/protected-canaries.xml
+      - name: Installed wheel dependency integrity
+        shell: pwsh
+        run: |
+          & $env:P79_INSTALLED_PYTHON -m pip check
+      - name: Two fresh install and uninstall cycles
+        shell: pwsh
+        run: |
+          $wheel = (Get-ChildItem dist/*.whl -File | Select-Object -First 1).FullName
+          foreach ($index in 1..2) {
+            $venv = Join-Path $env:RUNNER_TEMP "agentic-os-install-cycle-$index"
+            python -m venv $venv
+            $python = Join-Path $venv 'Scripts/python.exe'
+            & $python -m pip install -c constraints-ci.txt $wheel
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Push-Location $env:RUNNER_TEMP
+            try {
+              & $python -c "import agentic_engineering_os"
+            } finally { Pop-Location }
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $python -m pip uninstall --yes agentic-engineering-os
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $python -c "import agentic_engineering_os" 2>$null
+            if ($LASTEXITCODE -eq 0) { throw 'Package remained importable after uninstall' }
+          }
+      - name: Deterministic Git and recovery soak
+        run: python -m pytest -q -m soak --durations=20 --junitxml=dist/soak.xml
+      - name: Preserve candidate and observed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protected-candidate-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error

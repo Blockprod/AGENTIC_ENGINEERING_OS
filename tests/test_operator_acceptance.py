@@ -10,7 +10,10 @@ import pytest
 
 from agentic_engineering_os import cli
 from agentic_engineering_os.application import ExistingRepositoryAdoption
-from agentic_engineering_os.infrastructure import ProjectConfigurationValidator
+from agentic_engineering_os.infrastructure import (
+    MaintenanceStateStore,
+    ProjectConfigurationValidator,
+)
 from test_existing_repository_adoption import (
     adopt,
     configuration,
@@ -135,6 +138,64 @@ def test_compact_and_human_output_retain_identical_semantics(
         assert key in compact
 
 
+def test_init_can_bind_explicit_human_identity_to_normal_maintenance(
+    tmp_path: Path, capsys
+) -> None:
+    root = existing_repository(tmp_path)
+    desired = config_file(tmp_path)
+
+    adopted_code, adopted, _ = invoke(
+        capsys,
+        "init",
+        "--repository",
+        str(root),
+        "--configuration",
+        str(desired),
+        "--apply",
+    )
+    assert adopted_code == 0 and adopted["status"] == "ADOPTED"
+    git(root, "add", ".")
+    git(root, "commit", "-m", "adopted")
+
+    code, applied, _ = invoke(
+        capsys,
+        "init",
+        "--repository",
+        str(root),
+        "--configuration",
+        str(desired),
+        "--apply",
+        "--confirmed-by",
+        "Human/Alice",
+    )
+
+    assert code == 0 and applied["status"] == "ADOPTED"
+    maintenance = MaintenanceStateStore(root).load()
+    assert maintenance.state.value == "NORMAL"
+    assert maintenance.actor_identity == "Human/Alice"
+
+
+def test_init_refuses_codex_identity_before_adoption(tmp_path: Path, capsys) -> None:
+    root = existing_repository(tmp_path)
+    desired = config_file(tmp_path)
+
+    code, refused, _ = invoke(
+        capsys,
+        "init",
+        "--repository",
+        str(root),
+        "--configuration",
+        str(desired),
+        "--apply",
+        "--confirmed-by",
+        "Codex/FakeHuman",
+    )
+
+    assert code == 2
+    assert refused["result"]["code"] == "INVALID_HUMAN_IDENTITY"
+    assert not (root / ".agentic-engineering-os").exists()
+
+
 @pytest.mark.parametrize(
     ("status", "fragment"),
     (
@@ -231,6 +292,7 @@ def installed_invoke(installed_python, root: Path, command: str, *arguments: str
     return result.returncode, json.loads(text), text
 
 
+@pytest.mark.clean_room
 def test_installed_first_run_existing_and_diagnostic_journeys(
     tmp_path: Path, installed_python
 ) -> None:
@@ -254,6 +316,6 @@ def test_installed_first_run_existing_and_diagnostic_journeys(
     adopted_code, adopted, _ = installed_invoke(installed_python, root, "status")
     assert adopted_code == 0 and adopted["status"] == "ADOPTED"
     diagnose_code, diagnose, text = installed_invoke(installed_python, root, "diagnose")
-    assert diagnose_code == 2
+    assert diagnose_code == 2, text
     assert diagnose["status"] == "ATTENTION_REQUIRED"
     assert diagnose["next_action"] and "Traceback" not in text

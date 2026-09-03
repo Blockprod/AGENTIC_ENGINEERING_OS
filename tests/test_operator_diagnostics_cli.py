@@ -280,6 +280,8 @@ def test_json_is_canonical_and_module_entrypoint_matches(capsys, tmp_path: Path)
     executable = Path(sys.executable).with_name(
         "agentic-os.exe" if os.name == "nt" else "agentic-os"
     )
+    if not executable.is_file():
+        return
     try:
         console = subprocess.run(
             [str(executable), "metrics", "--repository", str(root), "--json"],
@@ -306,6 +308,20 @@ def test_commands_do_not_mutate_repository_or_authority(capsys, tmp_path: Path) 
         name in vars(cli)
         for name in ("StateTransitionService", "EvidenceRecorder", "CertificationService")
     )
+
+
+def test_diagnose_degrades_an_absent_lazy_execution_ledger(
+    capsys, tmp_path: Path
+) -> None:
+    root = _repository(tmp_path)
+    ExecutionStateStore(root).ledger_path.unlink()
+
+    code, payload, raw = _invoke(capsys, "diagnose", root)
+
+    assert code == 2
+    assert payload["status"] == "ATTENTION_REQUIRED"
+    assert payload["result"]["store_diagnostics"]["operational_event_store"] == "UNAVAILABLE"
+    assert "Traceback" not in raw
 
 
 def test_foreign_project_data_fails_closed_without_cross_project_aggregation(capsys, tmp_path: Path) -> None:

@@ -55,6 +55,14 @@ class MissionLifecycleStart:
     replaced_terminal_mission: bool
 
 
+@dataclass(frozen=True, slots=True)
+class MissionLifecyclePreparation:
+    """Exact non-mutating intent consumed by one guarded mission-state commit."""
+
+    mission: MissionState
+    previous_mission: MissionState | None
+
+
 class MissionLifecycleService:
     """Own only MissionState start/replacement; never mutate ProjectState."""
 
@@ -76,6 +84,18 @@ class MissionLifecycleService:
         *,
         updated_at: datetime,
     ) -> MissionLifecycleStart:
+        prepared = self.prepare(request, admission, updated_at=updated_at)
+        return self.commit(prepared)
+
+    def prepare(
+        self,
+        request: MissionRequest,
+        admission: MissionAdmission,
+        *,
+        updated_at: datetime,
+    ) -> MissionLifecyclePreparation:
+        """Validate a complete start without writing either mission store."""
+
         _validate_start_inputs(request, admission, updated_at)
         assert admission.maintenance_admission is not None
         self._maintenance.enforce(
@@ -109,8 +129,7 @@ class MissionLifecycleService:
                 raise MissionLifecycleError(
                     "MISSION_STATE_UNAVAILABLE", str(getattr(error, "code", error))
                 ) from error
-            self._mission_store.initialize(mission)
-            return MissionLifecycleStart(mission, False)
+            return MissionLifecyclePreparation(mission, None)
 
         if current.status not in {MissionStatus.COMPLETED, MissionStatus.CANCELLED}:
             raise MissionLifecycleError(
@@ -126,10 +145,53 @@ class MissionLifecycleService:
                 "PROJECT_WORK_NOT_TERMINAL",
                 "terminal mission replacement requires all existing User Stories terminal",
             )
+        return MissionLifecyclePreparation(mission, current)
+
+    def commit(
+        self, prepared: MissionLifecyclePreparation
+    ) -> MissionLifecycleStart:
+        """Persist one previously prepared intent after rechecking its predecessor."""
+
+        if not isinstance(prepared, MissionLifecyclePreparation):
+            raise MissionLifecycleError(
+                "INVALID_START_PREPARATION", "canonical preparation is required"
+            )
+        mission = prepared.mission
+        previous = prepared.previous_mission
+        if previous is None:
+            try:
+                self._mission_store.load()
+            except Exception as error:
+                if getattr(error, "code", None) != "MISSION_ABSENT":
+                    raise MissionLifecycleError(
+                        "MISSION_STATE_UNAVAILABLE", str(getattr(error, "code", error))
+                    ) from error
+            else:
+                raise MissionLifecycleError(
+                    "MISSION_START_CHANGED", "mission state appeared after preparation"
+                )
+            self._mission_store.initialize(mission)
+            persisted = self._mission_store.load()
+            if persisted != mission:
+                raise MissionLifecycleError(
+                    "MISSION_START_NOT_DURABLE", "initialized mission differs after reread"
+                )
+            return MissionLifecycleStart(mission, False)
+
+        try:
+            current = self._mission_store.load()
+        except Exception as error:
+            raise MissionLifecycleError(
+                "MISSION_STATE_UNAVAILABLE", str(getattr(error, "code", error))
+            ) from error
+        if current != previous:
+            raise MissionLifecycleError(
+                "MISSION_START_CHANGED", "terminal predecessor changed after preparation"
+            )
         authorization = _issue_authoritative_write(
             store_kind="MISSION_STATE",
             store=self._mission_store,
-            before_state=current,
+            before_state=previous,
             candidate_state=mission,
             operation="START_MISSION_REPLACE_TERMINAL",
         )
@@ -138,6 +200,11 @@ class MissionLifecycleService:
             authorization=authorization,
             operation="START_MISSION_REPLACE_TERMINAL",
         )
+        persisted = self._mission_store.load()
+        if persisted != mission:
+            raise MissionLifecycleError(
+                "MISSION_START_NOT_DURABLE", "replacement mission differs after reread"
+            )
         return MissionLifecycleStart(mission, True)
 
 
