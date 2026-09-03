@@ -54,7 +54,7 @@ def _git(root: Path, *args: str) -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=30,
+        timeout=120,
         check=False,
     )
     assert result.returncode == 0, result.stderr

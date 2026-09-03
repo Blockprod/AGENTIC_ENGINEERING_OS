@@ -100,7 +100,12 @@ def binding(prompt: CompiledPrompt, root: Path, **changes: object) -> CodexExecu
     return replace(value, **changes)
 
 
-def configuration(mode: str = "normal", *, maximum: int = 1_000_000) -> CodexRuntimeConfiguration:
+def configuration(
+    mode: str = "normal",
+    *,
+    maximum: int = 1_000_000,
+    version_timeout_seconds: float = 120.0,
+) -> CodexRuntimeConfiguration:
     executable = Path(sys.executable).resolve()
     return CodexRuntimeConfiguration(
         executable=str(executable),
@@ -109,6 +114,7 @@ def configuration(mode: str = "normal", *, maximum: int = 1_000_000) -> CodexRun
         expected_executable_sha256=digest(executable),
         launcher_arguments=(str(FAKE), "--fake-mode", mode),
         max_output_characters=maximum,
+        version_timeout_seconds=version_timeout_seconds,
         test_executable_injection=True,
     )
 
@@ -122,6 +128,8 @@ def adapter(mode: str = "normal", **kwargs: object) -> CodexRuntimeAdapter:
         }
         else None
     )
+    if mode == "help-timeout":
+        kwargs.setdefault("version_timeout_seconds", 1.0)
     return CodexRuntimeAdapter(
         configuration(mode, **kwargs), capability_discovery=discovery
     )
