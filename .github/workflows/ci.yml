@@ -40,9 +40,8 @@ jobs:
       - name: Complete deterministic suite within the v1 performance budget
         shell: pwsh
         run: |
-          # Bootstrap ceiling: after three terminal runs on this runner class,
-          # replace it with 115% of that runner-specific median (maximum 4020 s).
-          $maximumSeconds = 4020
+          # 115% of the 749.3139852 s windows-2025 median, rounded up.
+          $maximumSeconds = 862
           New-Item -ItemType Directory -Force -Path ci-evidence | Out-Null
           $stopwatch = [Diagnostics.Stopwatch]::StartNew()
           python -m pytest -q -n 8 --dist loadfile -m "not real_codex and not clean_room and not soak" --durations=40 --junitxml=ci-evidence/full-suite.xml

@@ -17,13 +17,13 @@ mural et refuse tout dépassement. Trois exécutions terminales locales du
 une étendue de 2,02 s (0,38 %), soit une réduction de 93,4 % face à la
 baseline P6. Cette médiane est propre à l'hôte local : le premier run
 `windows-2025` GitHub a observé 1 083,21 s avant de terminer sur un échec
-fonctionnel unique. Jusqu'à l'obtention de trois exécutions terminales vertes
-sur cette classe de runner, la CI applique donc le plafond bootstrap de
-4 020 s. Elle conserve un rapport JUnit et un enregistrement JSON de durée pour
-chaque exécution. Après trois exécutions terminales, le seuil de régression sera
-fixé à 115 % de leur médiane, arrondi à la seconde supérieure et plafonné à
-4 020 s. Le candidat immuable doit encore reproduire ce gate sur le runner de
-certification.
+fonctionnel unique. Trois exécutions terminales vertes `windows-2025`, runs
+GitHub `33808016961`, `33810945333` et `33812113027`, ont ensuite établi une
+médiane de 749,3139852 s. Le seuil de régression CI est donc fixé à 862 s,
+arrondi supérieur de 115 % de cette médiane et inférieur au plafond de
+4 020 s. Le workflow conserve un rapport JUnit et un enregistrement JSON de
+durée pour chaque exécution. Le candidat immuable doit encore reproduire ce
+gate sur le runner de certification.
 
 Le soak local du 2026-09-03 a produit un résultat terminal de **26 tests
 passants en 2 007,04 s** sur Windows/Python 3.11 : 10 missions mono-story,
