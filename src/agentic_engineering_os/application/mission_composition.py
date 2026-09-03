@@ -806,9 +806,9 @@ class _OperationalMissionEventSink:
 
 def build_production_mission_runner(repository: Path) -> MissionRunner:
     root = repository.resolve(strict=True)
-    runtime_configuration = _runtime_configuration(root)
     configuration_store = ProjectConfigurationLoader(root)
     configuration = configuration_store.load()
+    runtime_configuration = _runtime_configuration(root)
     mission_store = MissionStateStore(root)
     project_store = ProjectStateStore(root)
     execution_store = ExecutionStateStore(root)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from agentic_engineering_os import cli, mission_cli
+from agentic_engineering_os.application import mission_composition
 from test_mission_runner import harness
 from agentic_engineering_os.domain import HumanApproval
 
@@ -40,9 +41,10 @@ def test_mission_run_exposes_the_stable_flat_json_contract(
 
 
 def test_unconfigured_repository_is_a_structured_expected_refusal(
-    tmp_path, capsys
+    tmp_path, capsys, monkeypatch
 ) -> None:
     (tmp_path / ".agentic-engineering-os").mkdir()
+    monkeypatch.setattr(mission_composition.shutil, "which", lambda executable: None)
     code, payload, captured = invoke(
         capsys,
         "run",
