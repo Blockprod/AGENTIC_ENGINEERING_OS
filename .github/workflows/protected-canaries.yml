@@ -15,6 +15,34 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Install the official Codex CLI in the ephemeral runner
+        shell: pwsh
+        run: |
+          $codexHome = Join-Path $env:RUNNER_TEMP 'codex-home'
+          $codexBin = Join-Path $env:RUNNER_TEMP 'codex-bin'
+          New-Item -ItemType Directory -Force -Path $codexHome, $codexBin | Out-Null
+          $env:CODEX_HOME = $codexHome
+          $env:CODEX_INSTALL_DIR = $codexBin
+          $env:CODEX_NON_INTERACTIVE = '1'
+          irm https://chatgpt.com/codex/install.ps1 | iex
+          $env:PATH = "$codexBin;$env:PATH"
+          "CODEX_HOME=$codexHome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $codexBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          codex --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Authenticate Codex without exposing the project key
+        shell: pwsh
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
+            throw 'OPENAI_API_KEY is absent from the protected environment'
+          }
+          $env:OPENAI_API_KEY | codex login --with-api-key
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item Env:OPENAI_API_KEY
+          codex login status
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - run: python -m pip install -c constraints-ci.txt -e .[dev] build
       - name: Build and provision immutable clean-room wheel
         shell: pwsh
@@ -39,6 +67,7 @@ jobs:
             python = (python --version)
             git = (git --version)
             codex = (codex --version)
+            codex_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Get-Command codex).Source).Hash.ToLower()
           }
           $provenance | ConvertTo-Json | Set-Content -Encoding utf8 dist/candidate-provenance.json
       - name: Require explicitly provisioned Codex capability
@@ -82,3 +111,7 @@ jobs:
           name: protected-candidate-${{ github.sha }}
           path: dist/*
           if-no-files-found: error
+      - name: Remove the ephemeral Codex login
+        if: always()
+        shell: pwsh
+        run: codex logout
