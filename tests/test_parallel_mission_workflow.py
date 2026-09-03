@@ -29,6 +29,7 @@ from agentic_engineering_os.application import (
     ImplementerInput,
     ImplementerResult,
     ImplementerVerdict,
+    IntegratedStoryContext,
     ParallelCoordinationError,
     ParallelIntegrationAttempt,
     ParallelMissionWorkflow,
@@ -53,6 +54,8 @@ from agentic_engineering_os.application import (
     VerificationOutcome,
     VerificationResult,
 )
+from agentic_engineering_os.application.integrated_story_context import role_result_fingerprint
+from agentic_engineering_os.application.integration_gate import integration_gate_fingerprint
 from agentic_engineering_os.domain import (
     AcceptanceCriterion,
     EvidenceType,
@@ -325,6 +328,33 @@ def make_tester_result(
     )
 
 
+def make_integrated_context(
+    attempt: ParallelIntegrationAttempt,
+    story_id: str,
+    implementation: ImplementerResult,
+    *,
+    architect_fingerprint: str = "a" * 64,
+) -> IntegratedStoryContext:
+    member = next(
+        item for item in attempt.group_result.member_results if item.user_story_id == story_id
+    )
+    integrated = attempt.merge_result.integration_commit
+    assert integrated is not None
+    return IntegratedStoryContext(
+        mission_id=attempt.plan.mission_id,
+        workflow_generation=attempt.plan.workflow_generation,
+        user_story_id=story_id,
+        assignment_id=member.assignment_id,
+        architect_subject=story_id,
+        architect_baseline_commit=attempt.plan.baseline_commit,
+        architect_result_fingerprint=architect_fingerprint,
+        implementer_execution_id=f"test-{member.assignment_id}",
+        implementer_result_fingerprint=role_result_fingerprint(implementation),
+        worktree_baseline_commit=attempt.plan.baseline_commit,
+        implementation_commit=member.result_commit,
+        integration_gate_fingerprint=integration_gate_fingerprint(attempt.gate_result),
+        integrated_commit=integrated,
+    )
 def certify_member(
     harness: Harness,
     workflow: ParallelMissionWorkflow,
@@ -338,8 +368,33 @@ def certify_member(
     story = next(
         item for item in harness.project_store.load().user_stories if item.id == story_id
     )
-    implementation = replace(branch_result, observed_commit=commit)
-    dossier = workflow.accept_integrated_implementer(attempt, story_id, implementation)
+    implementation = branch_result
+    architecture = ArchitectResult(
+        mission_id=attempt.plan.mission_id,
+        workflow_generation=generation,
+        subject=story.id,
+        observed_commit=attempt.plan.baseline_commit,
+        summary="Story contract is explicit.",
+        assumptions=(),
+        decisions=(),
+        risks=(),
+        blockers=(),
+        user_stories=(replace(story, status=UserStoryStatus.PROPOSED),),
+        recommended_next_role=MissionRole.IMPLEMENTER,
+        verdict=ArchitectVerdict.READY,
+    )
+    integrated_context = make_integrated_context(
+        attempt,
+        story_id,
+        implementation,
+        architect_fingerprint=role_result_fingerprint(architecture),
+    )
+    dossier = workflow.accept_integrated_implementer(
+        attempt,
+        story_id,
+        implementation,
+        integrated_context=integrated_context,
+    )
     testing = make_tester_result(story, commit, generation=generation)
     dossier = workflow.accept_tester(dossier, testing)
     criterion = story.acceptance_criteria[0].id
@@ -395,20 +450,6 @@ def certify_member(
         verdict=ReviewerVerdict.READY_FOR_CERTIFICATION,
     )
     dossier = workflow.accept_reviewer(dossier, review)
-    architecture = ArchitectResult(
-        mission_id=attempt.plan.mission_id,
-        workflow_generation=generation,
-        subject=story.id,
-        observed_commit=commit,
-        summary="Story contract is explicit.",
-        assumptions=(),
-        decisions=(),
-        risks=(),
-        blockers=(),
-        user_stories=(replace(story, status=UserStoryStatus.PROPOSED),),
-        recommended_next_role=MissionRole.IMPLEMENTER,
-        verdict=ArchitectVerdict.READY,
-    )
     certifier = CertifierResult(
         mission_id=attempt.plan.mission_id,
         workflow_generation=generation,
@@ -657,7 +698,12 @@ def test_post_merge_tester_and_reviewer_failures_require_remediation(tmp_path: P
 
     story_one = next(item for item in harness.project_store.load().user_stories if item.id == "US-0001")
     dossier_one = harness.workflow.accept_integrated_implementer(
-        attempt, "US-0001", replace(branches["US-0001"], observed_commit=commit)
+        attempt,
+        "US-0001",
+        branches["US-0001"],
+        integrated_context=make_integrated_context(
+            attempt, "US-0001", branches["US-0001"]
+        ),
     )
     passing = make_tester_result(story_one, commit)
     failed_cases = tuple(
@@ -689,7 +735,12 @@ def test_post_merge_tester_and_reviewer_failures_require_remediation(tmp_path: P
 
     story_two = next(item for item in harness.project_store.load().user_stories if item.id == "US-0002")
     dossier_two = harness.workflow.accept_integrated_implementer(
-        attempt, "US-0002", replace(branches["US-0002"], observed_commit=commit)
+        attempt,
+        "US-0002",
+        branches["US-0002"],
+        integrated_context=make_integrated_context(
+            attempt, "US-0002", branches["US-0002"]
+        ),
     )
     dossier_two = harness.workflow.accept_tester(
         dossier_two, make_tester_result(story_two, commit)

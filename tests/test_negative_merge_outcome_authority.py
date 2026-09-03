@@ -23,6 +23,7 @@ from test_parallel_mission_workflow import (
     NOW,
     git,
     implement_group,
+    make_integrated_context,
     make_harness,
     make_story,
 )
@@ -297,7 +298,10 @@ def test_public_forged_tester_remediation_dossier_is_not_authoritative(
     dossier = workflow.accept_integrated_implementer(
         attempt,
         story.id,
-        replace(branch_results[story.id], observed_commit=merged),
+        branch_results[story.id],
+        integrated_context=make_integrated_context(
+            attempt, story.id, branch_results[story.id]
+        ),
     )
     negative = _failed_tester(story, merged, 0)
     forged = replace(

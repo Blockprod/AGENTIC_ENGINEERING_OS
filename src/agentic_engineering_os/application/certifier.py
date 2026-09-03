@@ -26,6 +26,7 @@ from ._identity import is_attributable_human_identity
 from .architect import ArchitectResult, ArchitectVerdict
 from .contract_validator import ContractValidator, ValidationIssue, ValidationResult
 from .implementer import ImplementerResult, ImplementerVerdict
+from .integrated_story_context import IntegratedStoryContext, role_result_fingerprint
 from .orchestrator import RoleHandoff
 from .reviewer import ReviewerResult, ReviewerVerdict
 from .tester import TesterResult, TesterVerdict
@@ -110,6 +111,7 @@ class CertifierInput:
     objective: str
     blockers: tuple[str, ...]
     instructions: str
+    integrated_context: IntegratedStoryContext | None = None
     _assignment_snapshot: str = field(default="", init=False, repr=False, compare=False)
 
     @classmethod
@@ -166,6 +168,69 @@ class CertifierInput:
             objective=handoff.objective,
             blockers=tuple(handoff.blockers),
             instructions=handoff.instructions,
+        )
+        object.__setattr__(result, "_assignment_snapshot", _input_snapshot(result))
+        return result
+
+    @classmethod
+    def from_integrated_handoff(
+        cls,
+        handoff: RoleHandoff,
+        user_story: UserStory,
+        architect_result: ArchitectResult,
+        implementer_result: ImplementerResult,
+        tester_result: TesterResult,
+        reviewer_result: ReviewerResult,
+        evidence: tuple[Evidence, ...],
+        gates: tuple[Gate, ...],
+        integrated_context: IntegratedStoryContext,
+        *,
+        authorized_not_applicable_gate_ids: frozenset[str] = frozenset(),
+        validator: ContractValidator | None = None,
+    ) -> CertifierInput:
+        """Build a post-merge dossier while preserving native historical commits."""
+
+        resolved = validator if validator is not None else ContractValidator()
+        _require_handoff(handoff)
+        _require_story(user_story, resolved)
+        if not isinstance(integrated_context, IntegratedStoryContext) or (
+            integrated_context.mission_id != handoff.mission_id
+            or integrated_context.workflow_generation != handoff.workflow_generation
+            or integrated_context.user_story_id != user_story.id
+            or integrated_context.integrated_commit != handoff.observed_commit.casefold()
+        ):
+            raise CertifierInputError("integration context differs from Certifier handoff")
+        if handoff.subject != user_story.id or handoff.blockers:
+            raise CertifierInputError("Certifier handoff is not assignable to the UserStory")
+        if not isinstance(evidence, tuple) or not all(isinstance(x, Evidence) for x in evidence):
+            raise CertifierInputError("evidence must be an explicit tuple of Evidence")
+        if not isinstance(gates, tuple) or not all(isinstance(x, Gate) for x in gates):
+            raise CertifierInputError("gates must be an explicit tuple of Gate")
+        if not isinstance(authorized_not_applicable_gate_ids, frozenset) or not all(
+            isinstance(x, str) and x.strip() for x in authorized_not_applicable_gate_ids
+        ):
+            raise CertifierInputError("NOT_APPLICABLE authority must be explicit Gate ids")
+        _require_unique_valid_domain_items(evidence, gates, resolved)
+        if role_result_fingerprint(architect_result) != integrated_context.architect_result_fingerprint:
+            raise CertifierInputError("ArchitectResult fingerprint differs from integration context")
+        if role_result_fingerprint(implementer_result) != integrated_context.implementer_result_fingerprint:
+            raise CertifierInputError("ImplementerResult fingerprint differs from integration context")
+        result = cls(
+            mission_id=handoff.mission_id,
+            workflow_generation=handoff.workflow_generation,
+            user_story=deepcopy(user_story),
+            architect_result=deepcopy(architect_result),
+            implementer_result=deepcopy(implementer_result),
+            tester_result=deepcopy(tester_result),
+            reviewer_result=deepcopy(reviewer_result),
+            evidence=deepcopy(evidence),
+            gates=deepcopy(gates),
+            observed_commit=handoff.observed_commit,
+            authorized_not_applicable_gate_ids=frozenset(authorized_not_applicable_gate_ids),
+            objective=handoff.objective,
+            blockers=tuple(handoff.blockers),
+            instructions=handoff.instructions,
+            integrated_context=integrated_context,
         )
         object.__setattr__(result, "_assignment_snapshot", _input_snapshot(result))
         return result
@@ -277,7 +342,18 @@ def _artifact_state(value: object, role: MissionRole, contract: str, expected_ve
     if value is None:
         return False, False
     valid = validator.validate(contract, to_dict(value)).is_valid
-    coherent = valid and getattr(value, "role", None) is role and getattr(value, "mission_id", None) == context.mission_id and getattr(value, "observed_commit", "").casefold() == context.observed_commit.casefold() and getattr(value, "verdict", None) is expected_verdict
+    expected_commit = context.observed_commit
+    expected_fingerprint: str | None = None
+    if context.integrated_context is not None:
+        if role is MissionRole.ARCHITECT:
+            expected_commit = context.integrated_context.architect_baseline_commit
+            expected_fingerprint = context.integrated_context.architect_result_fingerprint
+        elif role is MissionRole.IMPLEMENTER:
+            expected_commit = context.integrated_context.worktree_baseline_commit
+            expected_fingerprint = context.integrated_context.implementer_result_fingerprint
+    coherent = valid and getattr(value, "role", None) is role and getattr(value, "mission_id", None) == context.mission_id and getattr(value, "observed_commit", "").casefold() == expected_commit.casefold() and getattr(value, "verdict", None) is expected_verdict
+    if expected_fingerprint is not None:
+        coherent = coherent and role_result_fingerprint(value) == expected_fingerprint
     if role is MissionRole.ARCHITECT:
         coherent = coherent and getattr(value, "workflow_generation", -1) <= context.workflow_generation
         stories = [x for x in cast(ArchitectResult, value).user_stories if x.id == context.user_story.id]
@@ -502,6 +578,7 @@ def _input_snapshot(value: CertifierInput) -> str:
         "evidence": [to_dict(x) for x in value.evidence], "gates": [to_dict(x) for x in value.gates],
         "observed_commit": value.observed_commit, "authorized_not_applicable_gate_ids": sorted(value.authorized_not_applicable_gate_ids),
         "objective": value.objective, "blockers": list(value.blockers), "instructions": value.instructions,
+        "integrated_context": None if value.integrated_context is None else to_dict(value.integrated_context),
     }, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 

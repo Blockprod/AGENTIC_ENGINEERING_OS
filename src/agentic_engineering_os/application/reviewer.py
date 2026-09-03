@@ -28,6 +28,7 @@ from .implementer import (
     _normalize_path,
     _scope_matches,
 )
+from .integrated_story_context import IntegratedStoryContext, role_result_fingerprint
 from .orchestrator import RoleHandoff
 from .tester import (
     TestCaseType,
@@ -116,6 +117,57 @@ class ReviewerInput:
             )
         except ValueError as error:
             raise ReviewerInputError(str(error)) from error
+        _require_tester_result(
+            tester_result,
+            handoff=handoff,
+            user_story=user_story,
+            validator=resolved_validator,
+        )
+        result = cls(
+            mission_id=handoff.mission_id,
+            workflow_generation=handoff.workflow_generation,
+            user_story=deepcopy(user_story),
+            implementer_result=deepcopy(implementer_result),
+            tester_result=deepcopy(tester_result),
+            observed_commit=handoff.observed_commit,
+            objective=handoff.objective,
+            blockers=tuple(handoff.blockers),
+            instructions=handoff.instructions,
+        )
+        object.__setattr__(result, "_assignment_snapshot", _input_snapshot(result))
+        return result
+
+    @classmethod
+    def from_integrated_handoff(
+        cls,
+        handoff: RoleHandoff,
+        user_story: UserStory,
+        implementer_result: ImplementerResult,
+        tester_result: TesterResult,
+        integrated_context: IntegratedStoryContext,
+        *,
+        validator: ContractValidator | None = None,
+    ) -> ReviewerInput:
+        """Build a post-merge review while retaining native Implementer provenance."""
+
+        resolved_validator = validator if validator is not None else ContractValidator()
+        _require_reviewer_handoff(handoff)
+        _require_reviewable_story(user_story, resolved_validator)
+        _require_integrated_context(
+            integrated_context, handoff=handoff, user_story=user_story
+        )
+        try:
+            _require_implementer_result(
+                implementer_result,
+                handoff=handoff,
+                user_story=user_story,
+                validator=resolved_validator,
+                expected_commit=integrated_context.worktree_baseline_commit,
+            )
+        except ValueError as error:
+            raise ReviewerInputError(str(error)) from error
+        if role_result_fingerprint(implementer_result) != integrated_context.implementer_result_fingerprint:
+            raise ReviewerInputError("ImplementerResult fingerprint differs from integration context")
         _require_tester_result(
             tester_result,
             handoff=handoff,
@@ -263,6 +315,24 @@ def _require_reviewable_story(story: UserStory, validator: ContractValidator) ->
         or approval.approved_at is None
     ):
         raise ReviewerInputError("required Human approval is not satisfied")
+
+
+def _require_integrated_context(
+    context: IntegratedStoryContext,
+    *,
+    handoff: RoleHandoff,
+    user_story: UserStory,
+) -> None:
+    if not isinstance(context, IntegratedStoryContext):
+        raise ReviewerInputError("canonical IntegratedStoryContext is required")
+    if (
+        context.mission_id != handoff.mission_id
+        or context.workflow_generation != handoff.workflow_generation
+        or context.user_story_id != user_story.id
+        or handoff.subject != user_story.id
+        or context.integrated_commit != handoff.observed_commit.casefold()
+    ):
+        raise ReviewerInputError("integration context differs from Reviewer handoff")
 
 
 def _require_tester_result(

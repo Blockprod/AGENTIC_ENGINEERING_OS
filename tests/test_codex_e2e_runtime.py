@@ -16,6 +16,7 @@ from agentic_engineering_os.application import (
     CodexEndToEndRuntime,
     CodexEndToEndRuntimeError,
     ControlPlaneSubmission,
+    IntegratedStoryContext,
     ParallelCodexGroupStatus,
     ParallelCodexGroupExecution,
     ParallelCodexMemberExecution,
@@ -35,6 +36,7 @@ from agentic_engineering_os.application import (
     SingleRoleArtifacts,
     SingleRoleExecutionOutcome,
 )
+from agentic_engineering_os.application.integrated_story_context import role_result_fingerprint
 from agentic_engineering_os.application.execution_state import CodexExecutionStatus
 from agentic_engineering_os.domain import (
     MissionRole,
@@ -422,9 +424,25 @@ def test_post_merge_tester_uses_p3_handoff_and_returns_result_to_p3():
         MissionStatus.ACTIVE, MissionRole.ORCHESTRATOR, "Objective", role_handoff.subject,
         OperatingStep.ACT, "Continue P3", COMMIT, NOW, [],
     )
+    implementation = implementer_result(COMMIT)
+    integrated_context = IntegratedStoryContext(
+        role_handoff.mission_id,
+        role_handoff.workflow_generation,
+        role_handoff.subject,
+        "assignment-one",
+        role_handoff.subject,
+        COMMIT,
+        "b" * 64,
+        "execution-one",
+        role_result_fingerprint(implementation),
+        COMMIT,
+        "c" * 40,
+        "d" * 64,
+        COMMIT,
+    )
     dossier = ParallelStoryDossier(
         role_handoff.mission_id, role_handoff.workflow_generation, role_handoff.subject,
-        COMMIT, ParallelStoryStage.TESTING, implementer_result(COMMIT),
+        COMMIT, ParallelStoryStage.TESTING, implementation, integrated_context,
     )
     tester = make_tester_result(COMMIT)
     execution = SingleRoleExecutionOutcome(

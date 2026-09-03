@@ -25,6 +25,7 @@ from test_parallel_mission_workflow import (
     NOW,
     implement_group,
     make_harness,
+    make_integrated_context,
     make_story,
     make_tester_result,
 )
@@ -418,7 +419,12 @@ def test_tester_failure_mission_write_failure_recovers_exactly_once(
     story = harness.project_store.load().user_stories[0]
     workflow = harness.restarted()
     dossier = workflow.accept_integrated_implementer(
-        attempt, story.id, replace(branches[story.id], observed_commit=merged)
+        attempt,
+        story.id,
+        branches[story.id],
+        integrated_context=make_integrated_context(
+            attempt, story.id, branches[story.id]
+        ),
     )
     negative = workflow.accept_tester(dossier, _failed_tester(story, merged, 0))
     interrupted = _workflow(
@@ -442,7 +448,12 @@ def test_reviewer_failure_mission_write_failure_recovers_exactly_once(
     story = harness.project_store.load().user_stories[0]
     workflow = harness.restarted()
     dossier = workflow.accept_integrated_implementer(
-        attempt, story.id, replace(branches[story.id], observed_commit=merged)
+        attempt,
+        story.id,
+        branches[story.id],
+        integrated_context=make_integrated_context(
+            attempt, story.id, branches[story.id]
+        ),
     )
     tested = workflow.accept_tester(dossier, make_tester_result(story, merged))
     negative = workflow.accept_reviewer(

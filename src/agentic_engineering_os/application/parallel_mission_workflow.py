@@ -53,6 +53,7 @@ from .implementer import (
     ImplementerResultValidator,
     ImplementerVerdict,
 )
+from .integrated_story_context import IntegratedStoryContext
 from .integration_gate import (
     IntegrationGate,
     IntegrationGateClassification,
@@ -169,6 +170,7 @@ class ParallelStoryDossier:
     integration_commit: str
     stage: ParallelStoryStage
     implementer_result: ImplementerResult
+    integrated_context: IntegratedStoryContext
     tester_result: TesterResult | None = None
     reviewer_result: ReviewerResult | None = None
     certifier_result: CertifierResult | None = None
@@ -312,6 +314,11 @@ class ParallelMissionWorkflow:
             coordination_input=coordination,
             execution_plan=execution,
         )
+
+    def primary_inspection(self):
+        """Expose the manager-owned read-only primary observation to composition."""
+
+        return self._manager.inspect_primary()
 
     def prepare_group(
         self, plan: ParallelMissionPlan, group_index: int
@@ -1055,6 +1062,8 @@ class ParallelMissionWorkflow:
         attempt: ParallelIntegrationAttempt,
         user_story_id: str,
         candidate: ImplementerResult,
+        *,
+        integrated_context: IntegratedStoryContext | None = None,
     ) -> ParallelStoryDossier:
         self._require_no_pending_transaction()
         integration_commit = self._prove_integration(attempt)
@@ -1068,17 +1077,12 @@ class ParallelMissionWorkflow:
             raise ParallelMissionWorkflowError(
                 "ROLE_CHAIN_VIOLATION", "integrated Implementer requires IN_PROGRESS or exact TESTING replay"
             )
-        if candidate == member.implementer_result:
-            implementer_input = member.implementer_input
-        else:
-            handoff = self._handoff(
-                attempt.plan,
-                user_story_id,
-                MissionRole.IMPLEMENTER,
-                OperatingStep.ACT,
-                integration_commit,
+        if candidate != member.implementer_result:
+            raise ParallelMissionWorkflowError(
+                "INVALID_INTEGRATED_IMPLEMENTER",
+                "historical Implementer artifact differs from the gated member",
             )
-            implementer_input = ImplementerInput.from_handoff(handoff, story)
+        implementer_input = member.implementer_input
         validation = self._implementer_validator.validate(
             candidate, implementer_input=implementer_input
         )
@@ -1092,6 +1096,13 @@ class ParallelMissionWorkflow:
             or candidate.verdict is not ImplementerVerdict.READY_FOR_TEST
             or candidate.files_changed != gate_member.changed_files
             or member.user_story_id != user_story_id
+            or not isinstance(integrated_context, IntegratedStoryContext)
+            or integrated_context.mission_id != attempt.plan.mission_id
+            or integrated_context.workflow_generation != attempt.plan.workflow_generation
+            or integrated_context.user_story_id != user_story_id
+            or integrated_context.assignment_id != member.assignment_id
+            or integrated_context.implementation_commit != member.result_commit
+            or integrated_context.integrated_commit != integration_commit
         ):
             raise ParallelMissionWorkflowError(
                 "INVALID_INTEGRATED_IMPLEMENTER",
@@ -1113,6 +1124,7 @@ class ParallelMissionWorkflow:
             integration_commit=integration_commit,
             stage=ParallelStoryStage.TESTING,
             implementer_result=candidate,
+            integrated_context=integrated_context,
         )
 
     def runtime_handoff(
@@ -1145,8 +1157,8 @@ class ParallelMissionWorkflow:
         self._require_dossier(dossier, ParallelStoryStage.TESTING)
         story = self._story(dossier.user_story_id)
         handoff = self._dossier_handoff(dossier, MissionRole.TESTER, OperatingStep.VERIFY)
-        tester_input = TesterInput.from_handoff(
-            handoff, story, dossier.implementer_result
+        tester_input = TesterInput.from_integrated_handoff(
+            handoff, story, dossier.implementer_result, dossier.integrated_context
         )
         validation = self._tester_validator.validate(candidate, tester_input=tester_input)
         if not validation.is_valid:
@@ -1189,11 +1201,12 @@ class ParallelMissionWorkflow:
             )
         story = self._story(dossier.user_story_id)
         handoff = self._dossier_handoff(dossier, MissionRole.REVIEWER, OperatingStep.REPORT)
-        reviewer_input = ReviewerInput.from_handoff(
+        reviewer_input = ReviewerInput.from_integrated_handoff(
             handoff,
             story,
             dossier.implementer_result,
             dossier.tester_result,
+            dossier.integrated_context,
         )
         validation = self._reviewer_validator.validate(
             candidate, reviewer_input=reviewer_input
@@ -1251,7 +1264,7 @@ class ParallelMissionWorkflow:
         handoff = self._dossier_handoff(
             dossier, MissionRole.CERTIFIER, OperatingStep.CONTROLLED_TRANSITION
         )
-        certifier_input = CertifierInput.from_handoff(
+        certifier_input = CertifierInput.from_integrated_handoff(
             handoff,
             story,
             architect_result,
@@ -1260,6 +1273,7 @@ class ParallelMissionWorkflow:
             dossier.reviewer_result,
             tuple(state.evidence),
             tuple(state.gates),
+            dossier.integrated_context,
             authorized_not_applicable_gate_ids=authorized_not_applicable_gate_ids,
         )
         validation = self._certifier_validator.validate(

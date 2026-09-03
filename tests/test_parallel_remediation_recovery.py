@@ -41,6 +41,7 @@ from test_parallel_mission_workflow import (
     git,
     implement_group,
     make_harness,
+    make_integrated_context,
     make_story,
     make_tester_result,
 )
@@ -258,7 +259,12 @@ def test_tester_failure_uses_forward_remediation_and_rejects_old_roles(tmp_path:
     story = next(item for item in harness.project_store.load().user_stories if item.id == "US-0001")
     workflow = harness.restarted()
     old_dossier = workflow.accept_integrated_implementer(
-        attempt, "US-0001", replace(branches["US-0001"], observed_commit=merged)
+        attempt,
+        "US-0001",
+        branches["US-0001"],
+        integrated_context=make_integrated_context(
+            attempt, "US-0001", branches["US-0001"]
+        ),
     )
     old_testing = _failed_tester(story, merged, 0)
     blocked_testing = replace(
@@ -323,7 +329,12 @@ def test_reviewer_remediation_replays_tester_and_rejects_old_review_dossier(tmp_
     story = next(item for item in harness.project_store.load().user_stories if item.id == "US-0001")
     workflow = harness.restarted()
     dossier = workflow.accept_integrated_implementer(
-        attempt, "US-0001", replace(branches["US-0001"], observed_commit=merged)
+        attempt,
+        "US-0001",
+        branches["US-0001"],
+        integrated_context=make_integrated_context(
+            attempt, "US-0001", branches["US-0001"]
+        ),
     )
     review_stage = workflow.accept_tester(dossier, make_tester_result(story, merged))
     blocked_review = replace(

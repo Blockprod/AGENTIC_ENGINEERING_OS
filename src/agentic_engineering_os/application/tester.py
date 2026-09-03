@@ -29,6 +29,7 @@ from .implementer import (
     _normalize_path,
     _scope_matches,
 )
+from .integrated_story_context import IntegratedStoryContext, role_result_fingerprint
 from .orchestrator import RoleHandoff
 
 
@@ -124,6 +125,46 @@ class TesterInput:
             user_story=user_story,
             validator=resolved_validator,
         )
+        result = cls(
+            mission_id=handoff.mission_id,
+            workflow_generation=handoff.workflow_generation,
+            user_story=deepcopy(user_story),
+            implementer_result=deepcopy(implementer_result),
+            observed_commit=handoff.observed_commit,
+            objective=handoff.objective,
+            blockers=tuple(handoff.blockers),
+            instructions=handoff.instructions,
+        )
+        object.__setattr__(result, "_assignment_snapshot", _input_snapshot(result))
+        return result
+
+    @classmethod
+    def from_integrated_handoff(
+        cls,
+        handoff: RoleHandoff,
+        user_story: UserStory,
+        implementer_result: ImplementerResult,
+        integrated_context: IntegratedStoryContext,
+        *,
+        validator: ContractValidator | None = None,
+    ) -> TesterInput:
+        """Build a Tester assignment without rewriting historical Implementer facts."""
+
+        resolved_validator = validator if validator is not None else ContractValidator()
+        _require_tester_handoff(handoff)
+        _require_testable_story(user_story, resolved_validator)
+        _require_integrated_context(
+            integrated_context, handoff=handoff, user_story=user_story
+        )
+        _require_implementer_result(
+            implementer_result,
+            handoff=handoff,
+            user_story=user_story,
+            validator=resolved_validator,
+            expected_commit=integrated_context.worktree_baseline_commit,
+        )
+        if role_result_fingerprint(implementer_result) != integrated_context.implementer_result_fingerprint:
+            raise TesterInputError("ImplementerResult fingerprint differs from integration context")
         result = cls(
             mission_id=handoff.mission_id,
             workflow_generation=handoff.workflow_generation,
@@ -350,6 +391,7 @@ def _require_implementer_result(
     handoff: RoleHandoff,
     user_story: UserStory,
     validator: ContractValidator,
+    expected_commit: str | None = None,
 ) -> None:
     if not isinstance(result, ImplementerResult):
         raise TesterInputError("input must contain an ImplementerResult")
@@ -363,7 +405,8 @@ def _require_implementer_result(
         or result.workflow_generation != handoff.workflow_generation
         or result.subject != user_story.id
         or result.user_story_id != user_story.id
-        or result.observed_commit.casefold() != handoff.observed_commit.casefold()
+        or result.observed_commit.casefold()
+        != (expected_commit or handoff.observed_commit).casefold()
     ):
         raise TesterInputError("ImplementerResult is incoherent with Tester context")
     normalized_files = _require_paths_in_story_scope(result.files_changed, user_story)
@@ -382,6 +425,24 @@ def _require_implementer_result(
         raise TesterInputError("ImplementerResult command results are incoherent")
     if any(item.required and item.result.value != GateResult.PASS.value for item in result.verification_results):
         raise TesterInputError("ImplementerResult required verification is not PASS")
+
+
+def _require_integrated_context(
+    context: IntegratedStoryContext,
+    *,
+    handoff: RoleHandoff,
+    user_story: UserStory,
+) -> None:
+    if not isinstance(context, IntegratedStoryContext):
+        raise TesterInputError("canonical IntegratedStoryContext is required")
+    if (
+        context.mission_id != handoff.mission_id
+        or context.workflow_generation != handoff.workflow_generation
+        or context.user_story_id != user_story.id
+        or handoff.subject != user_story.id
+        or context.integrated_commit != handoff.observed_commit.casefold()
+    ):
+        raise TesterInputError("integration context differs from Tester handoff")
 
 
 def _require_paths_in_story_scope(paths: tuple[str, ...], story: UserStory) -> list[str]:

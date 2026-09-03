@@ -17,6 +17,7 @@ from agentic_engineering_os.infrastructure.execution_state_store import Executio
 from .codex_e2e_runtime import ParallelCodexRuntimeResult
 from .execution_state import CodexExecutionRecord, CodexExecutionStatus, result_json_fingerprint
 from .implementer import ImplementerInput, ImplementerResult, ImplementerResultValidator, ImplementerVerdict
+from .integrated_story_context import IntegratedStoryContext, IntegratedStoryContextError
 from .integration_gate import IntegrationGateClassification, integration_gate_fingerprint
 from .merge_coordinator import MergeStatus
 from .orchestration_record import OrchestrationRecord, ParallelIntegrationReference, RoleExecutionReference
@@ -40,6 +41,7 @@ class MissionIntegrationResult:
     blockers: tuple[str, ...]
     next_role: MissionRole | None
     implementer_results: tuple[ImplementerResult, ...] = ()
+    integrated_contexts: tuple[IntegratedStoryContext, ...] = ()
 
 
 class MissionIntegrationError(RuntimeError):
@@ -186,13 +188,43 @@ class MissionIntegrationCoordinator:
         ):
             return self._blocked(record, "MERGE_NOT_COMPLETED")
         integrated = attempt.merge_result.integration_commit
-        for member in members:
-            self._workflow.accept_integrated_implementer(
-                attempt, member.user_story_id, member.implementer_result
-            )
         progress = replace(progress, integrated_commit=integrated)
         if record.parallel_integration != progress:
             record = self._replace(record, record.with_parallel_integration(progress))
+        primary = self._workflow.primary_inspection()
+        integrated_contexts: list[IntegratedStoryContext] = []
+        for member in members:
+            prepared_context = next(
+                item
+                for item in prepared.contexts
+                if item.assignment_id == member.assignment_id
+            )
+            execution = _validated_execution(prepared_context)
+            if execution is None:
+                raise MissionIntegrationError(
+                    "IMPLEMENTER_REFERENCE_MISSING", "validated execution is absent"
+                )
+            try:
+                context = IntegratedStoryContext.reconstruct(
+                    orchestration=record,
+                    assignment=self._workflow.assignment(member.assignment_id),
+                    execution=execution,
+                    implementer_result=member.implementer_result,
+                    gate_result=attempt.gate_result,
+                    primary_commit=primary.head_commit,
+                    primary_clean=primary.clean,
+                )
+            except IntegratedStoryContextError as error:
+                raise MissionIntegrationError(
+                    "INTEGRATED_CONTEXT_INVALID", str(error)
+                ) from error
+            self._workflow.accept_integrated_implementer(
+                attempt,
+                member.user_story_id,
+                member.implementer_result,
+                integrated_context=context,
+            )
+            integrated_contexts.append(context)
         project = self._project()
         if any(
             _story(project, identifier).status is not UserStoryStatus.TESTING
@@ -210,6 +242,7 @@ class MissionIntegrationCoordinator:
             (),
             MissionRole.TESTER,
             tuple(member.implementer_result for member in members),
+            tuple(integrated_contexts),
         )
 
     def _reconstruct_members(

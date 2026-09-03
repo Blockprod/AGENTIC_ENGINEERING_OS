@@ -239,6 +239,10 @@ from .mission_integration import (
     MissionIntegrationResult,
     MissionIntegrationStatus,
 )
+from .integrated_story_context import (
+    IntegratedStoryContext,
+    IntegratedStoryContextError,
+)
 from .orchestration_record import (
     ORCHESTRATION_RECORD_VERSION,
     OrchestrationRecord,
@@ -420,6 +424,8 @@ __all__ = [
     "MissionIntegrationError",
     "MissionIntegrationResult",
     "MissionIntegrationStatus",
+    "IntegratedStoryContext",
+    "IntegratedStoryContextError",
     "ORCHESTRATION_RECORD_VERSION",
     "OrchestrationRecord",
     "ParallelIntegrationReference",

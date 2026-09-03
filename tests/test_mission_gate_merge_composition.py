@@ -167,6 +167,9 @@ def test_golden_path_and_completed_restart_are_exactly_once(tmp_path: Path) -> N
 
     assert first.status is second.status is MissionIntegrationStatus.READY_FOR_TESTER
     assert first.integrated_commit == second.integrated_commit == integrated
+    assert first.integrated_contexts == second.integrated_contexts
+    assert first.integrated_contexts[0].integrated_commit == integrated
+    assert first.implementer_results[0].observed_commit == harness.baseline
     assert runtime.calls == 1
     assert restarted_runtime.calls == 0
     assert git(harness.root, "rev-list", "--count", f"{harness.baseline}..HEAD") == commit_count
