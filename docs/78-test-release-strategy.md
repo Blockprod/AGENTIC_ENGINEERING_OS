@@ -15,10 +15,15 @@ mural et refuse tout dépassement. Trois exécutions terminales locales du
 2026-09-03 ont produit exactement 2 106 succès et 12 skips attendus en
 528,10 s, 526,08 s et 527,12 s. La médiane optimisée est donc 527,12 s, avec
 une étendue de 2,02 s (0,38 %), soit une réduction de 93,4 % face à la
-baseline P6. Le seuil de régression CI est fixé à 607 s, arrondi supérieur
-de 115 % de cette médiane et inférieur au plafond de 4 020 s. Le workflow
-conserve le rapport `--durations` comme Evidence de performance ; le candidat
-immuable doit encore reproduire ce gate sur le runner de certification.
+baseline P6. Cette médiane est propre à l'hôte local : le premier run
+`windows-2025` GitHub a observé 1 083,21 s avant de terminer sur un échec
+fonctionnel unique. Jusqu'à l'obtention de trois exécutions terminales vertes
+sur cette classe de runner, la CI applique donc le plafond bootstrap de
+4 020 s. Elle conserve un rapport JUnit et un enregistrement JSON de durée pour
+chaque exécution. Après trois exécutions terminales, le seuil de régression sera
+fixé à 115 % de leur médiane, arrondi à la seconde supérieure et plafonné à
+4 020 s. Le candidat immuable doit encore reproduire ce gate sur le runner de
+certification.
 
 Le soak local du 2026-09-03 a produit un résultat terminal de **26 tests
 passants en 2 007,04 s** sur Windows/Python 3.11 : 10 missions mono-story,

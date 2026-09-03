@@ -13,8 +13,8 @@ jobs:
   fast:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
@@ -29,8 +29,8 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
@@ -40,23 +40,42 @@ jobs:
       - name: Complete deterministic suite within the v1 performance budget
         shell: pwsh
         run: |
-          # 115% of the 527.12 s optimized median, rounded up.
-          $maximumSeconds = 607
+          # Bootstrap ceiling: after three terminal runs on this runner class,
+          # replace it with 115% of that runner-specific median (maximum 4020 s).
+          $maximumSeconds = 4020
+          New-Item -ItemType Directory -Force -Path ci-evidence | Out-Null
           $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-          python -m pytest -q -n 8 --dist loadfile -m "not real_codex and not clean_room and not soak" --durations=40
+          python -m pytest -q -n 8 --dist loadfile -m "not real_codex and not clean_room and not soak" --durations=40 --junitxml=ci-evidence/full-suite.xml
           $pytestExit = $LASTEXITCODE
           $stopwatch.Stop()
-          "full_suite_seconds=$($stopwatch.Elapsed.TotalSeconds)"
+          $elapsedSeconds = $stopwatch.Elapsed.TotalSeconds
+          "full_suite_seconds=$elapsedSeconds"
+          [ordered]@{
+            schema_version = '1.0'
+            commit = $env:GITHUB_SHA
+            runner_os = $env:RUNNER_OS
+            runner_arch = $env:RUNNER_ARCH
+            elapsed_seconds = $elapsedSeconds
+            pytest_exit_code = $pytestExit
+            maximum_seconds = $maximumSeconds
+          } | ConvertTo-Json | Set-Content -Encoding utf8 ci-evidence/full-suite-timing.json
           if ($pytestExit -ne 0) { exit $pytestExit }
-          if ($stopwatch.Elapsed.TotalSeconds -gt $maximumSeconds) {
+          if ($elapsedSeconds -gt $maximumSeconds) {
             throw "Full suite exceeded the v1 budget of $maximumSeconds seconds"
           }
+      - name: Preserve full-suite timing evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: full-suite-timing-${{ github.sha }}
+          path: ci-evidence/*
+          if-no-files-found: error
 
   build-wheel:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
@@ -75,7 +94,7 @@ jobs:
             python -m agentic_engineering_os mission --help
           } finally { Pop-Location }
       - run: python -m pip check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: python-distributions
           path: dist/*
