@@ -65,7 +65,7 @@ jobs:
           }
       - name: Preserve full-suite timing evidence
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: full-suite-timing-${{ github.sha }}
           path: ci-evidence/*
@@ -94,7 +94,7 @@ jobs:
             python -m agentic_engineering_os mission --help
           } finally { Pop-Location }
       - run: python -m pip check
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: python-distributions
           path: dist/*
