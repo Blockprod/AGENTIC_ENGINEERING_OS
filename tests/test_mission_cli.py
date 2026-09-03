@@ -37,6 +37,7 @@ def test_mission_run_exposes_the_stable_flat_json_contract(
     assert payload["generation"] == 0
     assert payload["current_story_ids"] == []
     assert payload["completed_story_ids"] == ["US-0001", "US-0002"]
+    assert payload["blocker_details"] == []
     assert "repository_head" in payload and "evidence_references" in payload
 
 
@@ -57,6 +58,10 @@ def test_unconfigured_repository_is_a_structured_expected_refusal(
     assert code == 2
     assert payload["status"] == "REFUSED"
     assert payload["blockers"] == ["CONFIG_ABSENT"]
+    assert len(payload["blocker_details"]) == 1
+    assert payload["blocker_details"][0].startswith(
+        "CONFIG_ABSENT:project configuration is absent:"
+    )
     assert "Traceback" not in captured.err
 
 
@@ -79,6 +84,9 @@ def test_resume_refuses_invalid_human_evidence_before_any_runtime_call(
 
     assert code == 2
     assert payload["blockers"] == ["HUMAN_EVIDENCE_INVALID"]
+    assert payload["blocker_details"] == [
+        "HUMAN_EVIDENCE_INVALID:Human Evidence violates its canonical schema"
+    ]
 
 
 def test_resume_accepts_one_canonical_attributable_human_evidence(

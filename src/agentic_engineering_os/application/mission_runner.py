@@ -89,6 +89,7 @@ class MissionRunResult:
     next_action: str
     repository_head: str | None
     evidence_references: tuple[str, ...] = ()
+    blocker_details: tuple[str, ...] = ()
 
 
 class MissionRunnerError(RuntimeError):
@@ -224,6 +225,9 @@ class MissionRunner:
                 tuple(item.code for item in admission.blockers),
                 admission.next_action,
                 admission.repository_head,
+                blocker_details=tuple(
+                    f"{item.code}:{item.detail}" for item in admission.blockers
+                ),
             ), updated_at)
         planning = self._planning.start(request, admission, updated_at=updated_at)
         if planning.status is not MissionPlanningStatus.PLANNED:

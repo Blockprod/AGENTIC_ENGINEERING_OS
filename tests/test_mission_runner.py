@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from agentic_engineering_os.application import (
     MissionAdmission,
+    MissionAdmissionBlocker,
     MissionAdmissionStatus,
     MissionCertificationResult,
     MissionCertificationStatus,
@@ -385,6 +386,41 @@ def test_runner_completes_every_role_and_finalizes_multi_story_mission(tmp_path:
     ]
     assert workflow.finalized == 1
     assert verification.calls == ["US-0001", "US-0002"]
+
+
+def test_admission_refusal_preserves_distinct_blocker_diagnostics(tmp_path: Path) -> None:
+    request, runner, *_ = harness(tmp_path)
+    refusal = MissionAdmission(
+        MissionAdmissionStatus.BLOCKED,
+        request_fingerprint(request),
+        "d" * 64,
+        HEAD,
+        "project",
+        (
+            MissionAdmissionBlocker(
+                "REQUIRED_CAPABILITY_UNAVAILABLE",
+                "COMMAND_EXECUTION:CAPABILITY_TOOL_EXECUTION_FAILED",
+            ),
+            MissionAdmissionBlocker(
+                "REQUIRED_CAPABILITY_UNAVAILABLE",
+                "WORKSPACE_EDIT:OPERATIONAL_PROBE_RESULT_MISMATCH",
+            ),
+        ),
+        (),
+        "resolve",
+    )
+    runner._admission = Admission(refusal)
+
+    result = runner.run(request, updated_at=NOW)
+
+    assert result.blockers == (
+        "REQUIRED_CAPABILITY_UNAVAILABLE",
+        "REQUIRED_CAPABILITY_UNAVAILABLE",
+    )
+    assert result.blocker_details == (
+        "REQUIRED_CAPABILITY_UNAVAILABLE:COMMAND_EXECUTION:CAPABILITY_TOOL_EXECUTION_FAILED",
+        "REQUIRED_CAPABILITY_UNAVAILABLE:WORKSPACE_EDIT:OPERATIONAL_PROBE_RESULT_MISMATCH",
+    )
 
 
 def test_runner_stops_without_retry_when_role_result_is_not_validated(tmp_path: Path) -> None:

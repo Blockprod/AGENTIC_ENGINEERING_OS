@@ -151,6 +151,7 @@ def emit_mission_result(result: MissionRunResult, json_output: bool) -> None:
     payload["current_story_ids"] = list(result.current_story_ids)
     payload["completed_story_ids"] = list(result.completed_story_ids)
     payload["blockers"] = list(result.blockers)
+    payload["blocker_details"] = list(result.blocker_details)
     payload["evidence_references"] = list(result.evidence_references)
     serialized = json.dumps(
         payload,
@@ -166,6 +167,7 @@ def emit_mission_result(result: MissionRunResult, json_output: bool) -> None:
 def emit_mission_error(code: str, detail: str, json_output: bool) -> None:
     payload = {
         "blockers": [code],
+        "blocker_details": [f"{code}:{detail}"],
         "completed_story_ids": [],
         "current_story_ids": [],
         "detail": detail,
