@@ -70,6 +70,7 @@ from .worktree_manager import (
     WorktreeReconciliation,
 )
 from .worktree_registry_store import WorktreeRegistryStore
+from .verification_command_runner import SubprocessVerificationCommandRunner
 from .incident_event_journal import (
     IncidentEventJournal,
     IncidentEventJournalError,
@@ -161,6 +162,7 @@ __all__ = [
     "WorktreeManagerError",
     "WorktreeReconciliation",
     "WorktreeRegistryStore",
+    "SubprocessVerificationCommandRunner",
     "IncidentEventJournal",
     "IncidentEventJournalError",
     "incident_record_from_operational_event",

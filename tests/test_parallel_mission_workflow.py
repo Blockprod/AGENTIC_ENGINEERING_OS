@@ -316,7 +316,7 @@ def make_tester_result(
             TesterAcceptanceResult(criterion, GateResult.PASS, ("TC-001",), "pass"),
         ),
         test_cases=cases,
-        test_files_changed=(story.scope.allowed_paths[1],),
+        test_files_changed=(),
         verification_commands=(COMMAND,),
         verification_results=(
             TesterVerificationResult(COMMAND, True, True, GateResult.PASS, 0, "pass"),
@@ -706,6 +706,11 @@ def test_post_merge_tester_and_reviewer_failures_require_remediation(tmp_path: P
         ),
     )
     passing = make_tester_result(story_one, commit)
+    with pytest.raises(ParallelMissionWorkflowError, match="non-mutating"):
+        harness.workflow.accept_tester(
+            dossier_one,
+            replace(passing, test_files_changed=(story_one.scope.allowed_paths[1],)),
+        )
     failed_cases = tuple(
         replace(item, verdict=GateResult.FAIL)
         if item.type is TestCaseType.REGRESSION

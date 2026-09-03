@@ -1161,9 +1161,16 @@ class ParallelMissionWorkflow:
             handoff, story, dossier.implementer_result, dossier.integrated_context
         )
         validation = self._tester_validator.validate(candidate, tester_input=tester_input)
-        if not validation.is_valid:
+        primary = self._manager.inspect_primary()
+        if (
+            not validation.is_valid
+            or candidate.test_files_changed != ()
+            or primary.head_commit != dossier.integration_commit
+            or not primary.clean
+        ):
             raise ParallelMissionWorkflowError(
-                "INVALID_TESTER_RESULT", "TesterResult failed deterministic validation"
+                "INVALID_TESTER_RESULT",
+                "post-merge Tester must be valid, non-mutating, and bound to clean primary",
             )
         if candidate.verdict is TesterVerdict.READY_FOR_REVIEW:
             self._transition(story.id, UserStoryStatus.REVIEW)

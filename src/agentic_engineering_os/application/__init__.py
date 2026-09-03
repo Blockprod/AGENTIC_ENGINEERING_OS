@@ -160,6 +160,14 @@ from .gate_policy import (
     instantiate_gate_id,
     resolve_story_policies,
 )
+from .verification_coordinator import (
+    VerificationCommandRunner,
+    VerificationCoordinationError,
+    VerificationCoordinator,
+    VerificationGitObserver,
+    VerificationProcessResult,
+    VerificationRunResult,
+)
 from .implementer import (
     ImplementerInput,
     ImplementerInputError,
@@ -506,6 +514,12 @@ __all__ = [
     "ResolvedGatePolicy",
     "instantiate_gate_id",
     "resolve_story_policies",
+    "VerificationCommandRunner",
+    "VerificationCoordinationError",
+    "VerificationCoordinator",
+    "VerificationGitObserver",
+    "VerificationProcessResult",
+    "VerificationRunResult",
     "GateEvaluationError",
     "GateEvaluator",
     "GateReason",
