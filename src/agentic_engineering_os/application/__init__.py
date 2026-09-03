@@ -154,6 +154,12 @@ from .gate_evaluator import (
     GateEvaluator,
     GateReason,
 )
+from .gate_policy import (
+    GatePolicyResolutionError,
+    ResolvedGatePolicy,
+    instantiate_gate_id,
+    resolve_story_policies,
+)
 from .implementer import (
     ImplementerInput,
     ImplementerInputError,
@@ -496,6 +502,10 @@ __all__ = [
     "GateContract",
     "GateEvaluation",
     "GateEvaluationContext",
+    "GatePolicyResolutionError",
+    "ResolvedGatePolicy",
+    "instantiate_gate_id",
+    "resolve_story_policies",
     "GateEvaluationError",
     "GateEvaluator",
     "GateReason",

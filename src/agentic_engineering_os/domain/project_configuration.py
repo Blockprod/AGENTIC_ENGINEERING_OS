@@ -24,6 +24,10 @@ class WorkingDirectoryPolicy(str, Enum):
     REPOSITORY_RELATIVE = "REPOSITORY_RELATIVE"
 
 
+class GateAggregation(str, Enum):
+    ALL_REQUIRED_PASS = "ALL_REQUIRED_PASS"
+
+
 class CodexSandboxConstraint(str, Enum):
     READ_ONLY = "read-only"
     WORKSPACE_WRITE = "workspace-write"
@@ -56,6 +60,15 @@ class VerificationCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class GatePolicy:
+    policy_id: str
+    verification_command_ids: tuple[str, ...]
+    aggregation: GateAggregation
+    required: bool
+    repository_dependent: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectPathPolicy:
     allowed_paths: tuple[str, ...]
     protected_paths: tuple[str, ...]
@@ -83,3 +96,4 @@ class ProjectConfiguration:
     context_sources: tuple[str, ...]
     codex_constraints: CodexProjectConstraints
     mission_state_git_policy: MissionStateGitPolicy
+    gate_policies: tuple[GatePolicy, ...] = ()

@@ -7,6 +7,7 @@ import pytest
 from agentic_engineering_os.domain import (
     CodexApprovalConstraint,
     CodexSandboxConstraint,
+    GateAggregation,
     MissionStateGitPolicy,
     RepositoryRootPolicy,
     VerificationKind,
@@ -52,6 +53,15 @@ def valid_candidate() -> dict[str, object]:
                 "required": True,
             },
         ],
+        "gate_policies": [
+            {
+                "policy_id": "tests",
+                "verification_command_ids": ["tests"],
+                "aggregation": "ALL_REQUIRED_PASS",
+                "required": True,
+                "repository_dependent": True,
+            }
+        ],
         "path_policy": {
             "allowed_paths": ["docs", "src", "tests"],
             "protected_paths": ["pyproject.toml"],
@@ -79,6 +89,7 @@ def test_minimal_configuration_is_valid_without_invented_commands() -> None:
     candidate = valid_candidate()
     candidate["toolchains"] = []
     candidate["verification_commands"] = []
+    candidate["gate_policies"] = []
     candidate["path_policy"] = {
         "allowed_paths": [],
         "protected_paths": [],
@@ -92,6 +103,7 @@ def test_minimal_configuration_is_valid_without_invented_commands() -> None:
     assert config.repository_root_policy is RepositoryRootPolicy.CONFIG_PARENT_GIT_ROOT
     assert config.toolchains == ()
     assert config.verification_commands == ()
+    assert config.gate_policies == ()
     assert config.mission_state_git_policy is MissionStateGitPolicy.TRACKED
 
 
@@ -106,6 +118,7 @@ def test_round_trip_preserves_unicode_and_structured_commands() -> None:
     assert second.verification_commands[0].kind is VerificationKind.LINT
     assert second.verification_commands[1].args == ("-m", "pytest", "tests")
     assert second.verification_commands[1].cwd_policy is WorkingDirectoryPolicy.REPOSITORY_RELATIVE
+    assert second.gate_policies[0].aggregation is GateAggregation.ALL_REQUIRED_PASS
     assert second.codex_constraints.maximum_sandbox is CodexSandboxConstraint.WORKSPACE_WRITE
     assert second.codex_constraints.approval_policy is CodexApprovalConstraint.NEVER
 
@@ -386,3 +399,91 @@ def test_validation_never_mutates_or_supplies_missing_defaults() -> None:
         ProjectConfigurationValidator().validate(candidate)
 
     assert candidate == before
+
+
+def test_historical_configuration_without_gate_policies_is_compatible() -> None:
+    candidate = valid_candidate()
+    del candidate["gate_policies"]
+
+    configuration = ProjectConfigurationValidator().validate(candidate)
+    serialized = ProjectConfigurationValidator().serialize(configuration)
+
+    assert configuration.gate_policies == ()
+    assert '"gate_policies": []' in serialized
+
+
+@pytest.mark.parametrize(
+    ("mutation", "code"),
+    [
+        (
+            lambda item: item["gate_policies"][0].update(
+                {"verification_command_ids": ["unknown"]}
+            ),
+            "UNKNOWN_VERIFICATION_COMMAND",
+        ),
+        (
+            lambda item: item["gate_policies"][0].update(
+                {"verification_command_ids": ["lint"]}
+            ),
+            "OPTIONAL_GATE_COMMAND",
+        ),
+        (
+            lambda item: item["gate_policies"][0].update({"required": False}),
+            "UNCOVERED_REQUIRED_COMMAND",
+        ),
+    ],
+)
+def test_gate_policy_command_authority_is_fail_closed(mutation, code: str) -> None:
+    candidate = valid_candidate()
+    mutation(candidate)
+
+    with pytest.raises(ProjectConfigurationError) as captured:
+        ProjectConfigurationValidator().validate(candidate)
+
+    assert captured.value.code == code
+
+
+def test_gate_policy_ids_are_unique_after_casefold() -> None:
+    candidate = valid_candidate()
+    duplicate = copy.deepcopy(candidate["gate_policies"][0])  # type: ignore[index]
+    duplicate["policy_id"] = "TESTS"
+    candidate["gate_policies"].append(duplicate)  # type: ignore[union-attr]
+
+    with pytest.raises(ProjectConfigurationError) as captured:
+        ProjectConfigurationValidator().validate(candidate)
+
+    assert captured.value.code == "DUPLICATE_NORMALIZED_VALUE"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "code"),
+    [
+        (
+            lambda item: item["gate_policies"][0].update(
+                {"verification_command_ids": ["tests", "tests"]}
+            ),
+            "DUPLICATE_NORMALIZED_VALUE",
+        ),
+        (
+            lambda item: item["gate_policies"].insert(
+                0,
+                {
+                    "policy_id": "z-policy",
+                    "verification_command_ids": ["tests"],
+                    "aggregation": "ALL_REQUIRED_PASS",
+                    "required": False,
+                    "repository_dependent": True,
+                },
+            ),
+            "NON_CANONICAL_ORDER",
+        ),
+    ],
+)
+def test_gate_policy_collections_must_be_canonical(mutation, code: str) -> None:
+    candidate = valid_candidate()
+    mutation(candidate)
+
+    with pytest.raises(ProjectConfigurationError) as captured:
+        ProjectConfigurationValidator().validate(candidate)
+
+    assert captured.value.code == code

@@ -17,6 +17,8 @@ from agentic_engineering_os.domain import (
     CodexApprovalConstraint,
     CodexProjectConstraints,
     CodexSandboxConstraint,
+    GateAggregation,
+    GatePolicy,
     MissionStateGitPolicy,
     ProjectConfiguration,
     ProjectPathPolicy,
@@ -303,6 +305,54 @@ def _validate_semantics(data: Mapping[str, object]) -> None:
         _reject_reserved_or_secret_write_path(cwd, "verification command cwd")
     _require_unique_and_sorted(command_keys, "verification command ids")
 
+    policies = cast(
+        Sequence[Mapping[str, object]], data.get("gate_policies", ())
+    )
+    command_by_id = {
+        cast(str, item["command_id"]): cast(bool, item["required"])
+        for item in commands
+    }
+    policy_keys: list[str] = []
+    covered_required_commands: set[str] = set()
+    for index, item in enumerate(policies):
+        policy_id = cast(str, item["policy_id"])
+        _validate_identity(policy_id, f"gate_policies.{index}.policy_id")
+        policy_keys.append(_identity_key(policy_id))
+        references = list(cast(Sequence[str], item["verification_command_ids"]))
+        for reference in references:
+            _validate_identity(
+                reference,
+                f"gate_policies.{index}.verification_command_ids",
+            )
+            if reference not in command_by_id:
+                _invalid(
+                    "UNKNOWN_VERIFICATION_COMMAND",
+                    f"Gate policy references unknown command: {reference}",
+                )
+            if not command_by_id[reference]:
+                _invalid(
+                    "OPTIONAL_GATE_COMMAND",
+                    f"automatic Gate policy command must be required: {reference}",
+                )
+        reference_keys = [_identity_key(value) for value in references]
+        _require_unique_and_sorted(
+            reference_keys, f"gate policy {policy_id} command ids"
+        )
+        if cast(bool, item["required"]):
+            covered_required_commands.update(references)
+    _require_unique_and_sorted(policy_keys, "Gate policy ids")
+    if policies:
+        required_commands = {
+            identifier for identifier, required in command_by_id.items() if required
+        }
+        uncovered = sorted(required_commands - covered_required_commands)
+        if uncovered:
+            _invalid(
+                "UNCOVERED_REQUIRED_COMMAND",
+                "required verification commands lack a required Gate policy: "
+                + ", ".join(uncovered),
+            )
+
     policy = cast(Mapping[str, object], data["path_policy"])
     normalized: dict[str, tuple[str, ...]] = {}
     for field in ("allowed_paths", "protected_paths", "forbidden_paths"):
@@ -447,6 +497,7 @@ def _reject_secret_values(value: object, path: tuple[str, ...] = ()) -> None:
 def _hydrate(data: Mapping[str, object]) -> ProjectConfiguration:
     toolchains = cast(Sequence[Mapping[str, object]], data["toolchains"])
     commands = cast(Sequence[Mapping[str, object]], data["verification_commands"])
+    policies = cast(Sequence[Mapping[str, object]], data.get("gate_policies", ()))
     path_policy = cast(Mapping[str, object], data["path_policy"])
     codex = cast(Mapping[str, object], data["codex_constraints"])
     return ProjectConfiguration(
@@ -488,6 +539,18 @@ def _hydrate(data: Mapping[str, object]) -> ProjectConfiguration:
         ),
         mission_state_git_policy=MissionStateGitPolicy(
             cast(str, data["mission_state_git_policy"])
+        ),
+        gate_policies=tuple(
+            GatePolicy(
+                policy_id=cast(str, item["policy_id"]),
+                verification_command_ids=tuple(
+                    cast(Sequence[str], item["verification_command_ids"])
+                ),
+                aggregation=GateAggregation(cast(str, item["aggregation"])),
+                required=cast(bool, item["required"]),
+                repository_dependent=cast(bool, item["repository_dependent"]),
+            )
+            for item in policies
         ),
     )
 

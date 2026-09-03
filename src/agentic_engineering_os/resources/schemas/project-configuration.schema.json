@@ -66,6 +66,31 @@
         }
       }
     },
+    "gate_policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "policy_id",
+          "verification_command_ids",
+          "aggregation",
+          "required",
+          "repository_dependent"
+        ],
+        "properties": {
+          "policy_id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "verification_command_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1, "maxLength": 64}
+          },
+          "aggregation": {"const": "ALL_REQUIRED_PASS"},
+          "required": {"type": "boolean"},
+          "repository_dependent": {"type": "boolean"}
+        }
+      }
+    },
     "path_policy": {
       "type": "object",
       "additionalProperties": false,
